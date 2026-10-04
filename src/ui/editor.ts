@@ -57,7 +57,6 @@ export function openEditor(ctx: PanelCtx, preset: EditorPreset): void {
       };
   if (kind === "todo" && isNew) it.end = undefined; // 待办默认无截止，由用户按需填写
 
-  const isTodo = it.kind === "todo";
   // 移动端竖屏（375~430px）放不下 520/560px 定宽弹窗，改为占满视口
   const mobile = isMobile();
 
@@ -159,10 +158,6 @@ function genUid(): string {
 /** 编辑器里的「日历身份色」= 该日历的日程默认色（拿不到就中性灰） */
 function calColorOf(cals: CalCalendar[], selected: string): string {
   return calEventColor(cals.find((c) => c.url === selected));
-}
-
-function inputToInputValue(stamp: string, allDay: boolean): string {
-  return allDay ? stamp.slice(0, 10) : stamp.slice(0, 16);
 }
 
 function computeDurationLabel(start: string, end: string | undefined, allDay: boolean): string {

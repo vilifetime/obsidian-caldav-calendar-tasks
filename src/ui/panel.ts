@@ -6,8 +6,7 @@
  */
 import type { CalStore } from "../core/store";
 import { keyOf } from "../core/store";
-import type { SyncEngine } from "../core/sync";
-import type { CalItem, CalKind, SortMode } from "../core/types";
+import type { CalItem, SortMode } from "../core/types";
 import { DEFAULT_CATEGORIES, calEventColor } from "../core/types";
 import { occurrencesInRange } from "../core/ics";
 import { parseLocalStamp, stampOfMs, todayStamp, startOfWeek, addDays, isDateOnly, fmtTime, fmtDateCn, diffDays } from "../core/date";

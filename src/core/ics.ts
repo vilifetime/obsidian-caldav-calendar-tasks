@@ -320,12 +320,6 @@ const MANAGED = new Set([
   "DTSTAMP", "LAST-MODIFIED", "SEQUENCE", "TZID"
 ]);
 
-function propLine(name: string, params: Record<string, string>, value: string): string {
-  let head = name;
-  for (const k of Object.keys(params)) head += `;${k}=${params[k]}`;
-  return foldLine(`${head}:${value}`);
-}
-
 /** 重建目标组件的属性列表：保留未管理属性，重写受管理属性 */
 function rebuildComponent(comp: IcsComponent, item: CalItem): IcsComponent {
   const kept = comp.props.filter((p) => !MANAGED.has(p.name));

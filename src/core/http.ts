@@ -62,18 +62,6 @@ export function isNetworkLevelError(e: unknown): boolean {
   );
 }
 
-function normalizeHeaders(
-  h: Record<string, string> | Record<string, string[]> | undefined
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!h) return out;
-  for (const k of Object.keys(h)) {
-    const v = (h as any)[k];
-    out[k.toLowerCase()] = Array.isArray(v) ? v.join(", ") : String(v);
-  }
-  return out;
-}
-
 /**
  * 统一出口：始终走宿主注入的传输实现。
  *
