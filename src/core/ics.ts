@@ -396,7 +396,7 @@ export function itemToNewICS(item: CalItem): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//bonebearHsu//CalDAV Calendar Tasks//CN",
+    "PRODID:-//vilifetime//CalDAV Calendar Tasks//CN",
     ...compToLines(comp),
     "END:VCALENDAR"
   ];

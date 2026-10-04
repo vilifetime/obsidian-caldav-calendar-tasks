@@ -93,4 +93,4 @@ npm test          # 冒烟测试
 
 ## 许可
 
-[MIT](LICENSE) © 2026 bonebearHsu
+[MIT](LICENSE) © 2026 vilifetime
