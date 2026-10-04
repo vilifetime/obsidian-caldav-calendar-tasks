@@ -1,0 +1,3846 @@
+/* CalDAV日历任务 —— 跟随思源主题变量，自动适配明暗 */
+
+.caldav-root {
+  --caldav-accent: var(--interactive-accent, #3575f0);
+  --caldav-bg: var(--background-primary, #fff);
+  --caldav-bg-2: var(--background-secondary, #f6f8fa);
+  --caldav-bg-3: var(--background-secondary-alt, #eef1f5);
+  --caldav-border: var(--background-modifier-border, #e4e7ed);
+  --caldav-text: var(--text-normal, #1f2329);
+  --caldav-text-2: var(--text-muted, #646a73);
+  --caldav-danger: var(--text-error, #d23f31);
+  height: 100%;
+  font-size: 13px;
+  color: var(--caldav-text);
+}
+
+/* ===== 布局 ===== */
+.caldav-app {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: var(--caldav-bg);
+}
+
+.caldav-sidebar {
+  width: 208px;
+  flex: 0 0 208px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--caldav-border);
+  background: var(--caldav-bg-2);
+  padding: 12px 10px;
+  gap: 4px;
+}
+
+.caldav-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.caldav-brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--caldav-accent);
+  color: #fff;
+  flex: 0 0 26px;
+}
+
+.caldav-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.caldav-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--caldav-text-2);
+  cursor: pointer;
+  font-size: 12.5px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.caldav-nav-btn:hover { background: var(--caldav-bg-3); }
+.caldav-nav-btn.is-active {
+  background: var(--caldav-accent);
+  color: #fff;
+}
+.caldav-nav-btn.is-active svg { stroke: #fff; }
+
+/* 日历列表 */
+.caldav-cal-section {
+  flex: 1;
+  overflow: auto;
+  margin-top: 10px;
+  min-height: 0;
+}
+
+/* 浮层标题：与 Dock「选择分类」弹层标题同一档（14px / 600）。
+   11px + uppercase + 字距是旧左侧栏子标题的规格，放在浮层里比相邻弹窗明显小一号。 */
+.caldav-cal-head {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--caldav-text);
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--caldav-border);
+}
+
+.caldav-cal-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  /* 整行可点：切换该日历在视图中的显示 / 隐藏（与右侧眼睛按钮同一动作，
+     触摸端尤其需要 —— 26~34px 的图标太小，整行更好点） */
+  cursor: pointer;
+}
+
+.caldav-cal-item:hover { background: var(--caldav-bg-3); }
+.caldav-cal-item.is-off .caldav-cal-name { opacity: 0.45; text-decoration: line-through; }
+.caldav-cal-item.is-off .caldav-cal-dot { opacity: 0.35; }
+
+.caldav-cal-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 9px;
+}
+
+.caldav-cal-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+/* 眼睛按钮：静态时隐去，避免与色点/名称抢注意力；悬停或已关闭时常驻显示。
+   已关闭必须常驻 —— 否则关掉后按钮自己消失，用户找不到恢复入口。 */
+.caldav-cal-toggle { opacity: 0; }
+.caldav-cal-item:hover .caldav-cal-toggle { opacity: 1; }
+.caldav-cal-item.is-off .caldav-cal-toggle { opacity: 1; color: var(--caldav-text-2); }
+
+/* 无悬停能力的设备（手机/平板）：没有 :hover 可触发，按钮会一直隐形 —— 直接常驻 */
+@media (hover: none) {
+  .caldav-cal-toggle { opacity: 1; }
+}
+
+.caldav-cal-empty {
+  color: var(--caldav-text-2);
+  font-size: 12px;
+  text-align: center;
+  padding: 18px 6px;
+  line-height: 2;
+}
+
+.caldav-link {
+  border: none;
+  background: none;
+  color: var(--caldav-accent);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+
+.caldav-sidebar-foot {
+  border-top: 1px solid var(--caldav-border);
+  padding-top: 8px;
+}
+
+.caldav-sync-status {
+  font-size: 11px;
+  color: var(--caldav-text-2);
+  padding: 0 6px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caldav-sync-status.has-error { color: var(--caldav-danger); }
+
+.caldav-foot-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ===== 主区 ===== */
+.caldav-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.caldav-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--caldav-border);
+  gap: 8px;
+}
+
+.caldav-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.caldav-cursor-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.caldav-toolbar-right {
+  display: flex;
+  gap: 6px;
+}
+
+/* 按钮 */
+.caldav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 8px;
+  background: var(--caldav-bg);
+  color: var(--caldav-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  transition: all 0.15s;
+}
+
+.caldav-btn:hover {
+  border-color: var(--caldav-accent);
+  color: var(--caldav-accent);
+  background: color-mix(in srgb, var(--caldav-accent) 7%, var(--caldav-bg));
+}
+
+.caldav-btn-primary {
+  background: var(--caldav-accent);
+  border-color: var(--caldav-accent);
+  color: #fff;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--caldav-accent) 32%, transparent);
+}
+
+.caldav-btn-primary:hover {
+  filter: brightness(1.06);
+  color: #fff;
+  background: var(--caldav-accent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--caldav-accent) 40%, transparent);
+}
+
+.caldav-btn-danger {
+  color: var(--caldav-danger);
+  border-color: color-mix(in srgb, var(--caldav-danger) 38%, var(--caldav-border));
+}
+
+.caldav-btn-danger:hover {
+  background: color-mix(in srgb, var(--caldav-danger) 10%, var(--caldav-bg));
+  border-color: var(--caldav-danger);
+  color: var(--caldav-danger);
+}
+
+.caldav-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--caldav-text-2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.caldav-icon-btn:hover {
+  background: var(--caldav-bg-3);
+  color: var(--caldav-text);
+}
+
+.caldav-view {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* ===== 月视图 ===== */
+.cal-month {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cal-month-weeks {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--caldav-border);
+}
+
+.cal-month-weeklabel {
+  padding: 6px 10px;
+  font-size: 11.5px;
+  color: var(--caldav-text-2);
+}
+
+.cal-month-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+  min-height: 0;
+}
+
+.cal-month-cell {
+  border-right: 1px solid var(--caldav-border);
+  border-bottom: 1px solid var(--caldav-border);
+  padding: 4px 5px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: default;
+}
+
+.cal-month-cell:nth-child(7n) { border-right: none; }
+.cal-month-cell:hover { background: var(--caldav-bg-2); }
+.cal-month-cell.is-out { opacity: 0.45; }
+/* 今日单元格：加深底色 + 内描边加粗（用 inset 阴影避免挤动网格布局） */
+.cal-month-cell.is-today {
+  background: color-mix(in srgb, var(--caldav-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--caldav-accent) 70%, transparent);
+}
+.cal-month-cell.is-today:hover {
+  background: color-mix(in srgb, var(--caldav-accent) 20%, transparent);
+}
+
+.cal-month-daynum {
+  font-size: 11.5px;
+  color: var(--caldav-text-2);
+  margin-bottom: 2px;
+}
+
+.cal-today-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--caldav-accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 11.5px;
+}
+
+.cal-month-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+/* 条目 chip */
+.cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px 1px 8px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  background: color-mix(in srgb, var(--cal-color, #64748b) 12%, transparent);
+  color: var(--caldav-text);
+  cursor: pointer;
+  border-left: 3px solid var(--cal-color, #64748b);
+  line-height: 1.6;
+  min-width: 0;
+}
+
+.cal-chip:hover { filter: brightness(0.96); }
+
+.cal-chip-time {
+  color: var(--caldav-text-2);
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.cal-chip.is-done .cal-chip-title {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.cal-chip-repeat { color: var(--cal-color); flex: 0 0 auto; }
+
+.cal-chip-check {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--cal-color, #64748b);
+  border-radius: 50%;
+  background: transparent;
+  color: transparent;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+/* 完成态：实心圆 + 白色对勾。
+   ⚠️ 绝不能把 :hover 也写成这个样子 —— 鼠标点完会停在圆圈上，hover 一直生效，
+   于是「未完成」看起来和「已完成」完全一样，用户就会以为「点不动了」。
+   hover 只给一层淡底提示可点，勾不显现。 */
+.cal-chip.is-done .cal-chip-check,
+.cal-wk-block.is-done .cal-chip-check {
+  background: var(--cal-color, #64748b);
+  color: #fff;
+  border-color: var(--cal-color, #64748b);
+}
+
+.cal-chip.is-done .cal-chip-check:hover,
+.cal-wk-block.is-done .cal-chip-check:hover {
+  filter: brightness(0.88);
+}
+
+.cal-chip:not(.is-done) .cal-chip-check:hover,
+.cal-wk-block:not(.is-done) .cal-chip-check:hover {
+  background: color-mix(in srgb, var(--cal-color, #64748b) 20%, transparent);
+  color: color-mix(in srgb, var(--cal-color, #64748b) 45%, transparent);
+  border-color: var(--cal-color, #64748b);
+}
+
+.cal-chip-more {
+  font-size: 11px;
+  color: var(--caldav-text-2);
+  padding-left: 8px;
+  cursor: pointer;
+}
+
+/* 月视图专用卡片：两行显示（标题 + 时间），标题超出直接裁切不显示省略号 */
+.cal-month-cell .cal-chip {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 2px 6px 2px 8px;
+  line-height: 1.35;
+}
+
+.cal-month-cell .cal-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.cal-month-cell .cal-chip-row-time {
+  padding-left: 0;
+}
+
+.cal-month-cell .cal-chip-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip; /* 不要“…” */
+  min-width: 0;
+}
+
+.cal-month-cell .cal-chip-time {
+  font-size: 10.5px;
+  color: var(--caldav-text-2);
+}
+
+/* ===== 周/日视图 ===== */
+.cal-wk {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.cal-wk-header {
+  display: flex;
+  border-bottom: 1px solid var(--caldav-border);
+  background: var(--caldav-bg, #fff);
+  height: 44px;
+  flex: 0 0 44px;
+}
+
+.cal-wk-gutterhead { flex: 0 0 48px; }
+
+.cal-wk-days {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 7), 1fr);
+}
+
+.cal-wk-dayhead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 8px 0;
+  font-size: 12px;
+  cursor: default;
+}
+
+.cal-wk-dayhead.is-today .cal-wk-num {
+  background: var(--caldav-accent);
+  color: #fff;
+  border-radius: 50%;
+}
+
+.cal-wk-wd { color: var(--caldav-text-2); font-size: 11px; }
+.cal-wk-num { font-weight: 600; font-size: 15px; padding: 2px 6px; }
+
+/* 主滚动区：表头固定在 .cal-wk-header，这里负责全天区+时间网格的纵向滚动。
+   用 grid 把左侧 gutter(48px) 和右侧日期区(1fr) 对齐，滚动条落在 .cal-wk-main
+   最右侧，内部三列(表头/全天/网格)天然等宽，分隔竖线上下对齐。
+   无全天事件时全天区 DOM 不渲染，auto 行自动塌成 0，不再占高度。
+   基座始终保留两行模板，防止旧代码/异常情况下「全天」标签被排到最底部。 */
+.cal-wk-main {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "allday-label allday-cells"
+    "grid-label   grid-days";
+  min-height: 0;
+}
+
+/* 显式关闭全天区时（JS 空状态兜底），整行完全收起 */
+.cal-wk-main.no-allday {
+  grid-template-rows: 1fr;
+  grid-template-areas: "grid-label grid-days";
+}
+.cal-wk-main.no-allday .cal-wk-allday-label,
+.cal-wk-main.no-allday .cal-wk-allday-cells { display: none; }
+
+.cal-wk-allday-label {
+  grid-area: allday-label;
+  font-size: 10.5px;
+  color: var(--caldav-text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.cal-wk-allday-cells {
+  grid-area: allday-cells;
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 7), 1fr);
+  border-bottom: 1px solid var(--caldav-border);
+  min-height: 44px;
+  max-height: 44px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.cal-wk-allday-cell {
+  border-left: 1px solid var(--caldav-border);
+  padding: 2px 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cal-wk-gutter {
+  grid-area: grid-label;
+  display: flex;
+  flex-direction: column;
+  /* 时间轴与 .cal-wk-grid 同高(24*44px)，固定高度防止被 flex 拉伸压缩，
+     否则小时间距会≠44px，导致左侧时间线与事件位置对不齐 */
+  height: calc(24 * 44px);
+  box-sizing: border-box;
+}
+
+.cal-wk-hour {
+  position: relative;
+  border-bottom: none;
+  flex-shrink: 0;
+}
+
+.cal-wk-hour span {
+  position: absolute;
+  top: -7px;
+  right: 6px;
+  font-size: 10.5px;
+  color: var(--caldav-text-2);
+}
+
+.cal-wk-grid {
+  grid-area: grid-days;
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 7), 1fr);
+  position: relative;
+}
+
+.cal-wk-col {
+  position: relative;
+  border-left: 1px solid var(--caldav-border);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--caldav-border) 0,
+    var(--caldav-border) 1px,
+    transparent 1px,
+    transparent 44px
+  );
+}
+
+.cal-wk-block {
+  position: absolute;
+  left: 3px;
+  right: 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--cal-color, #64748b) 14%, var(--caldav-bg));
+  border-left: 3px solid var(--cal-color, #64748b);
+  padding: 2px 6px;
+  overflow: hidden;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1.4;
+  z-index: 1;
+}
+
+.cal-wk-block:hover { filter: brightness(0.96); z-index: 2; }
+
+/* 标题行：圆圈（待办）+ 标题，与月视图第一行风格一致 */
+.cal-wk-block-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cal-wk-block.is-done .cal-wk-block-title {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* 块内待办勾选样式与月视图 chip 一致：完成=实心圆+白勾，未完成=空心圆 */
+.cal-wk-block.is-done .cal-chip-check {
+  background: var(--cal-color, #64748b);
+  color: #fff;
+  border-color: var(--cal-color, #64748b);
+}
+
+.cal-wk-block-time { color: var(--caldav-text-2); font-size: 10.5px; }
+.cal-wk-block-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cal-wk-block-loc { color: var(--caldav-text-2); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
+/* 桌面端地点仍用独立行（.cal-wk-block-loc）；行内版只给移动端用（见触摸形态一节） */
+.cal-wk-block-loc-inline { display: none; color: var(--caldav-text-2); font-weight: 400; }
+
+.cal-wk-nowline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--caldav-danger);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.cal-wk-nowline::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--caldav-danger);
+}
+
+/* ===== 任务视图 ===== */
+.cal-task-view {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+  height: 100%;
+  overflow: auto;
+}
+
+.cal-task-summary {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cal-task-stat {
+  flex: 1;
+  background: var(--caldav-bg-2);
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.cal-task-stat b { font-size: 20px; font-weight: 700; display: block; }
+.cal-task-stat span { font-size: 11.5px; color: var(--caldav-text-2); }
+.cal-stat-today b { color: var(--caldav-accent); }
+.cal-stat-overdue b { color: var(--caldav-danger); }
+.cal-stat-done b { color: #10b981; }
+
+.cal-task-filterbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cal-task-filter {
+  flex: 0 0 auto;
+  max-width: 220px;
+  padding: 7px 28px 7px 12px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 8px;
+  background: var(--caldav-bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 4.5L6 7.5L9 4.5' stroke='%23646a73' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 10px center;
+  color: var(--caldav-text);
+  font-size: 13px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cal-task-filter:hover { border-color: var(--caldav-accent); }
+.cal-task-filter:focus { outline: none; border-color: var(--caldav-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--caldav-accent) 20%, transparent); }
+
+.cal-task-quick { flex: 1; }
+
+.cal-task {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 9px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  background: var(--caldav-bg);
+  transition: all 0.15s;
+  border-left: 3px solid var(--cal-color, transparent);
+}
+
+.cal-task:hover { box-shadow: 0 1px 6px rgba(0, 0, 0, 0.07); }
+.cal-task.is-done .cal-task-title { text-decoration: line-through; opacity: 0.5; }
+
+.cal-task-check {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 1.5px solid var(--cal-color, #94a3b8);
+  border-radius: 50%;
+  background: transparent;
+  color: transparent;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.cal-task.is-done .cal-task-check {
+  background: var(--cal-color, #10b981);
+  border-color: var(--cal-color, #10b981);
+  color: #fff;
+}
+
+.cal-task-body { flex: 1; min-width: 0; }
+.cal-task-title { font-size: 13px; line-height: 1.5; }
+
+.cal-task-priority {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--caldav-danger) 12%, transparent);
+  color: var(--caldav-danger);
+  vertical-align: 1px;
+}
+
+.cal-task-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--caldav-text-2);
+  margin-top: 2px;
+  overflow: hidden;
+}
+
+.cal-task-meta > span { flex: 0 0 auto; }
+.cal-task-desc { overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto !important; min-width: 0; }
+
+.cal-task-cal { display: inline-flex; align-items: center; gap: 4px; }
+.cal-task-cal i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+.cal-task-overdue { color: var(--caldav-danger); font-weight: 500; }
+.cal-task.is-overdue { border-left-color: var(--caldav-danger); }
+
+.cal-task-empty {
+  text-align: center;
+  color: var(--caldav-text-2);
+  padding: 48px 0;
+  font-size: 14px;
+}
+
+/* ===== 弹窗（编辑/设置）—— 跟随思源主题风格 ===== */
+.caldav-editor, .caldav-settings, .caldav-catmgr {
+  /* 全部取自思源 b3 主题变量，深浅色主题自动适配 */
+  --ed-page: var(--background-primary, #fff);
+  --ed-card: var(--background-secondary-alt, var(--background-primary, #fff));
+  --ed-input: var(--background-secondary, var(--background-secondary-alt, #f6f8fa));
+  --ed-input-hover: color-mix(in srgb, var(--background-secondary, #f6f8fa) 90%, var(--text-normal, #1f2329) 10%);
+  --ed-border: var(--background-modifier-border, #e4e7ed);
+  --ed-text: var(--text-normal, #1f2329);
+  --ed-text-2: var(--text-muted, #646a73);
+  --ed-accent: var(--interactive-accent, #3575f0);
+  --ed-accent-2: var(--interactive-accent-hover, var(--interactive-accent, #3575f0));
+  --ed-danger: var(--text-error, #d23f31);
+
+  /* 编辑器内覆盖思源变量，使既有 .caldav-* 组件自动适配暖色 */
+  --caldav-accent: var(--ed-accent);
+  --caldav-bg: var(--ed-card);
+  --caldav-bg-2: var(--ed-page);
+  --caldav-bg-3: var(--ed-input);
+  --caldav-border: var(--ed-border);
+  --caldav-text: var(--ed-text);
+  --caldav-text-2: var(--ed-text-2);
+  --caldav-danger: var(--ed-danger);
+  --caldav-input-bg: var(--ed-input);
+  --caldav-inset: var(--ed-input);
+
+  font-size: 13px;
+  color: var(--caldav-text);
+  background: var(--caldav-bg-2);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 深色主题保底：b3 变量本身随主题切换，无需另行覆盖 */
+
+/* 中部可滚动区域：头部与底部按钮固定，仅中间滚动 */
+.caldav-editor-form, .caldav-settings-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 2px 6px 6px 2px;
+}
+
+.caldav-editor-form, .caldav-settings-form { padding: 12px 14px 6px; }
+
+/* 自定义滚动条 */
+.caldav-editor-form::-webkit-scrollbar,
+.caldav-settings-form::-webkit-scrollbar { width: 9px; }
+.caldav-editor-form::-webkit-scrollbar-thumb,
+.caldav-settings-form::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--caldav-text-2) 35%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.caldav-editor-form::-webkit-scrollbar-thumb:hover,
+.caldav-settings-form::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--caldav-text-2) 55%, transparent);
+  background-clip: content-box;
+}
+.caldav-editor-form { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--caldav-text-2) 40%, transparent) transparent; }
+.caldav-settings-form { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--caldav-text-2) 40%, transparent) transparent; }
+
+.caldav-editor-head {
+  flex: 0 0 auto;
+  background: var(--caldav-bg-2);
+  padding: 0;
+  border-bottom: 1px solid var(--caldav-border);
+}
+
+/* 标题行 */
+.caldav-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.caldav-title-row .caldav-title-input {
+  flex: 1;
+  width: 100%;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 12px 42px 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--caldav-border);
+  background: var(--caldav-input-bg);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.caldav-title-row .caldav-title-input:focus {
+  background: color-mix(in srgb, var(--caldav-accent) 5%, var(--caldav-input-bg));
+  border-color: var(--caldav-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--caldav-accent) 14%, transparent);
+}
+.caldav-icon-btn {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--caldav-border);
+  border-radius: 9px;
+  background: var(--caldav-bg);
+  color: var(--caldav-accent);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.caldav-icon-btn:hover {
+  border-color: var(--caldav-accent);
+  background: color-mix(in srgb, var(--caldav-accent) 10%, var(--caldav-bg));
+  transform: translateY(-1px);
+}
+.caldav-icon-btn svg { width: 16px; height: 16px; }
+
+/* Tabs */
+.caldav-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--caldav-border);
+}
+.caldav-tab {
+  position: relative;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--caldav-text-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.caldav-tab:hover { color: var(--caldav-accent); }
+.caldav-tab.is-active {
+  color: var(--caldav-accent);
+  font-weight: 600;
+}
+.caldav-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--caldav-accent);
+}
+
+.caldav-tab-panel { padding: 0; }
+
+/* 分组 */
+.caldav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.caldav-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--caldav-text);
+  padding-left: 10px;
+  position: relative;
+}
+.caldav-section-title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--caldav-accent);
+}
+.caldav-section-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--caldav-accent);
+}
+.caldav-section-icon svg { width: 14px; height: 14px; }
+
+/* 字段 */
+.caldav-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
+.caldav-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--caldav-text-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.caldav-field-label svg { width: 13px; height: 13px; color: var(--caldav-text-2); }
+
+.caldav-field-row { display: flex; gap: 12px; align-items: stretch; }
+.caldav-field-row > .caldav-field { flex: 1; min-width: 0; }
+
+.caldav-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.caldav-input-icon {
+  position: absolute;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--caldav-text-2);
+  pointer-events: none;
+  z-index: 1;
+}
+.caldav-input-icon svg { width: 15px; height: 15px; }
+.caldav-input-icon--static { color: var(--caldav-text-2); }
+.caldav-field-icon .caldav-input {
+  padding-left: 32px;
+}
+.caldav-input-suffix {
+  position: absolute;
+  right: 9px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--caldav-text-2);
+  pointer-events: none;
+  z-index: 1;
+}
+.caldav-input-suffix svg { width: 13px; height: 13px; }
+
+/* 时间选择器：原生 <input type="time"> 的弹出面板由浏览器绘制，选中项固定为系统高亮色（蓝），
+   换主题也不会变，故改为自绘弹层（时 / 分两列），配色全部取自主题变量。 */
+/* 宽度沿用原来的时间输入，并给出最小宽度，避免框被压窄后数字挤在一起 */
+/* 时间框：桌面定宽 128px，但允许收缩（下限 74px 仍能完整显示 "16:00"）。
+   曾写成 flex: 0 0 128px（不可收缩），窄屏时它把整行撑破、时间框溢出到卡片外。 */
+.caldav-input-wrap--time {
+  position: relative;
+  flex: 0 1 128px;
+  min-width: 74px;
+}
+/* 必须用双类选择器：.caldav-input 的 `padding: 8px 11px` 简写定义在文件更靠后的位置，
+   单类的 .caldav-time-trigger 会被它整体覆盖 —— 左侧内边距失效后，
+   时间数字就会从最左端开始、被绝对定位的时钟图标压住。
+   （button 默认也不继承字体族，一并显式继承。） */
+.caldav-input.caldav-time-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 11px 8px 30px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.caldav-time-text {
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.caldav-time-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--caldav-bg);
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+}
+.caldav-time-pop[hidden] { display: none; }
+.caldav-time-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 232px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.caldav-time-item {
+  min-width: 46px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--caldav-text);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.caldav-time-item:hover { background: var(--caldav-bg-3); }
+/* 选中项：主题色实底 + 白字（写在 :hover 之后，保证悬停时仍是选中态配色） */
+.caldav-time-item.is-active {
+  background: var(--caldav-accent);
+  color: #fff;
+}
+.caldav-field-icon .caldav-input:not(select) { padding-right: 28px; }
+.caldav-field-icon select.caldav-input { padding-right: 28px; }
+
+.caldav-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--caldav-border);
+  border-radius: 9px;
+  background: var(--caldav-input-bg);
+  color: var(--caldav-text);
+  padding: 8px 11px;
+  font-size: 13px;
+  line-height: 1.4;
+  outline: none;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.caldav-input::placeholder { color: var(--caldav-text-2); opacity: 0.6; }
+.caldav-input:hover { border-color: color-mix(in srgb, var(--caldav-accent) 42%, var(--caldav-border)); }
+.caldav-input:focus {
+  border-color: var(--caldav-accent);
+  background: color-mix(in srgb, var(--caldav-accent) 6%, var(--caldav-bg));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--caldav-accent) 18%, transparent);
+}
+textarea.caldav-input { resize: vertical; font-family: inherit; line-height: 1.5; }
+textarea.caldav-input.caldav-textarea { min-height: 120px; padding: 12px; }
+select.caldav-input { cursor: pointer; appearance: none; -webkit-appearance: none; color-scheme: light; }
+.theme-dark select.caldav-input { color-scheme: dark; }
+/* 下拉弹出列表跟随主题变量（原为固定暖色浅底，现跟随思源深浅色） */
+select.caldav-input option {
+  background: var(--ed-card, #fff);
+  color: var(--ed-text, #1f2329);
+  padding: 6px 10px;
+}
+select.caldav-input option:checked,
+select.caldav-input option:hover {
+  background: var(--ed-input, #f6f8fa);
+  color: var(--ed-text, #1f2329);
+}
+
+/* 原生 date/time 输入框：统一关闭状态风格；picker 弹层跟随思源主题深浅 */
+input.caldav-input[type="date"],
+input.caldav-input[type="time"] {
+  font-variant-numeric: tabular-nums;
+}
+.theme-dark input.caldav-input[type="date"],
+.theme-dark input.caldav-input[type="time"] { color-scheme: dark; }
+input.caldav-input[type="date"]::-webkit-calendar-picker-indicator,
+input.caldav-input[type="time"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  right: 8px;
+  width: 15px;
+  height: 15px;
+  opacity: 0.55;
+  cursor: pointer;
+}
+input.caldav-input[type="date"]:hover::-webkit-calendar-picker-indicator,
+input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
+  opacity: 0.85;
+}
+
+/* 日历自定义下拉：触发按钮 + 暖色浅底弹层（替代原生 select，弹层样式完全可控） */
+.caldav-cal-trigger {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font: inherit;
+  color: var(--caldav-text);
+  padding-left: 34px;
+  width: 100%;
+  cursor: pointer;
+}
+.caldav-cal-trigger .caldav-input-suffix { margin-left: auto; transition: transform 0.15s; }
+.caldav-cal-trigger[aria-expanded="true"] .caldav-input-suffix { transform: rotate(180deg); }
+.caldav-cal-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.caldav-cal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cal-color, #64748b);
+  flex: 0 0 auto;
+}
+.caldav-cal-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: var(--ed-card, #faf9f6);
+  border: 1px solid var(--ed-border, #e0ded8);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+}
+/* hidden 属性必须显式生效：上面的 display:flex 会覆盖 UA 的 [hidden]{display:none} */
+.caldav-cal-pop[hidden] { display: none; }
+.caldav-cal-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ed-text, #3d3b36);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+.caldav-cal-option:hover { background: var(--ed-input, #e8e6e2); }
+.caldav-cal-option.is-active {
+  background: color-mix(in srgb, var(--ed-accent, #6b9e75) 14%, transparent);
+  color: var(--ed-accent, #6b9e75);
+  font-weight: 600;
+}
+
+/* ===== 任务分类（编辑弹窗药丸 + 分类管理弹窗） ===== */
+.caldav-cat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.caldav-cat-head .caldav-field-label { margin-bottom: 0; }
+.caldav-cat-manage {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  border: 1px solid var(--ed-border);
+  border-radius: 6px;
+  background: var(--ed-card);
+  color: var(--ed-accent);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.caldav-cat-manage:hover { border-color: color-mix(in srgb, var(--ed-accent) 50%, var(--ed-border)); background: color-mix(in srgb, var(--ed-accent) 8%, var(--ed-card)); }
+.caldav-cat-multi {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ed-text-2);
+  cursor: pointer;
+  user-select: none;
+}
+.caldav-cat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.caldav-cat-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--cat-color, var(--ed-text-2));
+  border: 2px solid transparent;
+  border-radius: 9px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s, filter 0.12s;
+  filter: saturate(0.35) opacity(0.72);
+}
+.caldav-cat-pill:hover { filter: saturate(0.8) opacity(0.9); transform: translateY(-1px); }
+.caldav-cat-pill.is-active {
+  filter: none;
+  border-color: color-mix(in srgb, var(--cat-color, var(--ed-accent)) 45%, var(--ed-card));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--cat-color, var(--ed-accent)) 35%, transparent);
+}
+.caldav-cat-pill--none {
+  background: var(--ed-input);
+  color: var(--ed-text);
+  border-color: var(--ed-border);
+}
+.caldav-cat-pill--none.is-active {
+  border-color: color-mix(in srgb, var(--ed-accent) 55%, var(--ed-border));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ed-accent) 25%, transparent);
+}
+.caldav-cat-emoji { font-size: 13px; line-height: 1; }
+.caldav-cat-check { display: none; }
+.caldav-cat-pill--none.is-active .caldav-cat-check {
+  display: inline-flex;
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--ed-accent);
+  color: #fff;
+}
+.caldav-cat-check svg { width: 10px; height: 10px; }
+
+/* 分类管理弹窗 */
+.caldav-catmgr-actions {
+  display: flex;
+  gap: 10px;
+  padding: 4px 0 10px;
+}
+.caldav-catmgr-hint {
+  font-size: 12px;
+  color: var(--ed-text-2);
+  background: var(--ed-input);
+  border-radius: 8px;
+  text-align: center;
+  padding: 7px;
+  margin-bottom: 12px;
+}
+.caldav-catmgr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.caldav-catmgr-empty {
+  text-align: center;
+  color: var(--ed-text-2);
+  font-size: 12.5px;
+  padding: 30px 0;
+}
+.caldav-catmgr-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ed-card);
+  border: 1px solid var(--ed-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.caldav-catmgr-row.is-editing { border-color: color-mix(in srgb, var(--ed-accent) 50%, var(--ed-border)); }
+.caldav-catmgr-idx {
+  width: 18px;
+  font-size: 12px;
+  color: var(--ed-text-2);
+  text-align: center;
+  flex: 0 0 auto;
+}
+.caldav-catmgr-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex: 0 0 auto;
+}
+.caldav-catmgr-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.caldav-catmgr-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ed-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.caldav-catmgr-name-input { flex: 1; min-width: 90px; }
+.caldav-catmgr-color-input {
+  width: 34px;
+  height: 30px;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+.caldav-catmgr-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.caldav-catmgr-color-input::-webkit-color-swatch { border: 1px solid var(--ed-border); border-radius: 6px; }
+.caldav-catmgr-icon-input { width: 48px; text-align: center; flex: 0 0 auto; }
+.caldav-catmgr-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ed-border);
+  border-radius: 7px;
+  background: var(--ed-card);
+  color: var(--ed-text-2);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  flex: 0 0 auto;
+}
+.caldav-catmgr-btn:hover { color: var(--ed-accent); border-color: color-mix(in srgb, var(--ed-accent) 50%, var(--ed-border)); }
+.caldav-catmgr-btn:disabled { opacity: 0.35; cursor: default; }
+.caldav-catmgr-arrows { display: flex; flex-direction: column; gap: 2px; }
+.caldav-catmgr-arrows .caldav-catmgr-btn { width: 24px; height: 18px; }
+.caldav-catmgr-arrow-up svg { transform: rotate(180deg); }
+.caldav-catmgr-note { font-size: 11px; color: var(--ed-text-2); }
+/* 日历下拉左侧图标直接使用所选日历颜色（--cal-color 随选择切换更新） */
+.caldav-cal-icon { color: var(--cal-color, #64748b); }
+
+.caldav-num { width: 64px; flex: 0 0 64px; }
+
+/* 开关行 */
+.caldav-switch-row,
+.caldav-switch-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--caldav-text);
+}
+.caldav-switch-row--inline,
+.caldav-switch-line--inline {
+  padding: 2px 0 6px;
+}
+.caldav-switch-line {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 4px 10px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--caldav-border);
+}
+.caldav-switch-line .caldav-switch-label {
+  font-weight: 500;
+}
+.caldav-switch-line--inline {
+  border-bottom: none;
+  padding: 2px 0 6px;
+  margin-bottom: 0;
+}
+.caldav-switch {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  cursor: pointer;
+}
+.caldav-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.caldav-switch-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--caldav-border);
+  transition: background 0.18s;
+}
+.caldav-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  transition: transform 0.18s;
+}
+.caldav-switch input:checked + .caldav-switch-track { background: var(--caldav-accent); }
+.caldav-switch input:checked + .caldav-switch-track::after { transform: translateX(18px); }
+.caldav-switch input:focus-visible + .caldav-switch-track {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--caldav-accent) 22%, transparent);
+}
+
+/* 行式设置按钮 */
+.caldav-row-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 9px;
+  background: var(--caldav-inset);
+  color: var(--caldav-text);
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.caldav-row-btn:hover { border-color: var(--caldav-accent); background: var(--caldav-bg); }
+.caldav-row-btn.is-open .caldav-row-btn-arrow { transform: rotate(90deg); }
+.caldav-row-btn-arrow {
+  display: inline-flex;
+  align-items: center;
+  color: var(--caldav-text-2);
+  transition: transform 0.18s;
+}
+.caldav-row-btn-arrow svg { width: 14px; height: 14px; }
+
+/* 展开详情 */
+.caldav-row-detail {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--caldav-inset);
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+}
+.caldav-repeat-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.caldav-repeat-fields select.caldav-input { width: auto; }
+
+.caldav-weekdays { display: flex; gap: 6px; }
+.caldav-wd {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--caldav-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--caldav-text-2);
+  background: var(--caldav-bg);
+  transition: all 0.12s;
+}
+.caldav-wd:hover { border-color: var(--caldav-accent); color: var(--caldav-accent); }
+.caldav-wd.is-on {
+  background: var(--caldav-accent);
+  border-color: var(--caldav-accent);
+  color: #fff;
+}
+
+/* 自定义提醒时间：多行列表（每行一个提醒 + 行尾删除） */
+.caldav-alarm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.caldav-alarm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.caldav-alarm-field { flex: 1; min-width: 0; }
+.caldav-alarm-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--caldav-border);
+  border-radius: 8px;
+  background: var(--caldav-bg);
+  color: var(--caldav-text-2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.caldav-alarm-del svg { width: 14px; height: 14px; }
+.caldav-alarm-del:hover {
+  border-color: var(--caldav-danger);
+  color: var(--caldav-danger);
+}
+.caldav-alarm-empty {
+  font-size: 12px;
+  color: var(--caldav-text-2);
+}
+.caldav-alarm-empty[hidden] { display: none; }
+.caldav-alarm-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  position: relative;
+}
+/* 预设浮层：从按钮行下方展开，宽度对齐按钮行 */
+.caldav-alarm-presets {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  background: var(--caldav-bg);
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+/* hidden 属性必须显式生效：上面的 display:flex 会覆盖 UA 的 [hidden]{display:none} */
+.caldav-alarm-presets[hidden] { display: none; }
+.caldav-alarm-presets-hint {
+  font-size: 12px;
+  color: var(--caldav-text-2);
+  padding: 6px 8px 4px;
+}
+.caldav-alarm-preset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--caldav-text);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+.caldav-alarm-preset:hover { background: color-mix(in srgb, var(--caldav-accent) 12%, transparent); }
+.caldav-alarm-preset > span {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--caldav-accent);
+}
+.caldav-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 8px;
+  background: var(--caldav-bg);
+  color: var(--caldav-text-2);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.caldav-add-btn:hover {
+  border-color: var(--caldav-accent);
+  color: var(--caldav-accent);
+  background: color-mix(in srgb, var(--caldav-accent) 8%, var(--caldav-bg));
+}
+.caldav-add-btn svg { width: 13px; height: 13px; }
+
+/* 进度 */
+.caldav-progress-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.caldav-progress-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--caldav-accent);
+  height: 4px;
+  border-radius: 999px;
+}
+.caldav-progress-val {
+  font-size: 12px;
+  color: var(--caldav-text-2);
+  min-width: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 页脚 */
+.caldav-editor-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--caldav-border);
+  background: var(--caldav-bg-2);
+  /* 页脚是对话框最底部：自带与容器一致的圆角，避免直角背景盖住左下/右下圆角 */
+  border-radius: 0 0 var(--radius-m, 8px) var(--radius-m, 8px);
+}
+
+/* 思源 Dialog 容器微调：压缩标题栏高度、消除底部空白（!important 压过主题默认样式） */
+.caldav-dialog .b3-dialog__container {
+  padding: 0 !important;
+  /* 注意：这里不能加 overflow: hidden —— 编辑弹窗里的日历下拉弹层是 absolute 定位，
+     容器裁剪会把它切掉；底部圆角改由页脚自带（见 .caldav-editor-foot） */
+}
+.caldav-dialog .b3-dialog__header {
+  padding: 6px 15px 5px !important;
+  flex: 0 0 auto;
+}
+.caldav-dialog .b3-dialog__header .b3-dialog__title {
+  font-size: 14px;
+}
+.caldav-dialog .b3-dialog__content {
+  padding: 0 !important;
+  margin: 0 !important;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden !important;
+}
+.caldav-dialog .b3-dialog__content > .caldav-editor,
+.caldav-dialog .b3-dialog__content > .caldav-settings,
+.caldav-dialog .b3-dialog__content > .caldav-catmgr {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.caldav-flex { flex: 1; }
+
+/* 页脚按钮：一律不参与收缩、不换行。
+   窄屏时页脚里的说明文字会把按钮挤窄，按钮内的「图标 + 文字」就断成两行（截图里的「取消」「保存」）。 */
+.caldav-editor-foot .caldav-foot-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* 错误提示：位于页脚按钮行左侧空白处，无内容时不占位 */
+.caldav-editor-error {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--caldav-danger);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.caldav-editor-error:empty {
+  display: none;
+}
+
+/* ===== 编辑器新风格组件 ===== */
+
+/* 分组卡片 */
+.caldav-section--card {
+  background: var(--caldav-bg);
+  border: 1px solid var(--caldav-border);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  gap: 12px;
+}
+
+.caldav-section--card .caldav-section-title {
+  padding-left: 0;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.caldav-section--card .caldav-section-title::before { display: none; }
+
+.caldav-section--card .caldav-switch-line {
+  border-bottom: none;
+  padding: 2px 0 6px;
+  margin-bottom: 0;
+}
+
+/* 「日历选择」分组：保留日历自定义下拉，仅去掉冗余的「日历」字段标签行 */
+.caldav-cal-head {
+  justify-content: flex-start;
+}
+.caldav-cal-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--cal-color, #64748b);
+  flex: 0 0 auto;
+}
+
+/* 标题区 */
+.caldav-title-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--caldav-text);
+}
+
+/* 标题行头部：左侧标题、右侧「粘贴自动识别日期」开关，合并一行省空间 */
+.caldav-title-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.caldav-title-head .caldav-title-label {
+  margin-bottom: 0;
+}
+.caldav-title-aiparse {
+  flex: 0 0 auto;
+  border-bottom: none;
+  padding: 0;
+  margin-bottom: 0;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--caldav-text-2);
+}
+
+.caldav-title-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.caldav-title-input {
+  flex: 1;
+  width: 100%;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 12px 42px 12px 14px;
+  border-radius: 12px;
+  background: var(--caldav-input-bg);
+  border: 1px solid var(--caldav-border);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.caldav-title-input:focus {
+  background: color-mix(in srgb, var(--caldav-accent) 5%, var(--caldav-input-bg));
+  border-color: var(--caldav-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--caldav-accent) 14%, transparent);
+}
+
+.caldav-title-action {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--caldav-accent);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s;
+}
+
+.caldav-title-action:hover {
+  background: color-mix(in srgb, var(--caldav-accent) 10%, transparent);
+}
+
+.caldav-title-action svg { width: 17px; height: 17px; }
+
+/* 日期时间行 */
+.caldav-datetime-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.caldav-datetime-label {
+  flex: 0 0 42px;
+  font-size: 12px;
+  color: var(--caldav-text-2);
+  font-weight: 500;
+}
+
+.caldav-datetime-inputs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 日期框外层原本**没有任何规则**：作为 flex 项它的自动最小尺寸 = 内容最小宽
+   （原生 type=date 的固有宽度约 125px，不受内部 input 的 min-width:0 影响），
+   于是整行无法收缩到容器宽度以内 —— 手机上时间框与两个清除按钮被挤出卡片。
+   这里显式给出 min-width:0，让它跟着容器收缩。 */
+.caldav-input-wrap--date {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.caldav-date-input {
+  flex: 1 1 110px;
+  min-width: 0;
+  padding-left: 34px;
+}
+
+.caldav-time-input {
+  flex: 0 0 118px;
+  min-width: 0;
+  padding-left: 30px;
+  padding-right: 26px;
+}
+
+.caldav-input-clear {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--caldav-text-2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.caldav-input-clear:hover {
+  background: color-mix(in srgb, var(--caldav-danger) 10%, transparent);
+  color: var(--caldav-danger);
+}
+
+.caldav-input-clear svg { width: 14px; height: 14px; }
+
+.caldav-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.caldav-duration-val {
+  font-size: 13px;
+  color: var(--caldav-accent);
+  font-weight: 500;
+}
+
+/* 页脚按钮 */
+.caldav-foot-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 18px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  background: var(--caldav-bg);
+  color: var(--caldav-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  /* 只过渡颜色属性：transition: all 会把 filter 等合成属性也纳入过渡，
+     悬停时触发祖先重绘，导致对话框圆角抗锯齿短暂丢失（左下/右下角闪方角） */
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+/* 不用 filter: brightness()：filter 会让元素生成独立合成层，同样会引发上述圆角抖动 */
+.caldav-foot-btn:hover {
+  background: var(--caldav-bg-2);
+  border-color: var(--caldav-border);
+}
+
+.caldav-foot-btn--ghost {
+  background: var(--caldav-bg);
+  border-color: var(--caldav-border);
+  color: var(--caldav-text-2);
+}
+
+.caldav-foot-btn--ghost:hover {
+  background: var(--caldav-bg-2);
+  color: var(--caldav-text);
+}
+
+.caldav-foot-btn--primary {
+  background: var(--caldav-accent);
+  border-color: var(--caldav-accent);
+  color: #fff;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--caldav-accent) 25%, transparent);
+}
+
+/* 悬停：主按钮必须「加深」而不是改用 --interactive-accent-hover（那是浅色调用于
+   选中底色，配 #fff 文字会变成白字浅底、几乎不可读）。这里用 accent 与黑色混合
+   压暗，同时保持白字对比度 ≥ 4.5:1。 */
+.caldav-foot-btn--primary:hover {
+  background: color-mix(in srgb, var(--caldav-accent) 86%, #000);
+  border-color: color-mix(in srgb, var(--caldav-accent) 86%, #000);
+  color: #fff;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--caldav-accent) 32%, transparent);
+}
+
+/* 键盘可达性：焦点态与悬停态一致 */
+.caldav-foot-btn--primary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--caldav-accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.caldav-foot-btn--danger {
+  color: var(--caldav-danger);
+  border-color: color-mix(in srgb, var(--caldav-danger) 35%, var(--caldav-border));
+  background: var(--caldav-bg);
+}
+
+.caldav-foot-btn--danger:hover {
+  background: color-mix(in srgb, var(--caldav-danger) 8%, var(--caldav-bg));
+  border-color: var(--caldav-danger);
+}
+
+/* 删除二次确认：按钮实心高亮，提示「再点一次」 */
+.caldav-foot-btn--danger.is-armed {
+  background: var(--caldav-danger);
+  border-color: var(--caldav-danger);
+  color: #fff;
+}
+.caldav-foot-btn--danger.is-armed:hover {
+  background: color-mix(in srgb, var(--caldav-danger) 88%, #000);
+  color: #fff;
+}
+
+.caldav-foot-btn svg { width: 14px; height: 14px; }
+
+/* 缩放手柄（右下角） */
+.caldav-resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--caldav-text-2);
+  cursor: nwse-resize;
+  opacity: 0.45;
+  border-radius: 4px;
+  z-index: 5;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.caldav-resize:hover, .caldav-resize.is-active {
+  opacity: 1;
+  color: var(--caldav-accent);
+  background: var(--caldav-bg-2);
+}
+
+/* 日历单元格双击新增浮层 */
+.caldav-add-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 144px;
+  padding: 4px;
+  background: var(--caldav-bg);
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: caldav-pop-in 0.12s ease-out;
+}
+@keyframes caldav-pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.caldav-add-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--caldav-text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.caldav-add-menu-item svg { width: 15px; height: 15px; }
+.caldav-add-menu-item:hover {
+  background: color-mix(in srgb, var(--caldav-accent) 10%, var(--caldav-bg));
+  color: var(--caldav-accent);
+}
+
+/* 设置 */
+.caldav-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.caldav-set-msg {
+  font-size: 12px;
+  color: var(--caldav-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 120px;
+}
+.caldav-set-msg.is-ok { color: var(--text-success, #16a34a); }
+.caldav-set-msg.is-err { color: var(--caldav-danger); }
+
+.caldav-set-cals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.caldav-set-cal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  background: var(--caldav-bg);
+  transition: border-color 0.15s, background 0.15s;
+}
+.caldav-set-cal:hover { border-color: color-mix(in srgb, var(--caldav-accent) 45%, var(--caldav-border)); }
+.caldav-set-cal input[type="checkbox"] { accent-color: var(--caldav-accent); width: 15px; height: 15px; }
+.caldav-set-cal .caldav-input {
+  flex: 1;
+  background: transparent;
+  border-color: transparent;
+  padding: 6px 8px;
+}
+.caldav-set-cal .caldav-input:hover { background: var(--caldav-input-bg); border-color: var(--caldav-border); }
+.caldav-set-cal .caldav-input:focus { background: var(--caldav-input-bg); }
+
+/* 「任务」/「日程」药丸 = 该日历对应类型的默认色选择器（取代原来左侧那个独立色块）。
+   药丸本身显示当前颜色（--tag-color 由 JS/内联样式给），内嵌的透明原生取色输入铺满整块，
+   所以点哪儿都是直接点在原生 input[type=color] 上 —— 弹的是系统取色器，移动端也照弹。 */
+.caldav-set-cal-tags { display: flex; gap: 5px; }
+.caldav-set-cal-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--tag-color, var(--caldav-inset));
+  color: var(--tag-fg, var(--caldav-text-2));
+  font-size: 10px;
+  line-height: 1.3;
+  cursor: pointer;
+  overflow: hidden;
+  user-select: none;
+  transition: filter 0.15s, box-shadow 0.15s;
+}
+.caldav-set-cal-tag:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--tag-color) 30%, transparent);
+}
+.caldav-set-cal-tag > span { position: relative; pointer-events: none; }
+.caldav-set-cal-tag input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.caldav-set-hint { font-size: 11px; color: var(--caldav-text-2); }
+
+.caldav-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 2px;
+  font-size: 13px;
+  color: var(--caldav-text);
+  cursor: pointer;
+  line-height: 1.5;
+}
+.caldav-check-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: 0 0 16px;
+  accent-color: var(--caldav-accent);
+  cursor: pointer;
+}
+
+/* 窄屏（Dock 面板）隐藏侧栏时保底 */
+.caldav-root .cal-month, .caldav-root .cal-wk { min-width: 0; }
+
+@media (max-width: 480px) {
+  .caldav-sidebar { display: none; }
+}
+
+/* ===== Dock 精简导航面板（左侧栏） ===== */
+.caldav-dock {
+  --caldav-accent: var(--interactive-accent, #3575f0);
+  --caldav-bg: var(--background-primary, #faf9f6);
+  --caldav-bg-2: var(--background-secondary, #f6f8fa);
+  --caldav-bg-3: var(--background-secondary-alt, #eef1f5);
+  --caldav-border: var(--background-modifier-border, #e4e7ed);
+  --caldav-text: var(--text-normal, #1f2329);
+  --caldav-text-2: var(--text-muted, #646a73);
+  --caldav-danger: var(--text-error, #d23f31);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 8px;
+  box-sizing: border-box;
+  font-size: 13px;
+  color: var(--caldav-text);
+}
+
+.caldav-dock-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 12px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* 标题占满剩余宽度，把设置按钮顶到最右 */
+.caldav-dock-brand .caldav-brand-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 标题栏右侧设置图标按钮（原「日历筛选」浮层里的「设置」菜单项迁到这里） */
+.caldav-brand-set {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--caldav-text-2);
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+
+.caldav-brand-set:hover { background: var(--caldav-bg-3); color: var(--caldav-text); }
+.caldav-brand-set svg { width: 16px; height: 16px; }
+
+.caldav-dock-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.caldav-dock-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--caldav-text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background .12s ease, color .12s ease;
+}
+
+.caldav-dock-btn:hover { background: var(--caldav-bg-3); }
+
+.caldav-dock-btn.is-active {
+  background: var(--caldav-accent);
+  color: #fff;
+  font-weight: 500;
+}
+
+/* Dock 页脚：不用分割线，改成一枚柔和的胶囊状态条（整条可点，点击即同步） */
+.caldav-dock-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 4px 0;
+}
+
+/* 默认极低调：无底色、整体压低存在感，只留一行浅灰小字 + 一颗小暗点；
+   鼠标移上去才显形（这是可点即同步的提示，不适合常驻抢眼） */
+.caldav-dock-status {
+  position: relative;
+  padding: 5px 10px 5px 19px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--caldav-text-2);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .68;
+  transition: background .12s ease, color .12s ease, opacity .12s ease;
+}
+
+/* 前置状态灯：正常是一颗不抢眼的小暗点，同步失败时转红 */
+.caldav-dock-status::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  background: var(--caldav-text-2);
+  opacity: .55;
+  transition: opacity .12s ease, background .12s ease;
+}
+
+.caldav-dock-status:hover {
+  background: var(--caldav-bg-3);
+  color: var(--caldav-text);
+  opacity: 1;
+}
+.caldav-dock-status:hover::before { opacity: .85; }
+
+/* 同步错误正文：直接摊在页脚，不再只藏在悬停提示里 */
+.caldav-dock-error {
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--caldav-danger, var(--text-error, #d23f31));
+  overflow-wrap: anywhere;
+  cursor: default;
+}
+/* 出错时只是「红字 + 红点」，不铺底色，保持低调但能一眼看到 */
+.caldav-dock-status.has-error {
+  color: var(--caldav-danger);
+  opacity: .9;
+}
+.caldav-dock-status.has-error::before { background: var(--caldav-danger); opacity: 1; }
+
+.caldav-dock-settings {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--caldav-text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.caldav-dock-settings:hover { background: var(--caldav-bg-3); }
+
+/* ===== 主面板：扁平化顶部工具栏（去掉侧栏，顶部 年/月/周/日） ===== */
+.caldav-app--flat .caldav-main { width: 100%; }
+
+/* 分段控件 年/月/周/日 */
+.caldav-seg {
+  display: inline-flex;
+  border: 1px solid var(--caldav-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--caldav-bg-2);
+}
+.caldav-seg-btn {
+  padding: 5px 14px;
+  border: none;
+  background: transparent;
+  color: var(--caldav-text-2);
+  cursor: pointer;
+  font-size: 12.5px;
+  transition: background .12s ease, color .12s ease;
+}
+.caldav-seg-btn + .caldav-seg-btn { border-left: 1px solid var(--caldav-border); }
+.caldav-seg-btn:hover { color: var(--caldav-text); background: var(--caldav-bg-3); }
+.caldav-seg-btn.is-active { background: var(--caldav-accent); color: #fff; }
+
+/* 任务视图时隐藏导航/分段/标题，仅保留新增 */
+.caldav-app.is-task .caldav-toolbar-left [data-action="prev"],
+.caldav-app.is-task .caldav-toolbar-left [data-action="next"],
+.caldav-app.is-task .caldav-toolbar-left [data-action="today"],
+.caldav-app.is-task .caldav-cursor-title,
+.caldav-app.is-task .caldav-toolbar-center { display: none; }
+
+/* 日历筛选浮层（右上角） */
+.caldav-calfilter-wrap { position: relative; }
+.caldav-calfilter-pop {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 20;
+  width: 248px;
+  background: var(--caldav-bg);
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+  padding: 8px 10px 10px;
+}
+.caldav-calfilter-pop[hidden] { display: none; }
+.caldav-calfilter-foot {
+  border-top: 1px solid var(--caldav-border);
+  margin-top: 8px;
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* 菜单项：字号与主面板其它菜单/正文同档（13px），并补足可点区域与悬停反馈 ——
+   原来 12px 的纯文字链接，形态更像脚注而不像菜单项 */
+.caldav-calfilter-foot .caldav-link {
+  font-size: 13px;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 6px;
+}
+.caldav-calfilter-foot .caldav-link:hover { background: var(--caldav-bg-3); }
+
+/* 「日历视图中显示待办任务」开关：与上面的日历列表用一条分隔线断开，
+   标签左、开关右（复用 .caldav-switch-line 的两端对齐布局）。 */
+.caldav-calfilter-opt {
+  margin-top: 10px;
+  padding: 9px 0 2px;
+  border-top: 1px solid var(--caldav-border);
+}
+.caldav-calfilter-opt .caldav-switch-label { font-weight: 400; }
+
+/* ===== Dock：标题 + 一行 5 个按钮 =====
+   用 grid 等分，不要用 flex:1。「新增 / 排序」是包着下拉菜单的
+   .caldav-dock-menu，它不受按钮 max-width 的约束，在 flex 布局下会把剩余
+   宽度全部吃掉，后面三个按钮被挤到行尾 —— 手机上五个按钮疏密不均就是这个
+   原因。grid 的轨道彼此独立，五项天然等宽等距。 */
+.caldav-dock-actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.caldav-dock-menu { position: relative; display: flex; }
+
+.caldav-dock-act {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  background: var(--caldav-bg-2);
+  color: var(--caldav-text);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  transition: background .15s ease, color .15s ease, border-color .15s ease,
+    transform .15s ease, box-shadow .15s ease;
+}
+/* 画布尺寸：与各图标收紧后的 viewBox 配合，让图形占满按钮内框（按钮高 38px、宽度随栏宽等分） */
+.caldav-dock-act svg { width: 20px; height: 20px; }
+.caldav-dock-act:hover {
+  background: var(--caldav-bg-3);
+  border-color: var(--caldav-accent);
+  color: var(--caldav-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--caldav-accent) 22%, transparent);
+}
+.caldav-dock-act:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+}
+.caldav-dock-act.is-open {
+  background: var(--caldav-accent);
+  border-color: var(--caldav-accent);
+  color: #fff;
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--caldav-accent) 30%, transparent);
+}
+.caldav-dock-act.is-open svg { stroke: #fff; }
+
+.caldav-dock-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 132px;
+  background: var(--caldav-bg);
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.caldav-dock-pop[hidden] { display: none; }
+
+/* 分类筛选弹层：fixed 定位，弹出到 Dock 右侧外部，避免被左侧栏裁剪 */
+.caldav-dock-cat-pop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  width: 260px;
+  background: var(--d-card);
+  border: 1px solid var(--d-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .14);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.caldav-dock-cat-pop[hidden] { display: none; }
+.caldav-dock-cat-head {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--d-text);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--d-border);
+}
+.caldav-dock-cat-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.caldav-dock-cat-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--d-border);
+  border-radius: 8px;
+  background: var(--d-input);
+  color: var(--d-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.caldav-dock-cat-item:hover { background: var(--d-input-hover); border-color: color-mix(in srgb, var(--d-accent) 45%, var(--d-border)); }
+.caldav-dock-cat-item.is-active { border-color: var(--d-accent); background: color-mix(in srgb, var(--d-accent) 10%, var(--d-card)); color: var(--d-accent); }
+.caldav-dock-cat-item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--d-accent);
+  margin: 0;
+  cursor: pointer;
+}
+.caldav-dock-cat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1;
+}
+.caldav-dock-cat-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--d-border);
+}
+.caldav-dock-cat-foot .caldav-foot-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.caldav-dock-popitem {
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--caldav-text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.caldav-dock-popitem:hover { background: var(--caldav-bg-3); }
+.caldav-dock-popitem.is-active { color: var(--caldav-accent); font-weight: 600; }
+
+/* ===== Dock：最近任务/事件列表 ===== */
+.caldav-dock-list {
+  /* 跟随思源主题变量，深浅色自动适配 */
+  --d-page: var(--background-primary, #fff);
+  --d-card: var(--background-secondary-alt, var(--background-primary, #fff));
+  --d-input: var(--background-secondary, var(--background-secondary-alt, #f6f8fa));
+  --d-input-hover: color-mix(in srgb, var(--background-secondary, #f6f8fa) 90%, var(--text-normal, #1f2329) 10%);
+  --d-border: var(--background-modifier-border, #e4e7ed);
+  --d-text: var(--text-normal, #1f2329);
+  --d-text-2: var(--text-muted, #646a73);
+  --d-accent: var(--interactive-accent, #3575f0);
+  --d-danger: var(--text-error, #d23f31);
+
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 4px 0;
+  margin-top: 4px;
+  color: var(--d-text);
+  scrollbar-width: thin;
+}
+.caldav-dock-list::-webkit-scrollbar,
+.caldav-scroll-host::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+/* 轨道 / 右下角一律透明，别露出主题给的原生底色 */
+.caldav-dock-list::-webkit-scrollbar-track,
+.caldav-scroll-host::-webkit-scrollbar-track,
+.caldav-dock-list::-webkit-scrollbar-corner,
+.caldav-scroll-host::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* 关键：Windows 下不显式隐藏按钮，滚动条两端会渲染出上下两个小箭头
+   （用户截图里那两条三角就是它 —— 说明那一层滚动条根本没被 ::-webkit-scrollbar 接管） */
+.caldav-dock-list::-webkit-scrollbar-button,
+.caldav-scroll-host::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.caldav-dock-list::-webkit-scrollbar-thumb,
+.caldav-scroll-host::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+/* 悬停才显形：平时滑块完全透明，鼠标进入面板才浮出来 */
+.caldav-dock-list:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--d-text-2) 45%, transparent);
+  background-clip: content-box;
+}
+.caldav-scroll-host:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted, #646a73) 45%, transparent);
+  background-clip: content-box;
+}
+/* Firefox 路径（scrollbar-color 不支持过渡，只能整档切换；scrollbar-width 继承上面的 thin） */
+.caldav-dock-list {
+  scrollbar-color: transparent transparent;
+}
+.caldav-scroll-host {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.caldav-dock-list:hover {
+  scrollbar-color: color-mix(in srgb, var(--d-text-2) 45%, transparent) transparent;
+}
+.caldav-scroll-host:hover {
+  scrollbar-color: color-mix(in srgb, var(--text-muted, #646a73) 45%, transparent) transparent;
+}
+
+/* 列表头：筛选 + 分类 */
+.caldav-dock-list-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.caldav-dock-filter-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+.caldav-dock-select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--d-border);
+  border-radius: 10px;
+  background: var(--d-input);
+  color: var(--d-text);
+  padding: 7px 28px 7px 11px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.caldav-dock-select:hover { background: var(--d-input-hover); border-color: color-mix(in srgb, var(--d-accent) 45%, var(--d-border)); }
+.caldav-dock-select:focus {
+  border-color: var(--d-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--d-accent) 16%, transparent);
+}
+.caldav-dock-select-arrow {
+  position: absolute;
+  right: 9px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--d-text-2);
+  pointer-events: none;
+}
+.caldav-dock-select-arrow svg { width: 13px; height: 13px; }
+.caldav-dock-select .caldav-dock-select-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 筛选下拉：原生 <select> 的弹出列表由系统绘制，选中色永远是系统高亮色（蓝）、
+   无法随主题变化（option:hover / :checked 会被忽略），故改为自定义弹层。
+   弹层复用 .caldav-dock-pop / .caldav-dock-popitem，hover 与选中态天然跟随主题。 */
+.caldav-dock-filter-wrap { position: relative; }
+.caldav-dock-filter-pop {
+  left: 0;
+  right: 0;
+  min-width: 100%;
+  max-height: 264px;
+  overflow-y: auto;
+}
+
+.caldav-dock-filter-btn {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid var(--d-border);
+  border-radius: 10px;
+  background: var(--d-card);
+  color: var(--d-accent);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.caldav-dock-filter-btn:hover {
+  border-color: var(--d-accent);
+  background: color-mix(in srgb, var(--d-accent) 8%, var(--d-card));
+}
+
+/* 搜索框 */
+.caldav-dock-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.caldav-dock-search-icon {
+  position: absolute;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--d-text-2);
+  pointer-events: none;
+}
+.caldav-dock-search-icon svg { width: 14px; height: 14px; }
+.caldav-dock-search {
+  width: 100%;
+  border: 1px solid var(--d-border);
+  border-radius: 10px;
+  background: var(--d-input);
+  color: var(--d-text);
+  padding: 7px 11px 7px 32px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.caldav-dock-search::placeholder { color: var(--d-text-2); opacity: 0.7; }
+.caldav-dock-search:hover { background: var(--d-input-hover); border-color: color-mix(in srgb, var(--d-accent) 45%, var(--d-border)); }
+.caldav-dock-search:focus {
+  border-color: var(--d-accent);
+  background: var(--d-card);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--d-accent) 16%, transparent);
+}
+
+/* 列表 */
+.caldav-dock-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.caldav-dock-empty {
+  padding: 18px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--d-text-2);
+}
+
+/* 「另有 N 条无日期待办」提示：避免清空日期后看起来像记录丢失 */
+.caldav-dock-hint {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border: 1px dashed var(--d-border, var(--background-modifier-border, #e4e7ed));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--d-text-2, var(--text-normal, #1f2329));
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.caldav-dock-hint:hover {
+  border-style: solid;
+  color: var(--interactive-accent, #3575f0);
+  border-color: var(--interactive-accent, #3575f0);
+}
+
+/* 任务卡片 */
+.caldav-dock-item {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--d-border);
+  border-radius: 12px;
+  background: var(--d-card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+}
+.caldav-dock-item:hover {
+  border-color: color-mix(in srgb, var(--d-accent) 45%, var(--d-border));
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+.caldav-dock-item.is-done .caldav-dock-item-title {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.caldav-dock-check {
+  flex: 0 0 24px;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+}
+.caldav-dock-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--d-accent);
+  cursor: pointer;
+}
+.caldav-dock-kind {
+  display: inline-flex;
+  align-items: center;
+  color: var(--d-accent);
+  margin-top: 1px;
+}
+.caldav-dock-kind svg { width: 15px; height: 15px; }
+
+.caldav-dock-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.caldav-dock-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--d-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.caldav-dock-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--d-text-2);
+}
+.caldav-dock-item-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.caldav-dock-item-date svg { width: 13px; height: 13px; }
+
+.caldav-dock-item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.caldav-dock-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.caldav-dock-tag svg { width: 11px; height: 11px; }
+.caldav-dock-tag--primary {
+  background: color-mix(in srgb, var(--d-accent) 14%, transparent);
+  color: var(--d-accent);
+  border: 1px solid color-mix(in srgb, var(--d-accent) 28%, transparent);
+}
+.caldav-dock-tag--secondary {
+  background: color-mix(in srgb, var(--d-accent) 10%, var(--d-card));
+  color: var(--d-accent);
+  border: 1px solid color-mix(in srgb, var(--d-accent) 20%, transparent);
+}
+.caldav-dock-tag--ghost {
+  background: var(--d-input);
+  color: var(--d-text-2);
+  border: 1px solid var(--d-border);
+}
+
+/* 逾期标志：未完成的待办即使过期也留在列表里，用红色醒目标出 */
+.caldav-dock-tag--overdue {
+  background: color-mix(in srgb, var(--caldav-danger) 14%, transparent);
+  color: var(--caldav-danger);
+  border: 1px solid color-mix(in srgb, var(--caldav-danger) 30%, transparent);
+}
+
+/* 优先级配色：数值越小越重要（iCal PRIORITY 1~9）。
+   底色统一由 currentColor 派生，所以只需给出文字色，底色自动配套。 */
+.prio-urgent { color: var(--caldav-danger); }
+.prio-high { color: color-mix(in srgb, var(--caldav-danger) 70%, #f5c542); }
+.prio-mid { color: var(--caldav-accent); }
+.prio-low { color: var(--caldav-text-2); }
+.caldav-dock-tag--secondary.prio-urgent,
+.caldav-dock-tag--secondary.prio-high,
+.caldav-dock-tag--secondary.prio-mid,
+.caldav-dock-tag--secondary.prio-low,
+.cal-task-priority.prio-urgent,
+.cal-task-priority.prio-high,
+.cal-task-priority.prio-mid,
+.cal-task-priority.prio-low {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border-color: color-mix(in srgb, currentColor 32%, transparent);
+}
+
+/* ===== 年视图 ===== */
+.cal-year {
+  padding: 14px 16px 40px;
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+}
+.cal-year-head { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--caldav-text); }
+.cal-year-months {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.cal-year-month {
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  padding: 8px 8px 10px;
+  background: var(--caldav-bg);
+}
+.cal-year-month-head {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 2px 0 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.cal-year-month-head:hover { background: var(--caldav-bg-3); color: var(--caldav-accent); }
+.cal-year-weeks {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 2px;
+}
+.cal-year-weeks span { font-size: 10px; color: var(--caldav-text-2); text-align: center; }
+.cal-year-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 22px;
+  gap: 1px;
+}
+.cal-year-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--caldav-text);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.cal-year-cell.is-out { color: var(--caldav-text-2); opacity: .4; }
+.cal-year-cell:hover { background: var(--caldav-bg-3); }
+.cal-year-cell.is-today { background: color-mix(in srgb, var(--caldav-accent) 14%, transparent); font-weight: 700; color: var(--caldav-accent); }
+.cal-year-dot {
+  position: absolute;
+  bottom: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+.cal-year-count {
+  position: absolute;
+  top: 0;
+  right: 1px;
+  font-size: 8px;
+  color: var(--caldav-text-2);
+}
+
+/* ===== 右键菜单（日历/任务视图上的条目） ===== */
+.caldav-ctxmenu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 132px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--caldav-bg, #fff);
+  border: 1px solid var(--caldav-border, #e4e7ed);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+  font-size: 13px;
+}
+.caldav-ctxmenu[hidden] { display: none; }
+
+.caldav-ctxmenu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--caldav-text, #1f2329);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.caldav-ctxmenu-item svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.caldav-ctxmenu-item:hover { background: var(--caldav-bg-3, #eef1f5); }
+.caldav-ctxmenu-item[disabled] { opacity: 0.6; cursor: default; }
+
+/* 删除项：常驻危险色；进入确认态变实心（与编辑弹窗内删除一致） */
+.caldav-ctxmenu-item[data-ctx="delete"] { color: var(--caldav-danger, #d23f31); }
+.caldav-ctxmenu-item[data-ctx="delete"]:hover {
+  background: color-mix(in srgb, var(--caldav-danger, #d23f31) 10%, transparent);
+}
+.caldav-ctxmenu-item[data-ctx="delete"].is-armed {
+  background: var(--caldav-danger, #d23f31);
+  color: #fff;
+}
+.caldav-ctxmenu-item[data-ctx="delete"].is-armed:hover {
+  background: color-mix(in srgb, var(--caldav-danger, #d23f31) 88%, #000);
+  color: #fff;
+}
+
+.caldav-ctxmenu-err {
+  max-width: 220px;
+  padding: 5px 9px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--caldav-danger, #d23f31);
+}
+.caldav-ctxmenu-err[hidden] { display: none; }
+
+/* ============================================================
+   移动端（触摸 / 窄屏）
+   思源的 addTab / openTab 在移动端是空实现（app/src/plugin/API.ts 里
+   openTab 直接 return），移动端也没有页签栏，所以日历与任务视图改由
+   全屏 Dialog 承载（见 index.ts 的 openMobilePanel）。这里负责弹层尺寸、
+   触摸命中区与窄屏布局。
+   ============================================================ */
+
+/* ---- 全屏承载：容器铺满视口 ----
+   containerClassName 落在 .b3-dialog__container **自身**（见 test/stubs/siyuan-stub.cjs
+   与 editor.ts 的 containerClassName），所以必须写成复合选择器才匹配；
+   原先只写后代选择器 `.caldav-mobile-dialog .b3-dialog__container`，规则从未生效
+   （宽高靠 Dialog 的内联样式兜住了，但 border-radius 没被抹平）。 */
+.b3-dialog__container.caldav-mobile-dialog,
+.caldav-mobile-dialog .b3-dialog__container {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+}
+
+/* 内容区撑满。__body 是思源现行类名，__content 为旧名兼容 */
+.caldav-mobile-dialog .b3-dialog__body,
+.caldav-mobile-dialog .b3-dialog__content {
+  padding: 0 !important;
+  margin: 0 !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden !important;
+}
+
+.caldav-mobile-dialog .b3-dialog__body > .caldav-editor,
+.caldav-mobile-dialog .b3-dialog__content > .caldav-editor,
+.caldav-mobile-dialog .b3-dialog__body > .caldav-settings,
+.caldav-mobile-dialog .b3-dialog__content > .caldav-settings,
+.caldav-mobile-dialog .b3-dialog__body > .caldav-catmgr,
+.caldav-mobile-dialog .b3-dialog__content > .caldav-catmgr,
+.caldav-mobile-dialog .b3-dialog__body > .caldav-mobile-host,
+.caldav-mobile-dialog .b3-dialog__content > .caldav-mobile-host {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 承载容器（同时带 .caldav-root）：用 flex 撑满，覆盖 .caldav-root 的 height:100% */
+.caldav-mobile-dialog .caldav-root.caldav-mobile-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+}
+
+/* 移动端标题栏：右侧给思源自带的关闭按钮让位 */
+.caldav-mobile-dialog .b3-dialog__header {
+  padding: 9px 46px 9px 14px !important;
+  flex: 0 0 auto;
+  font-size: 14px;
+}
+
+/* 触摸端不挂缩放手柄（enableDialogResize 已提前返回，这里兜底） */
+.caldav-mobile-dialog .caldav-resize { display: none !important; }
+
+/* ---- 触摸命中区 ---- */
+/* 条目禁掉文字选择与系统长按呼出，避免与我们的长按菜单抢手势 */
+.caldav-root [data-open] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---- 触摸形态：单元格窄，时间与标题挤在一格里谁也看不清 —— 只留标题 ----
+   .caldav-touch 由 renderPanel / renderDockPanel 按 isMobile() 挂上，
+   不用媒体查询是为了不影响「桌面端把窗口拖窄」的用法。
+   再叠一条 .caldav-mobile-dialog（移动端 Dialog 的容器类）：万一某个页面
+   不是走当时那份 isMobile() 判定渲染的，只要它落在移动端全屏弹层里也照样隐藏，
+   不会再把时间挤回来。 */
+.caldav-touch .cal-chip-time,
+.caldav-mobile-dialog .cal-chip-time { display: none; }
+.caldav-touch .cal-wk-block-time,
+.caldav-mobile-dialog .cal-wk-block-time { display: none; }
+/* 月视图恢复时间显示：卡片已是两行布局，时间单独一行不会被标题挤掉 */
+.caldav-touch .cal-month-cell .cal-chip-time,
+.caldav-mobile-dialog .cal-month-cell .cal-chip-time { display: inline; }
+
+/* ---- 触摸端：周/日视图格子内不截断 ----
+   手机上格子又窄又矮，标题一截「固…」基本等于没显示。
+   规则：标题不省略、不锁行，格子内能写多少写多少（超出部分被格子 overflow:hidden 裁掉）；
+   地点降级为行内文本紧跟名称后面（优先级低于名称，格子满了先裁地点）。
+   独立行版 .cal-wk-block-loc 在触摸端隐藏，桌面端不受影响。 */
+.caldav-touch .cal-wk-block-title,
+.caldav-mobile-dialog .cal-wk-block-title {
+  white-space: normal;
+  text-overflow: clip;
+  overflow-wrap: break-word;
+}
+.caldav-touch .cal-wk-block-head,
+.caldav-mobile-dialog .cal-wk-block-head {
+  display: block;
+}
+.caldav-touch .cal-wk-block-head .cal-chip-check,
+.caldav-mobile-dialog .cal-wk-block-head .cal-chip-check {
+  float: left;
+  margin-right: 4px;
+  margin-top: 1px;
+}
+/* 标题改为 inline：文本环绕浮动圆圈，第二行起对齐到块最左侧 */
+.caldav-touch .cal-wk-block-title,
+.caldav-mobile-dialog .cal-wk-block-title { display: inline; }
+.caldav-touch .cal-wk-block-loc,
+.caldav-mobile-dialog .cal-wk-block-loc { display: none; }
+.caldav-touch .cal-wk-block-loc-inline,
+.caldav-mobile-dialog .cal-wk-block-loc-inline { display: inline; }
+
+/* ---- 触摸端：周/日视图空间收紧 ----
+   手机屏幕宽度有限，事件块与背景时间线格子的间隙、左侧时间 gutter 的留白
+   都收一档，争取每个格子多显示一个字。日视图共用同一套类，一并生效。 */
+.caldav-touch .cal-wk-gutterhead,
+.caldav-mobile-dialog .cal-wk-gutterhead { flex: 0 0 42px; }
+.caldav-touch .cal-wk-main,
+.caldav-mobile-dialog .cal-wk-main { grid-template-columns: 42px 1fr; }
+.caldav-touch .cal-wk-hour span,
+.caldav-mobile-dialog .cal-wk-hour span { right: 2px; }
+.caldav-touch .cal-wk-block,
+.caldav-mobile-dialog .cal-wk-block {
+  left: 1px;
+  right: 2px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+/* Dock 工具栏在触摸端整体放大一档：命中区更友好，宽高比也更协调 */
+.caldav-touch .caldav-dock-actions { gap: 8px; }
+.caldav-touch .caldav-dock-act { height: 42px; }
+.caldav-touch .caldav-dock-act svg { width: 22px; height: 22px; }
+
+/* ---- 触摸端：日期 / 时间挤进一行（含两个清除按钮） ----
+   手机弹层里「开始 / 结束」行的可用宽只有 vw-60（编辑器 form 左右各 14 + 卡片左右各 16）。
+   390px 屏上是 330px，而桌面那套尺寸（标签 42 + 间隙 10 + 日期 125 + 清除 28 + 时间 128
+   + 清除 28 + 行内间隙 18）要 327px 才放得下，稍窄的机型就把时间框顶出卡片。
+   这里逐项收紧：标签与间隙变窄、日期参与收缩、时间固定到刚够显示 "16:00" 的 78px、
+   图标与左内边距同步收一档（图标不缩小会压住数字）。
+   清除按钮保持 28px 不动 —— 再小就不好点了。
+   `.caldav-touch` 由 panel 根挂（Dock / 主面板），`.caldav-mobile-dialog` 由编辑弹窗挂
+   （editor.ts 的 containerClassName，落在 .b3-dialog__container 上），两者都写才能都覆盖。 */
+.caldav-touch .caldav-datetime-row,
+.caldav-mobile-dialog .caldav-datetime-row { gap: 6px; }
+
+.caldav-touch .caldav-datetime-label,
+.caldav-mobile-dialog .caldav-datetime-label { flex: 0 0 26px; font-size: 11.5px; }
+
+.caldav-touch .caldav-datetime-inputs,
+.caldav-mobile-dialog .caldav-datetime-inputs { gap: 4px; }
+
+.caldav-touch .caldav-date-input,
+.caldav-mobile-dialog .caldav-date-input { flex: 1 1 90px; padding-left: 25px; padding-right: 8px; }
+
+.caldav-touch .caldav-input-wrap--date,
+.caldav-mobile-dialog .caldav-input-wrap--date { flex: 1 1 auto; }
+
+.caldav-touch .caldav-input-wrap--time,
+.caldav-mobile-dialog .caldav-input-wrap--time { flex: 0 0 68px; min-width: 68px; }
+
+.caldav-touch .caldav-input.caldav-time-trigger,
+.caldav-mobile-dialog .caldav-input.caldav-time-trigger { padding: 8px 6px 8px 25px; }
+
+.caldav-touch .caldav-input-icon,
+.caldav-mobile-dialog .caldav-input-icon { left: 7px; }
+.caldav-touch .caldav-input-icon svg,
+.caldav-mobile-dialog .caldav-input-icon svg { width: 14px; height: 14px; }
+
+/* 极窄屏兜底（iPhone SE 一代 / 老安卓，内容宽只剩 258px）：
+   上面那套尺寸仍放不下，且原生日期框右侧自带的日历选择器图标会压住末位数字。
+   这里把两侧装饰图标全部去掉、字号收半档、间隙再压一档，把宽度让给内容。
+   日期框自身的「点开选择器」能力不受影响（WebView 里点输入框即可弹出）。 */
+@media (max-width: 350px) {
+  .caldav-touch .caldav-datetime-row .caldav-input-icon,
+  .caldav-mobile-dialog .caldav-datetime-row .caldav-input-icon { display: none; }
+  .caldav-touch .caldav-datetime-label,
+  .caldav-mobile-dialog .caldav-datetime-label { flex: 0 0 26px; font-size: 11.5px; }
+  .caldav-touch .caldav-datetime-inputs,
+  .caldav-mobile-dialog .caldav-datetime-inputs { gap: 3px; }
+  .caldav-touch .caldav-date-input,
+  .caldav-mobile-dialog .caldav-date-input { padding-left: 9px; padding-right: 2px; font-size: 11.5px; }
+  .caldav-touch .caldav-input-wrap--time,
+  .caldav-mobile-dialog .caldav-input-wrap--time { flex: 0 0 62px; min-width: 62px; }
+  .caldav-touch .caldav-input.caldav-time-trigger,
+  .caldav-mobile-dialog .caldav-input.caldav-time-trigger { padding: 8px 4px 8px 8px; font-size: 11.5px; }
+}
+
+/* ---- 窄屏布局 ---- */
+@media (max-width: 768px) {
+  /* 工具栏改多行：① 导航 + 日期标题 ② 动作按钮组（整行右对齐）③ 年/月/周/日 */
+  .caldav-toolbar {
+    position: relative;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .caldav-toolbar-left { flex: 1 1 auto; min-width: 0; }
+  /* 动作按钮组换行后必须占满整行才能右对齐：
+     原先 flex:0 1 auto 时宽高收缩到内容宽，组内 justify-content:flex-end 无处生效，
+     看上去始终是左对齐。 */
+  .caldav-toolbar-right {
+    order: 1;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .caldav-toolbar-center { order: 2; flex: 1 1 100%; }
+  /* 「日历筛选」浮层改由工具栏定位并铺满整行。
+     原先是挂在筛选按钮的 wrap 上 right:0，按钮靠左时会向左侧溢出、被弹层容器裁掉，
+     只剩右半边（就是截图里那个只看得见眼睛图标的窄条）。 */
+  .caldav-calfilter-wrap { position: static; }
+  .caldav-calfilter-pop {
+    top: 100%;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    margin-top: 4px;
+  }
+  /* 页脚：说明文字独占一行，按钮整组落到下一行右对齐 */
+  .caldav-editor-foot { flex-wrap: wrap; }
+  .caldav-editor-foot .caldav-set-hint { flex: 1 1 100%; }
+  .caldav-cursor-title {
+    font-size: 14px;
+    margin-left: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* 视图切换段控件平分整行，触摸命中更大 */
+  .caldav-seg { display: flex; width: 100%; }
+  .caldav-seg-btn { flex: 1 1 0; padding: 8px 0; }
+  /* 触摸端按钮不低于 36px 命中高度 */
+  .caldav-btn, .caldav-icon-btn { min-height: 36px; }
+
+  /* 月视图单元格：窄屏收紧内边距与字号，保证 7 列仍可读 */
+  .cal-month-cell { padding: 3px; gap: 1px; }
+  .cal-month-weeklabel { padding: 4px 3px; font-size: 10.5px; }
+}
+
+@media (max-width: 480px) {
+  .caldav-toolbar-right .caldav-btn { padding: 7px 10px; }
+  .cal-month-weeklabel { font-size: 10px; }
+}
+
+/* 移动端 Dock 抽屉：面板宽度跟随抽屉 */
+.caldav-dock { width: 100%; }
+
+/* ===== 到点提醒卡片 =====
+ * 卡片挂在 document.body 上（避免被页签容器 overflow 裁剪、切走视图也不消失），
+ * 因此取不到 .caldav-root 里定义的局部变量，需要在这里自带一份主题变量映射。 */
+.caldav-reminder-layer {
+  --caldav-accent: var(--interactive-accent, #3575f0);
+  --caldav-text: var(--text-normal, #1f2329);
+  --caldav-text-2: var(--text-muted, #646a73);
+  --caldav-border: var(--background-modifier-border, #e4e7ed);
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 28px));
+  /* 只有卡片拦事件，层本身不拦，避免遮挡思源自身界面 */
+  pointer-events: none;
+}
+
+.caldav-reminder-card {
+  pointer-events: auto;
+  box-sizing: border-box;
+  width: min(380px, calc(100vw - 28px));
+  padding: 12px 14px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 10px;
+  background: var(--background-secondary-alt, #fff);
+  color: var(--caldav-text);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.caldav-reminder-card.is-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.caldav-reminder-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.caldav-reminder-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 8px;
+  background: var(--caldav-accent);
+  color: #fff;
+}
+
+.caldav-reminder-icon svg { width: 15px; height: 15px; }
+
+.caldav-reminder-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caldav-reminder-x {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--caldav-text-2);
+  cursor: pointer;
+}
+
+/* 透明底的 hover：用 currentColor 派生，明暗主题自动适配 */
+.caldav-reminder-x:hover,
+.caldav-reminder-act:hover {
+  background: color-mix(in srgb, var(--caldav-text) 10%, transparent);
+}
+
+.caldav-reminder-body {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--caldav-text-2);
+}
+
+.caldav-reminder-acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.caldav-reminder-act {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--caldav-text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+/* 主按钮：实心 accent 底 + 白字，hover 只能加深（浅色变量配白字会不可读） */
+.caldav-reminder-act.is-primary {
+  border-color: transparent;
+  background: var(--caldav-accent);
+  color: #fff;
+}
+
+.caldav-reminder-act.is-primary:hover {
+  background: color-mix(in srgb, var(--caldav-accent) 86%, #000);
+  color: #fff;
+}
+
+@media (max-width: 768px) {
+  .caldav-reminder-layer {
+    top: 8px;
+    right: 8px;
+    left: 8px;
+    max-width: none;
+  }
+  .caldav-reminder-card { width: auto; }
+  /* 触摸端加大命中区 */
+  .caldav-reminder-act { padding: 8px 14px; }
+  .caldav-reminder-x { width: 30px; height: 30px; }
+}
+
+/* ===== 设置页「提醒」区块 ===== */
+.caldav-remind-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.caldav-remind-note {
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+
+/* 设置页·请求通道提示（仅移动端渲染） */
+.caldav-net-note {
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+
+
+/* ============================================================================
+   以下是 Obsidian 移植新增部分（原思源 CSS 未覆盖）
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   关于上方 .caldav-dialog / .caldav-mobile-dialog 内的 .b3-dialog__* 规则：
+   那些选择器指向思源 Dialog 的 DOM 结构与移动端全屏 Dialog 类名。Obsidian 版
+   改用 Modal 与 ItemView，既不会生成 .caldav-dialog / .caldav-mobile-dialog
+   容器类，也不存在 .b3-dialog__* 节点，因此这些规则永远不会匹配（无害死代码）。
+   待按 Obsidian 的 .modal 结构重写时一并清理。
+   ---------------------------------------------------------------------------- */
+
+/* ---- 视图容器（ItemView 的 contentEl）----
+   自带面板所需的 CSS 变量，使面板可独立工作、不依赖上方 .caldav-root 的规则；
+   同时用 flex 撑满视图高度。
+   注意：这里**不**给 .caldav-toolbar 等面板内部类加样式 —— 面板自带完整工具条
+   （导航 / 视图切换 / 新建 / 筛选），重复定义会覆盖它原有的外观。 */
+.caldav-view {
+  --caldav-accent: var(--interactive-accent, #3575f0);
+  --caldav-bg: var(--background-primary, #fff);
+  --caldav-bg-2: var(--background-secondary, #f6f8fa);
+  --caldav-bg-3: var(--background-secondary-alt, #eef1f5);
+  --caldav-border: var(--background-modifier-border, #e4e7ed);
+  --caldav-text: var(--text-normal, #1f2329);
+  --caldav-text-2: var(--text-muted, #646a73);
+  --caldav-danger: var(--text-error, #d23f31);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* 面板主体容器：把剩余高度全部交给面板渲染的日历/任务视图 */
+.caldav-view .caldav-view-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---- 宿主级状态提示（未配置 / 密码解不开 / 同步报错）----
+   面板自身没有这类提示位，由 ItemView 在面板上方补一条横幅。 */
+.caldav-view .caldav-status {
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--caldav-text-2);
+  background: var(--caldav-bg-2);
+  border-bottom: 1px solid var(--caldav-border);
+  flex: 0 0 auto;
+  word-break: break-word;
+}
+
+.caldav-view .caldav-status.is-error {
+  color: var(--caldav-danger);
+}
+
+/* 底部状态栏（Obsidian 自带的那条）：点击即手动同步 */
+.caldav-status {
+  cursor: pointer;
+}
+
+/* ============================================================================
+   Obsidian Modal 承载编辑器与分类管理
+   原思源版用 Dialog，靠构造函数传 width / height；Obsidian 的 Modal 尺寸走 CSS。
+   容器类名沿用 .caldav-dialog，以复用原 CSS 中针对内容结构的既有规则。
+   ============================================================================ */
+
+.modal.caldav-dialog {
+  width: 520px;
+  max-width: 94vw;
+  height: 86vh;
+  max-height: 92vh;
+}
+
+.modal.caldav-dialog.caldav-dialog--todo {
+  width: 560px;
+}
+
+.modal.caldav-dialog.caldav-dialog--mobile {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+}
+
+/* 内容区撑满，替代原思源版针对 .b3-dialog__content 的那组规则
+   （后者指向思源 Dialog 的 DOM，在 Obsidian 下不会匹配） */
+.modal.caldav-dialog .modal-content {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.modal.caldav-dialog .modal-content > .caldav-editor,
+.modal.caldav-dialog .modal-content > .caldav-catmgr {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.modal.caldav-dialog .modal-title {
+  font-size: 14px;
+}
+
+/* ---- Dock 视图宿主（右侧栏）----
+   Obsidian 的 view-content 自带内边距，而 .caldav-dock 自身已有一套留白
+   （padding: 10px 8px），两者叠加会显挤，故这里清零交给组件自己控制。 */
+.caldav-dock-host {
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.caldav-dock-host .caldav-dock {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ---- 当前选中的日期格子 ----
+   右侧栏扮演的是主面板的「属性面板」：它显示哪一天，主面板就高亮哪一格，
+   用户才能把两边对上号。
+
+   用 outline 而非 border / background：outline 不参与布局，不会让格子尺寸跳动；
+   且一套选择器覆盖四种视图（月 .cal-month-cell / 周 .cal-wk-col 与 .cal-wk-dayhead /
+   年 .cal-year-cell —— 它们的共同点是都带 data-day）。 */
+.caldav-root [data-day].is-selected {
+  outline: 2px solid var(--caldav-accent);
+  outline-offset: -2px;
+}
+
+/* ============================================================================
+   挂到 body 下的浮层：补一份 CSS 变量
+   ----------------------------------------------------------------------------
+   --caldav-* 变量原本只声明在 .caldav-root / .caldav-dock / .caldav-view 这几个
+   宿主容器上。而下面这些浮层是 document.body.appendChild 过去的，**不在那些容器
+   之内**，因此拿不到变量 —— var(--caldav-bg) 之类会解析成空值：
+     · 无 fallback 的属性直接失效（背景变透明）
+     · color-mix() 里含空变量时整条声明被丢弃（悬停底色消失）
+   实测踩到：新建按钮的子菜单悬停时透明，能看到背后的内容。
+   ============================================================================ */
+
+body > .caldav-add-menu,
+body > .caldav-ctxmenu,
+body > .caldav-reminder-layer {
+  --caldav-accent: var(--interactive-accent, #3575f0);
+  --caldav-accent-2: var(--interactive-accent-hover, var(--interactive-accent, #3575f0));
+  --caldav-bg: var(--background-primary, #fff);
+  --caldav-bg-2: var(--background-secondary, #f6f8fa);
+  --caldav-bg-3: var(--background-secondary-alt, #eef1f5);
+  --caldav-border: var(--background-modifier-border, #e4e7ed);
+  --caldav-text: var(--text-normal, #1f2329);
+  --caldav-text-2: var(--text-muted, #646a73);
+  --caldav-danger: var(--text-error, #d23f31);
+}
+
+/* 双保险：菜单容器与悬停底色补上 fallback ——
+   即便将来浮层被挪到别的容器下，也不会再出现「透明菜单」。 */
+.caldav-add-menu {
+  background: var(--caldav-bg, var(--background-primary, #fff));
+  border-color: var(--caldav-border, var(--background-modifier-border, #e4e7ed));
+}
+
+.caldav-add-menu-item:hover {
+  background: color-mix(
+    in srgb,
+    var(--caldav-accent, var(--interactive-accent, #3575f0)) 10%,
+    var(--caldav-bg, var(--background-primary, #fff))
+  );
+  color: var(--caldav-accent, var(--interactive-accent, #3575f0));
+}
+
+/* ============================================================================
+   兼容层：--d-* 变量
+   ----------------------------------------------------------------------------
+   源码里有 75 处引用 `--d-accent` / `--d-border` / `--d-input-hover` 等变量，
+   但**全文件没有一处定义**（应为早期版本的前缀，后来统一成 --caldav-* 时漏改）。
+   未定义的变量会让所在声明整条失效 —— 相关属性静默不生效，很难察觉。
+
+   这里不做「逐个改规则」（75 处易漏），而是把这些前缀统一指向对应的 --caldav-*，
+   一处补全、原规则不动。 */
+.caldav-root,
+.caldav-dock,
+.caldav-view,
+.caldav-editor,
+.caldav-settings,
+.caldav-catmgr {
+  --d-accent: var(--caldav-accent);
+  --d-border: var(--caldav-border);
+  --d-card: var(--caldav-bg);
+  --d-page: var(--caldav-bg-2);
+  --d-text: var(--caldav-text);
+  --d-text-2: var(--caldav-text-2);
+  --d-input: var(--caldav-bg-3);
+  --d-input-hover: var(--caldav-bg-3);
+  --d-danger: var(--caldav-danger);
+}
+
+/* ---- Dock 固定区：筛选下拉 + 分类筛选 + 搜索框 ----
+   这三样原先在 .caldav-dock-list 内部，会随条目列表一起滚走。现提到滚动容器之外
+   单独成块，固定不滚。留白沿用原 .caldav-dock-list 的值，视觉上无缝衔接。 */
+.caldav-dock-filters {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 4px 0;
+  margin-top: 4px;
+  color: var(--caldav-text);
+}
+
+/* 说明：原模板里的 .caldav-dock-brand（品牌栏）与 .caldav-dock-actions（新增/排序/
+   日历视图/任务视图/刷新 五个按钮）已按要求移除，上方对应的 CSS 规则不再匹配任何
+   元素，属无害死代码 —— 保留以便日后需要时恢复。 */
+
+/* ---- 状态栏里的 CalDAV 项 ----
+   Obsidian 底部状态栏左侧排着账户、同步等系统状态，我们的项紧挨着会和它们糊成一片。
+   加左侧分隔线 + 留白以示区分。（只匹配状态栏那个元素，不影响主面板上同名的 .caldav-status 横幅） */
+.status-bar-item.caldav-status {
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+/* 说明：Dock 底部的 .caldav-dock-foot / .caldav-dock-status / .caldav-dock-error
+   已随元素一并移除（同步信息改由 Obsidian 状态栏承担），上方对应 CSS 规则不再匹配
+   任何元素，属无害死代码 —— 保留以便日后需要时恢复。 */
+
+/* ============================================================================
+   周视图三处对齐与裁切修正（实测反馈）
+   ----------------------------------------------------------------------------
+   ① 表头与时间网格等宽
+      .cal-wk-main 是纵向滚动容器（overflow-y: auto），出现滚动条时会吃掉右侧
+      十几像素；而表头 .cal-wk-header 在滚动容器**之外**，没有这条滚动条。
+      结果表头每列都比下方网格宽一点，选中某天时「标题框」与「时间轴列框」
+      就对不齐，而且越靠右偏得越多。JS 侧量出滚动条宽度写入 --wk-sbw 补偿。
+
+   ② 表头高度自适应
+      原来写死 height: 44px，而「周几 + 日期数字」两行加上 padding: 8px 0
+      实际已超过该高度，当日那个圆形标号就被挤出格子边界。
+
+   ③ 首个整点标签不再上移
+      .cal-wk-hour span 一律 top: -7px，是为了让标签骑在整点线上居中显示；
+      但 00:00 位于滚动区最顶端，上移后上半部分被滚动容器裁掉，只显示一半。 */
+.cal-wk-header {
+  height: auto;
+  min-height: 44px;
+  flex: 0 0 auto;
+  padding-right: var(--wk-sbw, 0px);
+}
+
+.cal-wk-hour:first-child span {
+  top: 0;
+}
+
+/* ---- 选中日的「所点小时」高亮块 ----
+   时间轴不整列框住，改为两段式：顶部日头一框 + 所点的那 1 小时一框。
+   本块由 panel.ts 动态插入对应列内，用百分比定位（top / height 各按 1/24 计），
+   这样与格子高度常量解耦，改时间轴密度时不必同步这里的数值。 */
+.cal-wk-selected-hour {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  outline: 2px solid var(--caldav-accent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--caldav-accent) 12%, transparent);
+  pointer-events: none; /* 不能挡住底下条目的点击 / 双击 */
+  z-index: 1;
+}
+
+/* ---- 条目详情（右击条目 → 右侧栏展示该条目的全部信息）----
+   由 panel.ts 的 renderItemDetail() 渲染，占据列表区整块；
+   点顶部「返回列表」回到常规清单。 */
+.caldav-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.caldav-detail-back {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 6px;
+  background: var(--caldav-bg);
+  color: var(--caldav-text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.caldav-detail-back:hover {
+  background: var(--caldav-bg-3);
+  color: var(--caldav-text);
+}
+
+.caldav-detail-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--caldav-text);
+  word-break: break-word;
+}
+
+.caldav-detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.caldav-detail-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.caldav-detail-label {
+  flex: 0 0 52px;
+  color: var(--caldav-text-2);
+}
+
+.caldav-detail-value {
+  flex: 1;
+  color: var(--caldav-text);
+  word-break: break-word;
+  white-space: pre-wrap; /* 描述里的换行原样保留 */
+}

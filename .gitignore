@@ -1,9 +1,12 @@
 # 依赖与构建产物
 node_modules/
-# 官方要求：编译后的 main.js 只放Release 附件，不入库
-main.js
-main.js.map
-styles.css
+# 官方要求：编译产物只放 Release 附件，不入库。
+# ⚠️ 必须写成 `/main.js` `/styles.css`（前导斜杠 = 仅根目录）。
+# 裸写 `styles.css` 会匹配任意层级，把源码 `src/styles.css`（110KB）也排除掉，
+# 导致 Actions checkout 后找不到它、Release 附件缺失。
+/main.js
+/main.js.map
+/styles.css
 
 # 运行时与本机数据
 data.json

@@ -43,6 +43,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Stage release assets
+        # styles.css 统一从 src/ 取，再重命名为插件约定名。
+        # 不用根目录的 styles.css：那是构建产物（.gitignore 排除），
+        # `npm run build` 也不会生成它——本项目的 CSS 走 deploy.mjs 直接复制到库目录。
+        run: cp src/styles.css styles.css
+
       - name: Create release and upload assets
         uses: softprops/action-gh-release@v2
         with:
@@ -53,7 +59,7 @@ jobs:
           files: |
             main.js
             manifest.json
-            src/styles.css
+            styles.css
           body: |
             ${{ github.ref_name }}
 
