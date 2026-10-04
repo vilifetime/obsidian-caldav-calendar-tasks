@@ -623,15 +623,19 @@ export default class CalDavPlugin extends Plugin {
 
       const folder = this.getDailyNoteFolder();
       const path = normalizePath(folder ? `${folder}/${today}.md` : `${today}.md`);
-      let file = this.app.vault.getAbstractFileByPath(path);
-      if (!(file instanceof TFile)) {
+      const existing = this.app.vault.getAbstractFileByPath(path);
+      // 用 instanceof 窄化而非 `as TFile` 强转（官方规则）：强转会掩盖
+      // 「路径其实指向 TFolder」的情况，写入时才炸。
+      let target: TFile;
+      if (existing instanceof TFile) {
+        target = existing;
+      } else {
         // 目录不存在时先补建，再创建日记
         if (folder && !this.app.vault.getAbstractFileByPath(normalizePath(folder))) {
           await this.app.vault.createFolder(normalizePath(folder)).catch(() => undefined);
         }
-        file = await this.app.vault.create(path, "");
+        target = await this.app.vault.create(path, "");
       }
-      const target = file as TFile;
 
       const replaced = await this.writeDiarySection(target, md);
       await this.app.workspace.getLeaf(false).openFile(target);

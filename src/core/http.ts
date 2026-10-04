@@ -75,42 +75,28 @@ function normalizeHeaders(
 }
 
 /**
- * 回退通道：全局 `fetch`。
+ * 统一出口：始终走宿主注入的传输实现。
  *
- * ⚠️ **生产路径不会走到这里**：`main.ts` 的 `onload()` 第一件事就是
- * `setTransport(obsidianTransport)`，而 `obsidianTransport` 基于 Obsidian 的
- * `requestUrl`（桌面端走 Electron、移动端走 Capacitor 原生 HTTP，天然无 CORS）。
- * 本函数只在两种情况下生效：
- *   1. Node 测试环境（不加载宿主模块，无法 import "obsidian"）；
- *   2. 极端情况下宿主注入失败 —— 此时宁可发请求失败，也不要整个同步模块不可用。
+ * 原本这里有个「未注入就回退全局 fetch」的兜底，现已删除，原因有三：
+ *   1. 社区目录的移动端支持清单明确要求「用 `requestUrl` 而不是 `fetch`」——
+ *      静态扫描会直接命中 `fetch(`，删掉比加豁免注释更彻底；
+ *   2. 那条兜底路径在生产中**永不生效**：`main.ts` 的 `onload()` 第一件事就是
+ *      `setTransport(obsidianTransport)`，而后者基于 `requestUrl`
+ *      （桌面端走 Electron、移动端走 Capacitor 原生 HTTP，天然无 CORS）；
+ *   3. 真走到「宿主未注入」时，静默降级比明确报错更糟 —— 用户会看到
+ *      「连不上服务器」却查不出原因。抛错能让问题立刻暴露。
  *
- * 社区目录的移动端支持清单要求「用 `requestUrl` 而不是 `fetch`」，指的是
- * **实际联网必须走 `requestUrl`**（否则移动端会被 CORS 拦住）。此处保留 fetch
- * 作为非生产兜底，不参与真实同步路径。
+ * 若 Node 测试环境需要真实发请求，应在测试里注入一个基于 node:http 的 transport，
+ * 而不是让core 层自带 fetch。
  */
-async function viaFetch(url: string, opts: HttpOptions): Promise<HttpResult> {
-  const t0 = Date.now();
-  const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), opts.timeoutMs || 30000);
-  try {
-    const res = await fetch(url, {
-      method: opts.method || "GET",
-      headers: opts.headers,
-      body: opts.body,
-      signal: ctrl.signal,
-    });
-    const body = await res.text();
-    const headers: Record<string, string> = {};
-    res.headers.forEach((v, k) => (headers[k.toLowerCase()] = v));
-    return { status: res.status, headers, body, elapsedMs: Date.now() - t0, via: "direct" };
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
 async function viaTransport(url: string, opts: HttpOptions): Promise<HttpResult> {
-  if (transport) return transport(url, opts);
-  return viaFetch(url, opts);
+  if (!transport) {
+    throw new Error(
+      "HTTP 传输未初始化：宿主必须在 onload 时调用 setTransport()。" +
+        "（请勿在 core 层直接使用 fetch —— 移动端会被 CORS 拦截。）"
+    );
+  }
+  return transport(url, opts);
 }
 
 export function basicAuthHeader(username: string, password: string): string {

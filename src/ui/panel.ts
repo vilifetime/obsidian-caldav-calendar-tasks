@@ -238,8 +238,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     if (!selectedDay || selectedHour == null) return;
     const col = root.querySelector<HTMLElement>(`.cal-wk-col[data-day="${selectedDay}"]`);
     if (!col) return;
-    const box = document.createElement("div");
-    box.className = "cal-wk-selected-hour";
+    const box = col.createDiv({ cls: "cal-wk-selected-hour" });
     box.style.top = `${(selectedHour / 24) * 100}%`;
     box.style.height = `${100 / 24}%`;
     col.appendChild(box);

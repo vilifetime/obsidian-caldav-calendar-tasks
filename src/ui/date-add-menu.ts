@@ -14,8 +14,9 @@ import { setHtml } from "./dom";
 /** 在 (x, y) 处弹出新增浮层；day 形如 YYYY-MM-DD；startEvent 为双击时间轴时算出的默认开始时间 */
 export function openDateAddMenu(ctx: PanelCtx, x: number, y: number, day: string, startEvent?: string): void {
   document.querySelector(".caldav-add-menu")?.remove();
-  const menu = document.createElement("div");
-  menu.className = "caldav-add-menu";
+  // 用 Obsidian 的 createDiv 扩展而非 document.createElement（官方规则）：
+  // 它是 HTMLElement 的类型安全构造，同时省掉手工 className 赋值。
+  const menu = document.body.createDiv({ cls: "caldav-add-menu" });
   setHtml(
     menu,
     `

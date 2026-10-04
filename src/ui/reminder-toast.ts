@@ -53,9 +53,7 @@ const nextFrame: (cb: () => void) => void =
 
 function ensureLayer(): HTMLElement {
   if (layer && layer.isConnected) return layer;
-  layer = document.createElement("div");
-  layer.className = "caldav-reminder-layer";
-  document.body.appendChild(layer);
+  layer = document.body.createDiv({ cls: "caldav-reminder-layer" });
   if (!visibilityBound) {
     visibilityBound = true;
     // 窗口被切走/最小化时暂停计时，否则用户切回来时卡片早已超时消失
@@ -106,8 +104,8 @@ export function showReminderToast(opts: ReminderToastOptions): void {
   const host = ensureLayer();
   while (cards.length >= MAX_CARDS) dismiss(cards[0]);
 
-  const card = document.createElement("div");
-  card.className = "caldav-reminder-card";
+  // createDiv 由 host（提醒层）创建并挂载，省掉 createElement + className + appendChild
+  const card = host.createDiv({ cls: "caldav-reminder-card" });
   setHtml(
     card,
     `
@@ -172,7 +170,6 @@ export function showReminderToast(opts: ReminderToastOptions): void {
   };
   states.set(card, st);
   cards.push(card);
-  host.appendChild(card);
   // 下一帧再置入场态，保证过渡动画触发
   nextFrame(() => card.classList.add("is-in"));
   startTimer(st);

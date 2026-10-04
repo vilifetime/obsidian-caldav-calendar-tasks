@@ -1,7 +1,7 @@
 /**
  * 日程 / 待办编辑弹窗（基于思源 Dialog）
  */
-import { Modal } from "obsidian";
+import { Modal, Notice } from "obsidian";
 import { isMobile } from "@/obs/platform";
 import type { Alarm, CalCalendar, CalItem, CalKind, CategoryDef, Recurrence } from "../core/types";
 import { DEFAULT_CATEGORIES, calEventColor } from "../core/types";
@@ -26,7 +26,9 @@ export function openEditor(ctx: PanelCtx, preset: EditorPreset): void {
   const kind: CalKind = editing ? editing.kind : preset.kind || "event";
   const cals = ctx.store.settings.calendars;
   if (!cals.length) {
-    alert("请先在设置中配置并发现 CalDAV 日历");
+    // 用 Obsidian 的 Notice 而非原生 alert（官方规则）：原生弹窗在移动端
+    // 体验割裂，且阻塞 JS 事件循环。
+    new Notice("请先在设置中配置并发现 CalDAV 日历", 5000);
     return;
   }
   const defaultCal =
