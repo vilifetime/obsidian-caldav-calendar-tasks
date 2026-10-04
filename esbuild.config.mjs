@@ -75,7 +75,10 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    // 宿主 Node 内置模块，不可打包
+    // 宿主 Node 内置模块，不可打包。
+    // 原先依赖 builtin-modules 包来生成这份清单，但社区目录已把该包标记为
+    // 弃用（建议改用 es-tooling/module-replacements）。实测本项目从未 import
+    // 过它——清单是手写的，故直接移除依赖并保留这份显式列表。
     "child_process",
     "crypto",
     "fs",

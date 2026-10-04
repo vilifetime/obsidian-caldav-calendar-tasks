@@ -171,8 +171,6 @@ export default class CalDavPlugin extends Plugin {
     };
     document.addEventListener(TOGGLE_DOCK_ITEM_EVENT, onToggleDockItem);
     this.register(() => document.removeEventListener(TOGGLE_DOCK_ITEM_EVENT, onToggleDockItem));
-
-    console.info("[caldav] 插件已加载");
   }
 
   onunload(): void {
@@ -473,11 +471,9 @@ export default class CalDavPlugin extends Plugin {
         (item, anchorISO, alarmMin) => this.fireReminder(item, anchorISO, alarmMin)
       );
       this.reminder.start();
-      console.info("[caldav] 提醒引擎已启动");
     } else if (!want && this.reminder) {
       this.reminder.stop();
       this.reminder = undefined;
-      console.info("[caldav] 提醒引擎已停止");
     }
   }
 
@@ -554,7 +550,10 @@ export default class CalDavPlugin extends Plugin {
       }, 20000);
       this.snoozeTimers.add(t);
     } catch (e) {
-      console.info("[caldav] 系统通知不可用，已由应用内浮层承担:", e);
+      // 系统通知不可用时的降级提示。保留 warn 而非删除：这是唯一能留下诊断线索的地方
+      // ——应用内浮层会照常提醒用户，功能不受影响，但用户报障时需要据此判断是
+      // 「通知权限被拒」还是「构造通知抛异常」。用 warn 不用 log/info，避免被当作噪音。
+      console.warn("[caldav] 系统通知不可用，已由应用内浮层承担:", e);
     }
   }
 

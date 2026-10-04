@@ -86,6 +86,9 @@ export class CalStore {
     this.settings.password = "";
     this.pendingUnlock = r.reason === "unavailable";
     this.secretBroken = !this.pendingUnlock;
+    // 以下两处 console.warn 刻意保留（官方只禁 console.log/info）：密码解密失败是
+    // 「多设备来回覆盖导致丢密码」这类问题的唯一诊断线索，且已同时写入 lastError
+    // 供 Dock状态栏显示——控制台与UI 两路都留，便于用户报障时定位。
     if (this.pendingUnlock) {
       // 密钥还没到位：别惊动用户，更别动磁盘上的密文，等 retryUnlock()
       console.warn("[caldav] 密钥尚未就绪，暂缓解密密码（磁盘上的密文保持原样）");

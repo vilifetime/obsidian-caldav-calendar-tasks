@@ -74,8 +74,16 @@ export function getKeyring(): string {
   return keyring;
 }
 
+/**
+ * 取 Web Crypto。
+ *
+ * 用 `window` 而非 `globalThis` —— 官方规则要求（弹出窗口兼容性）：Obsidian 的
+ * 弹出窗口各有独立的 `window`，`globalThis` 在某些上下文里指向的不是当前窗口。
+ * 直接取 `window.crypto` 也省掉了原来的 `as any` 断言 —— lib DOM 已完整声明
+ * `window.crypto: Crypto`，不需要逃逸。
+ */
 function webcrypto(): Crypto | undefined {
-  return (globalThis as any)?.crypto as Crypto | undefined;
+  return typeof window === "undefined" ? undefined : window.crypto;
 }
 
 function subtle(): SubtleCrypto | undefined {
@@ -97,7 +105,7 @@ function fromB64(value: string): Uint8Array {
 
 function lsRead(key: string): string {
   try {
-    return globalThis.localStorage?.getItem(key) || "";
+    return window.localStorage?.getItem(key) || "";
   } catch {
     return "";
   }
@@ -105,15 +113,15 @@ function lsRead(key: string): string {
 
 function lsWrite(key: string, value: string): void {
   try {
-    globalThis.localStorage?.setItem(key, value);
+    window.localStorage?.setItem(key, value);
   } catch {
-    /* 隐私模式 / 端口隔离下写不进去也不致命 —— 权威副本在 petal */
+    /* 隐私模式 / 端口隔离下写不进去也不致命 —— 权威副本在插件数据里 */
   }
 }
 
 function lsUsable(): boolean {
   try {
-    const ls = globalThis.localStorage;
+    const ls = window.localStorage;
     if (!ls) return false;
     ls.setItem(LS_PROBE, "1");
     ls.removeItem(LS_PROBE);
@@ -311,8 +319,8 @@ export function resetSecretKey(): void {
   keyCache.clear();
   keyring = "";
   try {
-    globalThis.localStorage?.removeItem(LS_KEY);
-    globalThis.localStorage?.removeItem(LS_KEYRING_V3);
+    window.localStorage?.removeItem(LS_KEY);
+    window.localStorage?.removeItem(LS_KEYRING_V3);
   } catch {
     /* ignore */
   }

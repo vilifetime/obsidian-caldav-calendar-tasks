@@ -45,8 +45,6 @@ export class ReminderEngine {
   private now: () => number;
   /** 已实际触发过的槽位 key（含补发），防止 rescan 把同一条重复补发 */
   private fired = new Set<string>();
-  /** 上次打印的排程条数，仅在数量变化时打日志，避免每分钟刷屏 */
-  private lastLogged = -1;
 
   constructor(
     private getItems: () => CalItem[],
@@ -126,13 +124,6 @@ export class ReminderEngine {
         }
       }, delay);
       this.timers.set(slot.key, timer);
-    }
-    // 仅在数量变化时打日志，便于用户在控制台确认「到底排上了没有」
-    if (want.size !== this.lastLogged) {
-      this.lastLogged = want.size;
-      console.info(
-        `[caldav] 提醒排程 ${want.size} 条（本地带提醒时间的条目 ${this.armedCount()} 个）`
-      );
     }
   }
 
