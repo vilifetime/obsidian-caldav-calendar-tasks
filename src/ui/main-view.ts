@@ -18,7 +18,7 @@
  * 那三项功能并未丢失，只是改用 Obsidian 原生的入口：
  *   - 同步：状态栏（点击即可）、命令面板「立即同步 CalDAV」、自动同步
  *   - 插入日记：命令面板「把今日日程与待办插入日记」
- *   - 设置：设置 → 第三方插件 → CalDAV 日历任务
+ *   - 设置：设置 → 第三方插件 → CalDAV Calendar and Tasks
  */
 import { ItemView, type WorkspaceLeaf } from "obsidian";
 import type CalDavPlugin from "@/main";
@@ -39,7 +39,9 @@ export class CalDavView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "CalDAV 日历任务";
+    // 与 manifest.name 保持一致：社区目录要求 name 为纯 Basic Latin，
+    // 页签标题若仍是中文会与插件名不一致（截图、标签页都显示这个）
+    return "CalDAV Calendar and Tasks";
   }
 
   getIcon(): string {

@@ -1,5 +1,5 @@
 /**
- * CalDAV 日历任务 —— Obsidian 插件入口
+ * CalDAV Calendar and Tasks —— Obsidian 插件入口
  *
  * 由思源版 `src/index.ts`（957 行）重写而来。宿主差异对照：
  *
