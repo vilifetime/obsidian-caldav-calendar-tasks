@@ -23,7 +23,7 @@
 
 ### 手动安装
 
-从本仓库的 [Releases](https://github.com/bonebearHsu/obsidian-caldav-calendar-tasks/releases) 下载最新版本的 `main.js`、`manifest.json`、`styles.css` 三个文件，放到你的库目录下：
+从本仓库的 [Releases](https://github.com/vilifetime/obsidian-caldav-calendar-tasks/releases) 下载最新版本的 `main.js`、`manifest.json`、`styles.css` 三个文件，放到你的库目录下：
 
 ```
 <库名>/.obsidian/plugins/caldav-calendar-tasks/
