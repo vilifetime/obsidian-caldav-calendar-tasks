@@ -3,7 +3,7 @@
   "name": "CalDAV 日历任务",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "Bidirectionally sync calendar events and todos with your CalDAV server (Radicale / Nextcloud / Baikal and more), with month, week, day and year views, a dedicated task list, inline editing, and one-click export of today's agenda into your daily note.",
+  "description": "Sync calendar events and todos both ways with your CalDAV server (Radicale, Nextcloud, Baikal and more). Offers month, week, day and year views, a task list, inline editing, and one-click export of the day's agenda into your daily note.",
   "author": "bonebearHsu",
   "isDesktopOnly": false
 }
