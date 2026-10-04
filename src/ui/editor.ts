@@ -81,7 +81,6 @@ interface EditorHost {
  * 这个症状与「点一次没反应」差别很大，排查时不容易联想到「重复打开」，故在此设防。
  */
 let activeEditor: EditorModal | null = null;
-
 /**
  * 编辑弹窗（Obsidian Modal）。
  *
@@ -105,6 +104,10 @@ class EditorModal extends Modal {
   }
 
   onOpen(): void {
+    // 这里的 `activeEditor = this` 是刻意的模块级单例哨兵（官方扫描会报
+    // "Unexpected aliasing of 'this' to local variable"），不是随手起的别名：
+    // 它的作用是让「重复打开」能被检测出来并关掉前一个。若改成局部变量或
+    // 成员字段就失去了跨弹窗的可见性，上面的防重入逻辑会失效。
     // 双保险：万一上游重复调用，先关掉上一个，别让两个弹窗叠在一起
     if (activeEditor && activeEditor !== this) activeEditor.close();
     activeEditor = this;
@@ -1079,12 +1082,12 @@ function parseDateTimeFromText(text: string): ParsedDateTime | null {
 
   // 3) 年月日
   if (!dateObj) {
-    const y = /(\d{4})[年./\-](\d{1,2})[月./\-](\d{1,2})(?:日|号)?/.exec(text);
+    const y = /(\d{4})[年./-](\d{1,2})[月./-](\d{1,2})(?:日|号)?/.exec(text);
     if (y) dateObj = new Date(+y[1], +y[2] - 1, +y[3]);
   }
   // 4) 月日（今年；已过则顺延明年）
   if (!dateObj) {
-    const md = /(\d{1,2})[月./\-](\d{1,2})(?:日|号)?/.exec(text);
+    const md = /(\d{1,2})[月./-](\d{1,2})(?:日|号)?/.exec(text);
     if (md) {
       const d = new Date(base.getFullYear(), +md[1] - 1, +md[2]);
       if (d.getTime() < startOfToday.getTime()) d.setFullYear(base.getFullYear() + 1);
