@@ -1,0 +1,145 @@
+/**
+ * 周 / 日视图：时间轴网格（周一起始，N 列），当前时间红线，全天条
+ */
+import { addDays, dateStampOfMs, isDateOnly, parseLocalStamp, startOfWeek, todayStamp } from "../core/date";
+import { calColorOf, escape, keyOfItem, occComparator, repeatMark, type ViewArgs } from "./view-common";
+import { setHtml } from "./dom";
+
+const HOUR_H = 44; // 每小时像素
+
+interface Block {
+  it: import("../core/types").CalItem;
+  occ: string;
+  day: string;
+  startMin: number;
+  endMin: number;
+}
+
+export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: number): void {
+  const cursor = ctx.cursor;
+  const firstDay = days === 7 ? startOfWeek(cursor) : cursor.slice(0, 10);
+  const dayList: string[] = [];
+  for (let i = 0; i < days; i++) dayList.push(addDays(firstDay, i));
+  const rangeStartMs = parseLocalStamp(dayList[0]).getTime();
+  const rangeEndMs = rangeStartMs + days * 86400000;
+  const occMap = occurrences(rangeStartMs, rangeEndMs);
+  const today = todayStamp();
+
+  // 分桶：全天 / 定时
+  const allDay: { it: import("../core/types").CalItem; occ: string }[] = [];
+  const blocks: Block[] = [];
+  for (const [it, occs] of occMap) {
+    for (const occ of occs) {
+      const day = occ.slice(0, 10);
+      if (!dayList.includes(day)) continue;
+      if (it.allDay || isDateOnly(occ)) {
+        allDay.push({ it, occ });
+      } else {
+        // 统一从时间戳字符串解析 HH:mm，确保标签、位置、结束时间同源
+        const timeRe = /T(\d{2}):(\d{2}):\d{2}$/;
+        const startMatch = timeRe.exec(occ);
+        const startMin = startMatch ? +startMatch[1] * 60 + +startMatch[2] : 0;
+        const end = it.end || occ;
+        const endMatch = timeRe.exec(end) || startMatch;
+        const endMin = Math.max(startMin + 15, endMatch ? +endMatch[1] * 60 + +endMatch[2] : startMin + 60);
+        blocks.push({ it, occ, day, startMin, endMin: Math.min(endMin, 1440) });
+      }
+    }
+  }
+
+  const dayHead = dayList
+    .map((d) => {
+      const wd = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][(parseLocalStamp(d).getDay() + 6) % 7];
+      return `<div class="cal-wk-dayhead ${d === today ? "is-today" : ""}" data-day="${d}">
+        <span class="cal-wk-wd">${wd}</span><span class="cal-wk-num">${+d.slice(8, 10)}</span></div>`;
+    })
+    .join("");
+
+  const hours: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    hours.push(`<div class="cal-wk-hour" style="height:${HOUR_H}px"><span>${String(h).padStart(2, "0")}:00</span></div>`);
+  }
+
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const showNowLine = dayList.includes(dateStampOfMs(now.getTime()));
+
+  const allDayRow = dayList
+    .map((d) => {
+      const chips = allDay
+        .filter((b) => b.occ.slice(0, 10) === d)
+        .sort(occComparator(ctx.sortMode))
+        .map(({ it }) => {
+          const k = keyOfItem(it);
+          const done = it.kind === "todo" && it.percent === 100;
+          const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}">✓</button>` : "";
+          return `<div class="cal-chip cal-chip-allday ${done ? "is-done" : ""}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">${check}<span class="cal-chip-title">${it.rrule ? "↻" : ""}${escape(it.summary || "(无标题)")}</span></div>`;
+        })
+        .join("");
+      return `<div class="cal-wk-allday-cell" data-day="${d}">${chips}</div>`;
+    })
+    .join("");
+
+  const gridCols = dayList
+    .map((d) => {
+      const inner = blocks
+        .filter((b) => b.day === d)
+        .map((b) => {
+          const k = keyOfItem(b.it);
+          const top = (b.startMin / 1440) * 100;
+          const height = Math.max(((b.endMin - b.startMin) / 1440) * 100, 4);
+          const startLabel = `${String(b.startMin / 60 | 0).padStart(2, "0")}:${String(b.startMin % 60).padStart(2, "0")}`;
+          const done = b.it.kind === "todo" && b.it.percent === 100;
+          const check = b.it.kind === "todo"
+            ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? "标记未完成" : "标记完成"}">✓</button>`
+            : "";
+          return `<div class="cal-wk-block ${b.it.kind === "todo" ? "cal-wk-block-todo" : ""} ${done ? "is-done" : ""}" data-open="${k}"
+            style="--cal-color:${calColorOf(ctx, b.it)};top:${top}%;height:${height}%">
+            <div class="cal-wk-block-head">${check}<div class="cal-wk-block-title">${repeatMark(b.it)}${escape(b.it.summary || "(无标题)")}${b.it.location ? `<span class="cal-wk-block-loc-inline">📍 ${escape(b.it.location)}</span>` : ""}</div></div>
+            <div class="cal-wk-block-time">${startLabel}</div>
+            ${b.it.location ? `<div class="cal-wk-block-loc">📍 ${escape(b.it.location)}</div>` : ""}
+          </div>`;
+        })
+        .join("");
+      return `<div class="cal-wk-col" data-day="${d}">${inner}${showNowLine && d === today ? `<div class="cal-wk-nowline" style="top:${(nowMin / 1440) * 100}%"></div>` : ""}</div>`;
+    })
+    .join("");
+
+  const hasAllDay = allDay.length > 0;
+  const alldayHtml = hasAllDay
+    ? `<div class="cal-wk-allday-label">全天</div>
+       <div class="cal-wk-allday-cells">${allDayRow}</div>`
+    : "";
+
+  setHtml(
+    viewEl,
+    `
+<div class="cal-wk ${days === 1 ? "is-day" : ""}" style="--cols:${days}">
+  <div class="cal-wk-header">
+    <div class="cal-wk-gutterhead"></div>
+    <div class="cal-wk-days">${dayHead}</div>
+  </div>
+  <div class="cal-wk-main ${hasAllDay ? "has-allday" : "no-allday"}">
+    ${alldayHtml}
+    <div class="cal-wk-gutter">${hours.join("")}</div>
+    <div class="cal-wk-grid" style="height:${24 * HOUR_H}px">${gridCols}</div>
+  </div>
+</div>`
+  );
+
+  // 滚动到当前时间（.cal-wk-main 是纵向滚动容器）
+  const sc = viewEl.querySelector<HTMLElement>(".cal-wk-main");
+  const wk = viewEl.querySelector<HTMLElement>(".cal-wk");
+  if (sc) {
+    const target = Math.max(0, (nowMin - 120) / 1440 * 24 * HOUR_H);
+    setTimeout(() => {
+      // 表头在滚动容器之外，量出纵向滚动条实际占用的宽度补偿给它 —— 否则表头每列
+      // 都会比下方的时间网格宽一点点，选中某天时「标题框」与「时间轴列框」上下对不齐
+      // （越靠右偏差越大）。详见 styles.css 里 --wk-sbw 的说明。
+      const sbw = sc.offsetWidth - sc.clientWidth;
+      if (sbw > 0 && wk) wk.style.setProperty("--wk-sbw", `${sbw}px`);
+      sc.scrollTop = target;
+    }, 0);
+  }
+  // 日期格子的「双击新建」已改为「右键新建」，统一由 panel.ts 委托处理
+}

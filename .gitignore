@@ -1,0 +1,17 @@
+# 依赖与构建产物
+node_modules/
+# 官方要求：编译后的 main.js 只放Release 附件，不入库
+main.js
+main.js.map
+styles.css
+
+# 运行时与本机数据
+data.json
+*.log
+.DS_Store
+
+# 本机库路径（每台机器不同，不应提交）
+.vault-deploy-target
+
+# 内部设计稿/草稿类文件，不属于插件源码
+*.xlsx

@@ -1,0 +1,13 @@
+{
+  "openPanel": "Open calendar & tasks",
+  "openInSidebar": "Open calendar & tasks in right sidebar",
+  "openDock": "Open calendar & tasks manager (right sidebar)",
+  "syncNow": "Sync CalDAV now",
+  "addTask": "New task",
+  "addEvent": "New event",
+  "insertToday": "Insert today's agenda into daily note",
+  "testReminder": "Send a test reminder",
+  "statusBarSyncing": "Syncing…",
+  "statusBarIdle": "CalDAV",
+  "statusBarError": "Sync failed"
+}

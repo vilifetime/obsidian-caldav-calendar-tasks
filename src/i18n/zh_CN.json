@@ -1,0 +1,13 @@
+{
+  "openPanel": "打开日历与任务",
+  "openInSidebar": "在右侧栏打开日历任务",
+  "openDock": "打开日历任务管理（右侧栏）",
+  "syncNow": "立即同步 CalDAV",
+  "addTask": "新建待办",
+  "addEvent": "新建日程",
+  "insertToday": "把今日日程与待办插入日记",
+  "testReminder": "发送一条测试提醒",
+  "statusBarSyncing": "同步中…",
+  "statusBarIdle": "CalDAV",
+  "statusBarError": "同步失败"
+}
