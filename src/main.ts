@@ -15,7 +15,7 @@
  * 原版为承载「移动端没有页签栏」而写的一整套 Dialog 层级管理（mobile-layers.ts、
  * dialog-resize.ts）在 Obsidian 下不需要，已整体移除。
  */
-import { Notice, Plugin, TFile, normalizePath, type WorkspaceLeaf } from "obsidian";
+import { Notice, Plugin, TFile, normalizePath, type App, type WorkspaceLeaf } from "obsidian";
 import { CalStore } from "@/core/store";
 import { SyncEngine, type SyncReport } from "@/core/sync";
 import type { CalItem, CalSettings } from "@/core/types";
@@ -44,6 +44,49 @@ import { DIARY_SECTION_TITLE, DOCK_VIEW_TYPE, ICON_ID, VIEW_TYPE_CALDAV } from "
 import type { TimerHandle } from "./constants";
 
 export { VIEW_TYPE_CALDAV };
+
+/**
+ * Obsidian **未公开** API 的最小结构声明。
+ *
+ * 下列成员确实存在于运行时，但不在 `obsidian` 包的类型定义里：
+ *   - `WorkspaceLeaf.getRoot()`：判断叶子挂在哪个分栏（主区/ 侧栏）
+ *   - `Workspace.rootSplit` / `rightSplit`：两个分栏根节点
+ *   - `App.setting`：打开设置页
+ *   - `App.internalPlugins`：读内置插件实例（如 daily-notes 的日记目录）
+ *
+ * 原先这些位置一律写 `(x as any).foo`，社区扫描会报 `Unexpected any`。
+ * 改为**声明用到的最小形状**并用可选链兜底：类型安全的同时，
+ * 万一未来 Obsidian 改名/移除，也只是取到 undefined 而非崩在方法调用上。
+ */
+interface ObsidianInternals {
+  getRoot?: () => unknown;
+  rootSplit?: unknown;
+  rightSplit?: unknown;
+}
+
+/** 读叶子页所属的根分栏节点；API 变更时返回 undefined */
+function leafRoot(leaf: WorkspaceLeaf): unknown {
+  try {
+    return (leaf as unknown as ObsidianInternals).getRoot?.();
+  } catch {
+    return undefined;
+  }
+}
+
+function splitOf(ws: unknown, which: "rootSplit" | "rightSplit"): unknown {
+  return (ws as ObsidianInternals | undefined)?.[which];
+}
+
+interface AppInternals {
+  setting?: { open?: () => void; openTabById?: (id: string) => void };
+  internalPlugins?: {
+    getPluginById?: (id: string) => { instance?: { options?: { folder?: unknown } } } | undefined;
+  };
+}
+
+function internals(app: App): AppInternals {
+  return app as unknown as AppInternals;
+}
 
 /** 插件额外设置：不属于 CalSettings 的宿主侧项（存进同一份 data.settings，不污染 core 类型） */
 interface HostSettings {
@@ -200,14 +243,11 @@ export default class CalDavPlugin extends Plugin {
       this.mainCtx.navigate?.(viewMode);
     }
     const { workspace } = this.app;
-    const targetRoot = mode === "main" ? (workspace as any).rootSplit : (workspace as any).rightSplit;
+    const targetRoot = mode === "main" ? splitOf(workspace, "rootSplit") : splitOf(workspace, "rightSplit");
     const inTarget = (leaf: WorkspaceLeaf): boolean => {
-      try {
-        // getRoot / rootSplit / rightSplit 未出现在公开类型定义里，用可选调用兜底
-        return (leaf as any).getRoot?.() === targetRoot;
-      } catch {
-        return false;
-      }
+      // getRoot / rootSplit / rightSplit 未出现在公开类型定义里，splitOf 与
+      // leafRoot 声明了最小形状并用可选链兜底
+      return leafRoot(leaf) === targetRoot;
     };
 
     const leaves = workspace.getLeavesOfType(VIEW_TYPE_CALDAV);
@@ -370,11 +410,7 @@ export default class CalDavPlugin extends Plugin {
       return;
     }
     const inMain = (leaf: WorkspaceLeaf): boolean => {
-      try {
-        return (leaf as any).getRoot?.() === (workspace as any).rootSplit;
-      } catch {
-        return false;
-      }
+      return leafRoot(leaf) === splitOf(workspace, "rootSplit");
     };
     const inSidebar = leaves.filter((l) => !inMain(l));
     if (!inSidebar.length) {
@@ -418,7 +454,7 @@ export default class CalDavPlugin extends Plugin {
 
   /** 供设置界面调用：打开设置页 */
   openSetting(): void {
-    const setting = (this.app as any).setting;
+    const setting = internals(this.app).setting;
     setting?.open?.();
     setting?.openTabById?.(this.manifest.id);
   }
@@ -659,7 +695,7 @@ export default class CalDavPlugin extends Plugin {
       return s.dailyNoteFolder.trim();
     }
     try {
-      const dn = (this.app as any).internalPlugins?.getPluginById?.("daily-notes");
+      const dn = internals(this.app).internalPlugins?.getPluginById?.("daily-notes");
       const folder = dn?.instance?.options?.folder;
       if (typeof folder === "string" && folder.trim()) return folder.trim();
     } catch {

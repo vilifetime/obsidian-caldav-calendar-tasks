@@ -4,6 +4,7 @@
 import type { CalCalendar, CalItem } from "./types";
 import { httpRequest, HttpError, isNetworkLevelError, type HttpResult, type Channel } from "./http";
 import { itemsFromICS } from "./ics";
+import { errText } from "./errors";
 
 export interface DavAuth {
   username: string;
@@ -337,7 +338,7 @@ export async function testConnection(serverUrl: string, channel: Channel, auth: 
     if (res.status === 401) return { ok: false, message: "认证失败（401）：用户名或密码错误" };
     if (res.status >= 400) return { ok: false, message: `服务器返回 HTTP ${res.status}` };
     return { ok: true, message: `连接成功（${res.via === "proxy" ? "内核代理" : "直连"}，${res.elapsedMs}ms）` };
-  } catch (e: any) {
+  } catch (e: unknown) {
     return { ok: false, message: "连接失败: " + describeNetworkError(e, channel) };
   }
 }

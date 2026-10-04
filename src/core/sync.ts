@@ -12,6 +12,7 @@ import { itemToEditedICS, itemToNewICS } from "./ics";
 import { dateStampOfMs, stampOfMs } from "./date";
 import type { Channel } from "./http";
 import type { TimerHandle } from "../constants";
+import { errMessage, errStatus, errText } from "./errors";
 
 export interface SyncReport {
   ok: boolean;
@@ -48,8 +49,8 @@ export function staleCalendarNames(
 }
 
 /** 把底层网络错误翻成可读提示（"Failed to fetch" 对用户毫无信息量） */
-function explainError(e: any): string {
-  const msg = e?.message || String(e);
+function explainError(e: unknown): string {
+  const msg = errMessage(e) || String(e);
   if (/Failed to fetch|NetworkError|Load failed|ERR_/i.test(msg)) {
     return "网络请求失败（服务不可达，或直连被跨域拦截，建议把请求通道改为「内核代理」）";
   }
@@ -142,9 +143,9 @@ export class SyncEngine {
               items = r.items;
               deletedHrefs = r.deletedHrefs;
               if (r.syncToken) cal.syncToken = r.syncToken;
-            } catch (e: any) {
+            } catch (e: unknown) {
               // sync-token 失效等，回退全量
-              console.warn("[caldav] sync-collection 失败，回退全量:", e?.message);
+              console.warn("[caldav] sync-collection 失败，回退全量:", errMessage(e));
               cal.syncToken = undefined;
             }
           }
@@ -165,7 +166,7 @@ export class SyncEngine {
             .map((h) => this.findKeyByHref(h, cal.url))
             .filter(Boolean) as string[];
           this.store.mergeServerItems(items, deletedKeys);
-        } catch (e: any) {
+        } catch (e: unknown) {
           report.ok = false;
           report.errors.push(`${cal.displayName}: ${explainError(e)}`);
         }
@@ -176,7 +177,7 @@ export class SyncEngine {
       // 使用本地时区墙上时间（东八区等），避免 toISOString() 输出 UTC 导致显示偏差
       this.store.lastSync = stampOfMs(Date.now()).replace("T", " ");
       this.store.lastError = report.errors.length ? report.errors.join("; ") : undefined;
-    } catch (e: any) {
+    } catch (e: unknown) {
       // 兜底：try 内部若抛出未捕获的异常（例如 pushDirty 直接抛错），原先会跳过上面两行赋值，
       // 于是 lastError 保持旧值（空）→ 界面继续显示「上次同步 XX」，看起来像同步成功了。
       report.ok = false;
@@ -244,8 +245,8 @@ export class SyncEngine {
         item.dirty = false;
         item.raw = item.raw || ics; // 新建后保留原文
         report.uploaded++;
-      } catch (e: any) {
-        if (e?.status === 412) {
+      } catch (e: unknown) {
+        if (errStatus(e) === 412) {
           if (this.store.settings.conflict === "local") {
             // 本地优先：强制覆盖（去掉 If-Match）
             const keep = item.etag;
@@ -257,7 +258,7 @@ export class SyncEngine {
               item.dirty = false;
               report.uploaded++;
               continue;
-            } catch (e2: any) {
+            } catch (e2: unknown) {
               report.errors.push(`覆盖 ${item.summary}: ${explainError(e2)}`);
             }
           } else {
@@ -278,7 +279,7 @@ export class SyncEngine {
         report.deleted++;
         // 删除成功后从本地移除，否则每次同步都会重复发 DELETE
         this.store.remove(keyOf(item));
-      } catch (e: any) {
+      } catch (e: unknown) {
         report.ok = false;
         report.errors.push(`删除 ${item.summary}: ${explainError(e)}`);
       }

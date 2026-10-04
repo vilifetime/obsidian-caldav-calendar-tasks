@@ -13,9 +13,15 @@ import {
   isLegacyEncrypted
 } from "./secret";
 
+/**
+ * 宿主提供的持久化接口。
+ *
+ * Obsidian 的 `Plugin.loadData()` 返回 `Promise<any>`（官方类型定义如此），
+ * 故这里只能接 `unknown` —— 由 `load()` 内部断言成 `PersistData`。
+ */
 export interface StoreEnv {
-  loadData: () => Promise<any>;
-  saveData: (data: any) => Promise<void>;
+  loadData: () => Promise<unknown>;
+  saveData: (data: PersistData) => Promise<void>;
 }
 
 export class CalStore {
@@ -45,7 +51,7 @@ export class CalStore {
       this.items = new Map((data.items || []).map((it) => [keyOf(it), it]));
       this.lastSync = data.sync?.lastSync;
       this.lastError = data.sync?.lastError;
-      this.keyring = (data as any).keyring || "";
+      this.keyring = data.keyring || "";
     }
     // 先注入主密钥再解密：密钥的权威副本随数据走，新生成的由 sink 回写持久化
     adoptKeyring(this.keyring, (k) => {

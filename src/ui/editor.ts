@@ -13,6 +13,7 @@ import { icons } from "./icons";
 import { openCategoryManager } from "./category-manager";
 import { appendHtml, restoreNodes, setHtml, snapshot } from "./dom";
 import type { TimerHandle } from "../constants";
+import { errMessage } from "../core/errors";
 
 export interface EditorPreset {
   item?: CalItem; // 编辑现有条目
@@ -912,8 +913,8 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
           return;
         }
         host.close();
-      } catch (e: any) {
-        errEl.textContent = "删除失败：" + (e?.message || e);
+      } catch (e: unknown) {
+        errEl.textContent = "删除失败：" + errMessage(e);
         delBtn.disabled = false;
         restoreNodes(delBtn, idleNodes);
       }
@@ -923,8 +924,8 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
     try {
       const saved = collect(ctx, el, it);
       void (isNew ? ctx.sync.createItem(saved) : ctx.sync.updateItem(saved)).then(() => host.close());
-    } catch (e: any) {
-      errEl.textContent = e?.message || String(e);
+    } catch (e: unknown) {
+      errEl.textContent = errMessage(e) || String(e);
     }
   });
 }

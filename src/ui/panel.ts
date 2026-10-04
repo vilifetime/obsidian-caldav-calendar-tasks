@@ -11,6 +11,7 @@ import { DEFAULT_CATEGORIES, calEventColor } from "../core/types";
 import { occurrencesInRange } from "../core/ics";
 import { parseLocalStamp, stampOfMs, todayStamp, startOfWeek, addDays, isDateOnly, fmtTime, fmtDateCn, diffDays } from "../core/date";
 import { icons } from "./icons";
+import { errMessage } from "../core/errors";
 import { isMobile } from "@/obs/platform";
 import { openEditor } from "./editor";
 import { openDateAddMenu } from "./date-add-menu";
@@ -569,8 +570,8 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
         renderCalList();
         renderView();
       })
-      .catch((e: any) => {
-        ctxErrEl.textContent = "删除失败：" + (e?.message || e);
+      .catch((e: unknown) => {
+        ctxErrEl.textContent = "删除失败：" + errMessage(e);
         ctxErrEl.hidden = false;
         btn.removeAttribute("disabled");
         setHtml(btn, `${icons.trash} 删除`);

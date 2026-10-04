@@ -131,11 +131,28 @@ function lsUsable(): boolean {
   }
 }
 
+/**
+ * 把 `Uint8Array` 转成 Web Crypto 要求的 `BufferSource`。
+ *
+ * 为什么需要这一层：TypeScript 5.7 起 `Uint8Array` 在 lib.es5 里 became
+ * **泛型**（`Uint8Array<ArrayBufferLike>`），而 lib.dom 的 `BufferSource`
+ * 写的是 `ArrayBufferView<ArrayBuffer>`。两者在「底层buffer 可能是
+ * SharedArrayBuffer」这一点上不兼容，于是所有 `importKey/encrypt/decrypt`
+ * 的字节参数都需要断言。
+ *
+ * 用 `as BufferSource` 而不是 `as any`：社区扫描会报 `Unexpected any`，
+ * 而这里断言的目���就是「它确实是 BufferSource」，用目标类型表达这个意图
+ * 比`any` 更准确 —— 若将来 TS 收窄了这个类型，这里会立刻报错而不是静默通过。
+ */
+function buf(bytes: Uint8Array): BufferSource {
+  return bytes as BufferSource;
+}
+
 async function deriveKey(pass: string, salt: string, iterations: number): Promise<CryptoKey> {
   const enc = new TextEncoder();
-  const base = await subtle()!.importKey("raw", enc.encode(pass) as any, "PBKDF2", false, ["deriveKey"]);
+  const base = await subtle()!.importKey("raw", buf(enc.encode(pass)), "PBKDF2", false, ["deriveKey"]);
   return await subtle()!.deriveKey(
-    { name: "PBKDF2", salt: enc.encode(salt) as any, iterations, hash: "SHA-256" },
+    { name: "PBKDF2", salt: buf(enc.encode(salt)), iterations, hash: "SHA-256" },
     base,
     { name: "AES-GCM", length: 256 },
     false,
@@ -156,7 +173,7 @@ function cached(name: string, factory: () => Promise<CryptoKey>): Promise<Crypto
 }
 
 async function importAesKey(b64: string): Promise<CryptoKey> {
-  return subtle()!.importKey("raw", fromB64(b64) as any, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  return subtle()!.importKey("raw", buf(fromB64(b64)), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
 /** v3 主密钥：随机生成、随数据走 */
@@ -199,7 +216,7 @@ async function seal(key: CryptoKey, plain: string): Promise<string> {
   const s = subtle()!;
   const iv = new Uint8Array(12);
   webcrypto()!.getRandomValues(iv);
-  const ct = new Uint8Array(await s.encrypt({ name: "AES-GCM", iv: iv as any }, key, new TextEncoder().encode(plain) as any));
+  const ct = new Uint8Array(await s.encrypt({ name: "AES-GCM", iv: buf(iv) }, key, buf(new TextEncoder().encode(plain))));
   const joined = new Uint8Array(iv.length + ct.length);
   joined.set(iv, 0);
   joined.set(ct, iv.length);
@@ -208,7 +225,7 @@ async function seal(key: CryptoKey, plain: string): Promise<string> {
 
 async function unseal(key: CryptoKey, payload: string): Promise<string> {
   const data = fromB64(payload);
-  const pt = await subtle()!.decrypt({ name: "AES-GCM", iv: data.slice(0, 12) as any }, key, data.slice(12) as any);
+  const pt = await subtle()!.decrypt({ name: "AES-GCM", iv: buf(data.slice(0, 12)) }, key, buf(data.slice(12)));
   return new TextDecoder().decode(pt);
 }
 
