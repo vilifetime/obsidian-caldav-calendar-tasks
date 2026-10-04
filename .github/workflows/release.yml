@@ -49,6 +49,14 @@ jobs:
         # `npm run build` 也不会生成它——本项目的 CSS 走 deploy.mjs 直接复制到库目录。
         run: cp src/styles.css styles.css
 
+      - name: Build release notes from manifest
+        # 插件名与 id 一律由 scripts/build-notes.mjs 从 manifest.json 读取，
+        # 不在任何地方硬编码。原因有二：
+        #   1. 插件改名（社区要求 name 为纯 ASCII）时，硬编码的说明会漏改，
+        #      Release 页面仍显示旧名，与 manifest/README/页签标题不一致；
+        #   2. 说明含 Markdown（反引号、代码块），在 YAML 内嵌易踩转义坑。
+        run: node scripts/build-notes.mjs RELEASE_NOTES.md
+
       - name: Create release and upload assets
         uses: softprops/action-gh-release@v2
         with:
@@ -60,9 +68,4 @@ jobs:
             main.js
             manifest.json
             styles.css
-          body: |
-            ${{ github.ref_name }}
-
-            安装方式：在 Obsidian 中打开「设置 → 第三方插件 → 浏览」，搜索 CalDAV 日历任务；
-            或从本Release 下载 main.js、manifest.json、styles.css 三个文件放入
-            `<库名>/.obsidian/plugins/caldav-calendar-tasks/`。
+          body_path: RELEASE_NOTES.md

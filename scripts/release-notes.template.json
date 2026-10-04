@@ -1,0 +1,5 @@
+{
+  "name": "release-notes-template",
+  "note": "占位符由 build-notes.js 替换",
+  "body": "**{{NAME}}** `{{VERSION}}`\n\n在 Obsidian 中打开「设置 → 第三方插件」，或从本 Release 下载\n`main.js`、`manifest.json`、`styles.css` 三个文件放入：\n\n```\n<库名>/.obsidian/plugins/{{ID}}/\n```\n\n> 从社区插件目录安装更方便：Obsidian 内搜索插件名即可，无需手动下载。"
+}

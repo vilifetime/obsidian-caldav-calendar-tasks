@@ -19,3 +19,6 @@ data.json
 # 内部设计稿/草稿类文件，不属于插件源码
 *.xlsx
 push-to-github.sh
+
+# Release 说明生成物（由 scripts/build-notes.mjs 产出）
+RELEASE_NOTES.md
