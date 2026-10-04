@@ -132,7 +132,7 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
   const wk = viewEl.querySelector<HTMLElement>(".cal-wk");
   if (sc) {
     const target = Math.max(0, (nowMin - 120) / 1440 * 24 * HOUR_H);
-    setTimeout(() => {
+    window.setTimeout(() => {
       // 表头在滚动容器之外，量出纵向滚动条实际占用的宽度补偿给它 —— 否则表头每列
       // 都会比下方的时间网格宽一点点，选中某天时「标题框」与「时间轴列框」上下对不齐
       // （越靠右偏差越大）。详见 styles.css 里 --wk-sbw 的说明。

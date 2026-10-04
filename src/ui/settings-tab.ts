@@ -41,7 +41,9 @@ export class CalDavSettingTab extends PluginSettingTab {
     containerEl.addClass("caldav-settings-page");
 
     // ───────────────── 服务器 ─────────────────
-    containerEl.createEl("h3", { text: "服务器" });
+    // 用 Setting.setHeading() 而非 createEl("h3")：官方要求这样写，
+    // 标题才会被 Obsidian 识别为设置项分区（影响 1.13+ 的设置搜索与折叠行为）。
+    new Setting(containerEl).setName("服务器").setHeading();
 
     new Setting(containerEl)
       .setName("服务器地址")
@@ -115,7 +117,7 @@ export class CalDavSettingTab extends PluginSettingTab {
       );
 
     // ───────────────── 日历 ─────────────────
-    containerEl.createEl("h3", { text: "日历" });
+    new Setting(containerEl).setName("日历").setHeading();
     if (!this.s.calendars.length) {
       containerEl.createEl("p", {
         cls: "setting-item-description",
@@ -126,7 +128,7 @@ export class CalDavSettingTab extends PluginSettingTab {
     }
 
     // ───────────────── 同步 ─────────────────
-    containerEl.createEl("h3", { text: "同步" });
+    new Setting(containerEl).setName("同步").setHeading();
 
     new Setting(containerEl)
       .setName("自动同步间隔（分钟）")
@@ -182,7 +184,7 @@ export class CalDavSettingTab extends PluginSettingTab {
       });
 
     // ───────────────── 提醒 ─────────────────
-    containerEl.createEl("h3", { text: "提醒" });
+    new Setting(containerEl).setName("提醒").setHeading();
 
     new Setting(containerEl)
       .setName("启用提醒")
@@ -215,7 +217,7 @@ export class CalDavSettingTab extends PluginSettingTab {
       );
 
     // ───────────────── 日记 ─────────────────
-    containerEl.createEl("h3", { text: "日记" });
+    new Setting(containerEl).setName("日记").setHeading();
 
     new Setting(containerEl)
       .setName("日记目录")
@@ -230,7 +232,7 @@ export class CalDavSettingTab extends PluginSettingTab {
       );
 
     // ───────────────── 视图 ─────────────────
-    containerEl.createEl("h3", { text: "视图" });
+    new Setting(containerEl).setName("视图").setHeading();
 
     new Setting(containerEl)
       .setName("日历视图中显示待办")

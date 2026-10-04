@@ -11,6 +11,7 @@ import { httpRequest } from "./http";
 import { itemToEditedICS, itemToNewICS } from "./ics";
 import { dateStampOfMs, stampOfMs } from "./date";
 import type { Channel } from "./http";
+import type { TimerHandle } from "../constants";
 
 export interface SyncReport {
   ok: boolean;
@@ -60,7 +61,7 @@ function explainError(e: any): string {
 
 export class SyncEngine {
   private syncing = false;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: TimerHandle | null = null;
 
   constructor(
     private store: CalStore,
@@ -80,14 +81,14 @@ export class SyncEngine {
     this.stopAutoSync();
     const min = this.store.settings.syncIntervalMin;
     if (!min || min <= 0) return;
-    this.timer = setInterval(() => {
+    this.timer = window.setInterval(() => {
       void this.syncAll().then(() => onDone?.());
     }, min * 60000);
   }
 
   stopAutoSync(): void {
     if (this.timer) {
-      clearInterval(this.timer);
+      window.clearInterval(this.timer);
       this.timer = null;
     }
   }

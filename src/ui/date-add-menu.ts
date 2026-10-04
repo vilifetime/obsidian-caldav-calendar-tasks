@@ -43,7 +43,7 @@ export function openDateAddMenu(ctx: PanelCtx, x: number, y: number, day: string
     if (e.key === "Escape") close();
   };
   // 延迟绑定，避免本次点击立即触发关闭
-  setTimeout(() => {
+  window.setTimeout(() => {
     document.addEventListener("mousedown", onDoc, true);
     document.addEventListener("keydown", onKey, true);
   }, 0);

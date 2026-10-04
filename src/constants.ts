@@ -6,6 +6,20 @@
  * 循环链上取到的可能是 undefined，表现为「视图注册成功但打不开」。放这里两边都单向引用。
  */
 
+/**
+ * 定时器句柄的类型 —— **必须写 `number`，不要写 `ReturnType<typeof window.setTimeout>`**。
+ *
+ * 原因：`@types/node` 会给全局 `setTimeout`/`setInterval` 注入 Node 版签名（返回
+ * `NodeJS.Timeout`），而 `ReturnType<typeof window.setTimeout>` 里的 `window` 在
+ * obsidian 类型声明中又指向同一批全局函数，于是 `ReturnType` 被解析成 `Timeout`。
+ * 但浏览器/移动端的 `window.setTimeout` 实际返回 `number` —— 于是赋值时报
+ * `Type 'number' is not assignable to type 'Timeout'`，**14 处一起炸**。
+ *
+ * 官方要求定时器必须写成 `window.setTimeout` / `window.clearTimeout` 等
+ * （弹出窗口兼容性），因此句柄类型只能是 `number`。
+ */
+export type TimerHandle = number;
+
 /** 视图类型标识：主日历面板（在中间主区域打开） */
 export const VIEW_TYPE_CALDAV = "caldav-main-view";
 

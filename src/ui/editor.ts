@@ -12,6 +12,7 @@ import { escape } from "./view-common";
 import { icons } from "./icons";
 import { openCategoryManager } from "./category-manager";
 import { appendHtml, restoreNodes, setHtml, snapshot } from "./dom";
+import type { TimerHandle } from "../constants";
 
 export interface EditorPreset {
   item?: CalItem; // 编辑现有条目
@@ -248,7 +249,7 @@ function wireAlarms(el: HTMLElement, errEl: HTMLElement): void {
   };
   const flashError = (msg: string) => {
     errEl.textContent = msg;
-    setTimeout(() => {
+    window.setTimeout(() => {
       if (errEl.textContent === msg) errEl.textContent = "";
     }, 2500);
   };
@@ -865,7 +866,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
     const p = parseDateTimeFromText(f("summary").value);
     if (!p) {
       errEl.textContent = "未在标题中识别到日期时间。";
-      setTimeout(() => (errEl.textContent = ""), 2500);
+      window.setTimeout(() => (errEl.textContent = ""), 2500);
       return;
     }
     applyParsed(p);
@@ -884,10 +885,10 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
     // 用节点快照而非 innerHTML 字符串：恢复出来的是独立节点，与当前挂载的互不共享引用。
     const idleNodes = snapshot(delBtn);
     let armed = false;
-    let armTimer: ReturnType<typeof setTimeout> | null = null;
+    let armTimer: TimerHandle | null = null;
     const disarm = () => {
       armed = false;
-      if (armTimer) clearTimeout(armTimer);
+      if (armTimer) window.clearTimeout(armTimer);
       armTimer = null;
       restoreNodes(delBtn, idleNodes);
       delBtn.classList.remove("is-armed");
@@ -897,7 +898,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
         armed = true;
         setHtml(delBtn, `${icons.trash} 再点一次确认删除`);
         delBtn.classList.add("is-armed");
-        armTimer = setTimeout(disarm, 4000);
+        armTimer = window.setTimeout(disarm, 4000);
         return;
       }
       disarm();

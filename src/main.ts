@@ -41,6 +41,7 @@ import { todoDueOccurrences } from "@/ui/view-common";
 import { clearReminderToasts, showReminderToast } from "@/ui/reminder-toast";
 import type { PanelCtx, ViewMode } from "@/ui/panel-ctx";
 import { DIARY_SECTION_TITLE, DOCK_VIEW_TYPE, ICON_ID, VIEW_TYPE_CALDAV } from "@/constants";
+import type { TimerHandle } from "./constants";
 
 export { VIEW_TYPE_CALDAV };
 
@@ -68,7 +69,7 @@ export default class CalDavPlugin extends Plugin {
   private reminder?: ReminderEngine;
   private statusBarEl?: HTMLElement;
   /** 「稍后提醒」的定时器：卸载时要一并清掉，否则会在插件停用后仍触发 */
-  private snoozeTimers = new Set<ReturnType<typeof setTimeout>>();
+  private snoozeTimers = new Set<TimerHandle>();
 
   async onload(): Promise<void> {
     // ① 注入宿主传输实现 —— 必须最先做，core/http.ts 依赖它发请求
@@ -180,7 +181,7 @@ export default class CalDavPlugin extends Plugin {
     this.reminder = undefined;
     // 清掉浮层与「稍后提醒」定时器：否则插件停用后仍会弹出提醒卡片
     clearReminderToasts();
-    for (const t of this.snoozeTimers) clearTimeout(t);
+    for (const t of this.snoozeTimers) window.clearTimeout(t);
     this.snoozeTimers.clear();
   }
 
@@ -543,7 +544,7 @@ export default class CalDavPlugin extends Plugin {
         }
       };
       // 20 秒后自动收起，避免通知中心堆积
-      const t = setTimeout(() => {
+      const t = window.setTimeout(() => {
         this.snoozeTimers.delete(t);
         try {
           n.close();
@@ -559,7 +560,7 @@ export default class CalDavPlugin extends Plugin {
 
   /** 稍后提醒：N 分钟后再走一遍同一投递链路（仅本次会话有效，不写入 ICS） */
   private snoozeReminder(item: CalItem, anchorISO: string, alarmMin: number, minutes: number): void {
-    const t = setTimeout(() => {
+    const t = window.setTimeout(() => {
       this.snoozeTimers.delete(t);
       this.fireReminder(item, anchorISO, alarmMin);
     }, Math.max(1, minutes) * 60000);

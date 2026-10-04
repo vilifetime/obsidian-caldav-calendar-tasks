@@ -15,6 +15,7 @@
  */
 import { icons } from "./icons";
 import { setHtml } from "./dom";
+import type { TimerHandle } from "../constants";
 
 export interface ReminderToastOptions {
   title: string;
@@ -35,7 +36,7 @@ const SNOOZE_MINUTES = 5;
 interface CardState {
   card: HTMLElement;
   /** 可见态下的自动收起计时器；隐藏态为 null */
-  timer: ReturnType<typeof setTimeout> | null;
+  timer: TimerHandle | null;
   cleanup: () => void;
 }
 
@@ -47,8 +48,8 @@ let visibilityBound = false;
 /** 少数 WebView / 测试环境没有 rAF，退化到宏任务（typeof 对未声明标识符是安全的） */
 const nextFrame: (cb: () => void) => void =
   typeof requestAnimationFrame === "function"
-    ? (cb) => requestAnimationFrame(cb)
-    : (cb) => setTimeout(cb, 0);
+    ? (cb) => window.requestAnimationFrame(cb)
+    : (cb) => window.setTimeout(cb, 0);
 
 function ensureLayer(): HTMLElement {
   if (layer && layer.isConnected) return layer;
@@ -74,12 +75,12 @@ function syncVisibility(): void {
 
 function startTimer(st: CardState): void {
   if (st.timer !== null || document.hidden) return;
-  st.timer = setTimeout(() => dismiss(st.card), AUTO_DISMISS_MS);
+  st.timer = window.setTimeout(() => dismiss(st.card), AUTO_DISMISS_MS);
 }
 
 function pauseTimer(st: CardState): void {
   if (st.timer === null) return;
-  clearTimeout(st.timer);
+  window.clearTimeout(st.timer);
   st.timer = null;
 }
 
@@ -93,7 +94,7 @@ function dismiss(card: HTMLElement): void {
   st.cleanup();
   card.classList.remove("is-in");
   // 退场动画结束后再摘除节点
-  setTimeout(() => card.remove(), 180);
+  window.setTimeout(() => card.remove(), 180);
   if (!cards.length && layer) {
     layer.remove();
     layer = null;

@@ -11,6 +11,7 @@
 import type { CalItem } from "./types";
 import { occurrencesInRange } from "./ics";
 import { parseLocalStamp, stampOfMs } from "./date";
+import type { TimerHandle } from "../constants";
 
 /** 最多提前排程的 horizon，超过的等 rescan 推进 */
 const HORIZON_MS = 24 * 86400000;
@@ -39,8 +40,8 @@ interface ReminderSlot {
 }
 
 export class ReminderEngine {
-  private timers = new Map<string, ReturnType<typeof setTimeout>>();
-  private rescan: ReturnType<typeof setInterval> | null = null;
+  private timers = new Map<string, TimerHandle>();
+  private rescan: TimerHandle | null = null;
   private now: () => number;
   /** 已实际触发过的槽位 key（含补发），防止 rescan 把同一条重复补发 */
   private fired = new Set<string>();
@@ -57,14 +58,14 @@ export class ReminderEngine {
 
   start(): void {
     this.scheduleAll();
-    this.rescan = setInterval(() => this.scheduleAll(), RESCAN_MS);
+    this.rescan = window.setInterval(() => this.scheduleAll(), RESCAN_MS);
   }
 
   stop(): void {
-    for (const t of this.timers.values()) clearTimeout(t);
+    for (const t of this.timers.values()) window.clearTimeout(t);
     this.timers.clear();
     if (this.rescan) {
-      clearInterval(this.rescan);
+      window.clearInterval(this.rescan);
       this.rescan = null;
     }
   }
@@ -105,7 +106,7 @@ export class ReminderEngine {
     // 移除不再需要 / 时点变化的旧 timer
     for (const [key, t] of Array.from(this.timers)) {
       if (!want.has(key)) {
-        clearTimeout(t);
+        window.clearTimeout(t);
         this.timers.delete(key);
       }
     }
@@ -113,7 +114,7 @@ export class ReminderEngine {
     for (const slot of want.values()) {
       if (this.timers.has(slot.key)) continue; // 已排程
       const delay = Math.max(0, slot.fireAt - now);
-      const timer = setTimeout(() => {
+      const timer = window.setTimeout(() => {
         this.timers.delete(slot.key);
         // 落进 fired：rescan 时同一个槽位不再补发（宽限期内尤其需要）
         this.fired.add(slot.key);

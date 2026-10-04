@@ -3,6 +3,7 @@
  */
 import type { CalItem, CalSettings, PersistData } from "./types";
 import { DEFAULT_SETTINGS, normalizeCalendarColors } from "./types";
+import type { TimerHandle } from "../constants";
 import {
   adoptKeyring,
   decryptSecretDeep,
@@ -31,7 +32,7 @@ export class CalStore {
   /** 磁盘上的原始密文：解密失败时用它回写，绝不把密文覆盖成空串 */
   private rawCipher = "";
   private listeners = new Set<() => void>();
-  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveTimer: TimerHandle | null = null;
 
   constructor(private env: StoreEnv) {}
 
@@ -112,13 +113,13 @@ export class CalStore {
   }
 
   private persistSoon(): void {
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => void this.persist(), 400);
+    if (this.saveTimer) window.clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => void this.persist(), 400);
   }
 
   async persist(): Promise<void> {
     if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
+      window.clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
     const plain = this.settings.password || "";

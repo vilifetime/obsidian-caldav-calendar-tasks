@@ -31,6 +31,7 @@ import { setHtml } from "./dom";
  */
 export type { PanelCtx, ViewMode } from "./panel-ctx";
 import type { PanelCtx, ViewMode } from "./panel-ctx";
+import type { TimerHandle } from "../constants";
 
 export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => void; refresh: () => void } {
   root.classList.add("caldav-root");
@@ -279,11 +280,11 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   // ---- 右键菜单（日历/任务视图上的条目） ----
   const ctxErrEl = ctxMenu.querySelector(".caldav-ctxmenu-err") as HTMLElement;
   const ctxDelBtn = ctxMenu.querySelector('[data-ctx="delete"]') as HTMLElement;
-  let ctxDisarmTimer: ReturnType<typeof setTimeout> | null = null;
+  let ctxDisarmTimer: TimerHandle | null = null;
 
   function resetCtxDelete(): void {
     if (ctxDisarmTimer) {
-      clearTimeout(ctxDisarmTimer);
+      window.clearTimeout(ctxDisarmTimer);
       ctxDisarmTimer = null;
     }
     ctxDelBtn.classList.remove("is-armed");
@@ -334,13 +335,13 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   const LONG_PRESS_MS = 480;
   const PRESS_MOVE_TOLERANCE = 10;
   let lastLongPressAt = 0;
-  let pressTimer: ReturnType<typeof setTimeout> | null = null;
+  let pressTimer: TimerHandle | null = null;
   let pressPoint = { x: 0, y: 0 };
   let longPressFired = false;
 
   function clearPressTimer(): void {
     if (pressTimer) {
-      clearTimeout(pressTimer);
+      window.clearTimeout(pressTimer);
       pressTimer = null;
     }
   }
@@ -372,11 +373,11 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
    *
    * 故单击延后 250ms 执行：期间若来了第二下，就取消挂起的单击、只按双击处理。
    */
-  let clickTimer: ReturnType<typeof setTimeout> | null = null;
+  let clickTimer: TimerHandle | null = null;
 
   function cancelPendingClick(): void {
     if (clickTimer) {
-      clearTimeout(clickTimer);
+      window.clearTimeout(clickTimer);
       clickTimer = null;
     }
   }
@@ -485,7 +486,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     pressPoint = { x: ev.clientX, y: ev.clientY };
     longPressFired = false;
     clearPressTimer();
-    pressTimer = setTimeout(() => {
+    pressTimer = window.setTimeout(() => {
       pressTimer = null;
       longPressFired = true;
       lastLongPressAt = Date.now();
@@ -549,7 +550,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     if (!btn.classList.contains("is-armed")) {
       btn.classList.add("is-armed");
       setHtml(btn, `${icons.trash} 再点一次确认删除`);
-      ctxDisarmTimer = setTimeout(resetCtxDelete, 4000);
+      ctxDisarmTimer = window.setTimeout(resetCtxDelete, 4000);
       return;
     }
     resetCtxDelete();
@@ -616,9 +617,9 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
         suppressRerender = true;
         // 兜底：万一同步 promise 一直挂着（网络挂起/等待解锁），最多抑制 10s，
         // 否则界面从此再也不刷新，表现出来就是「点了没反应」。
-        const guard = setTimeout(() => (suppressRerender = false), 10000);
+        const guard = window.setTimeout(() => (suppressRerender = false), 10000);
         void ctx.sync.updateItem(item).finally(() => {
-          clearTimeout(guard);
+          window.clearTimeout(guard);
           suppressRerender = false;
           // 同步收尾后按 store 里的真实状态校正一次：上面那次是乐观更新，
           // 若推送失败/被服务端覆盖而界面停留在乐观值，用户会以为「点了没用」。
@@ -647,7 +648,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
         const cell = openEl.closest("[data-day]") as HTMLElement | null;
         const date = cell?.dataset.day || item.start.slice(0, 10);
         cancelPendingClick();
-        clickTimer = setTimeout(() => {
+        clickTimer = window.setTimeout(() => {
           clickTimer = null;
           if (destroyed) return;
           notifyFocusDate(date);
@@ -668,7 +669,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       const hour = hourFromClick(dayCell, ev);
       // 延后 250ms 执行：若是双击，第二下到达时会把这次挂起的单击取消掉
       cancelPendingClick();
-      clickTimer = setTimeout(() => {
+      clickTimer = window.setTimeout(() => {
         clickTimer = null;
         if (destroyed) return;
         // 与 Dock 端的聚焦切换保持同步：已聚焦该日 → 取消高亮；否则高亮该格
@@ -1586,9 +1587,9 @@ export function renderDockPanel(
         if (cb) cb.checked = nextDone;
         const key = toggleEl.dataset.toggle!;
         suppressDockRerender = true;
-        const guard = setTimeout(() => (suppressDockRerender = false), 10000);
+        const guard = window.setTimeout(() => (suppressDockRerender = false), 10000);
         void Promise.resolve(opts.onToggleDone(item)).finally(() => {
-          clearTimeout(guard);
+          window.clearTimeout(guard);
           suppressDockRerender = false;
           // 与日历视图同理：同步收尾后按 store 真实值校正这一行
           const real = opts.store.get(key);

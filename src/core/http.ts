@@ -91,7 +91,7 @@ function normalizeHeaders(
 async function viaFetch(url: string, opts: HttpOptions): Promise<HttpResult> {
   const t0 = Date.now();
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs || 30000);
+  const timer = window.setTimeout(() => ctrl.abort(), opts.timeoutMs || 30000);
   try {
     const res = await fetch(url, {
       method: opts.method || "GET",
@@ -104,7 +104,7 @@ async function viaFetch(url: string, opts: HttpOptions): Promise<HttpResult> {
     res.headers.forEach((v, k) => (headers[k.toLowerCase()] = v));
     return { status: res.status, headers, body, elapsedMs: Date.now() - t0, via: "direct" };
   } finally {
-    clearTimeout(timer);
+    window.clearTimeout(timer);
   }
 }
 
