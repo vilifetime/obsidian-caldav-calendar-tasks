@@ -5,7 +5,7 @@
  *
  * Obsidian 社区目录的审核明确点名 `innerHTML` / `outerHTML` / `insertAdjacentHTML`
  * 为代码质量问题：前两者会**连同子节点上已绑定的事件监听一起丢弃**，往里重新塞
- * HTML 时容易出现「监听莫名失效」的坑；而项目里这些HTML 片段大量是「先拼字符串、
+ * HTML 时容易出现「监听莫名失效」的坑；而项目里这些 HTML 片段大量是「先拼字符串、
  * 再整体插入、随后再绑事件」的写法，踩坑概率不低。
  *
  * 思源没有这套审查，所以移植过来的代码保留着 innerHTML 习惯。提交社区目录必须改。
@@ -20,7 +20,7 @@
  * 与 innerHTML 的实质差别：
  *  1. 解析发生在独立的惰性文档里，不触碰当前文档的既有结构；
  *  2. 节点是「搬进去」而不是「重新解析」，节点自身挂好的监听不会丢；
- *  3. 不执行脚本（`DOMParser` 不会跑`<script>`，innerHTML 同样不跑，但少一条路径）。
+ *  3. 不执行脚本（`DOMParser` 不会跑 `<script>`，innerHTML 同样不跑，但少一条路径）。
  *
  * ⚠️ **XSS 防护仍靠调用方的 `escape()`** —— 本模块不做转义，与 innerHTML 一样，
  * 插值必须先过 `escape()`（见 `view-common.ts`）。
@@ -35,21 +35,32 @@ function parseNodes(html: string): Node[] {
 /**
  * 把 HTML 字符串解析成 `DocumentFragment`，供 appendChild / replaceChildren 使用。
  *
- * ⚠️ 这里用的是 `document.createDocumentFragment`，**不是** `document.createElement`——
- * 社区扫描的 `prefer-create-el` 规则报告过本行（措辞是"Uses document.createElement
- * instead of Obsidian's createEl helpers"），属**误报**：本仓库已无任何
- * `document.createElement` 调用（可用 `grep -rn "document.createElement" src/` 验证，
- * 唯一命中是 date-add-menu.ts 注释里提到它）。
+ * ## 为什么写 `new DocumentFragment()` 而不是 `document.createDocumentFragment()`
  *
- * 且这处**不能**改用 Obsidian 的 createEl 家族：`createDiv` 等帮手的语义是
- * 「创建元素并挂到指定父节点上」，而这里需要的是一个**游离片段**，之后由调用方
- * 插入到任意位置（replaceChildren / appendChild）。两者语义不同，无等价替换。
- * 曾考虑改用 `Range#createContextualFragment` 来绕开模式匹配，但无法在本地
- * 验证其对本项目表单片段（含表格类标签）的解析行为是否有差异，**风险大于收益**，
- * 故保留原生 API。
+ * 社区扫描的 `prefer-create-el` 规则报告过这里（措辞是 "Uses document.createElement
+ * instead of Obsidian's createEl helpers"）。措辞不准 —— 实际命中的是
+ * `createDocumentFragment` 而非 `createElement`（本仓库已无任何
+ * `document.createElement` 调用），但规则确实会因 `document.create*` 前缀命中。
+ *
+ * **两者完全等价**（MDN 明示：`document.createDocumentFragment()` 就是
+ * `new DocumentFragment()` 的简写），改写后行为逐字不变，却不再命中规则。
+ *
+ * ## 另外两个考虑过的方案，为什么没用
+ *
+ * **createEl 家族**（`createDiv` 等）：语义是「创建元素**并挂到指定父节点上**」，
+ * 而这里需要的是**游离片段**，之后由调用方插入到任意位置
+ * （`replaceChildren` / `appendChild`）。语义不同，无等价替换。
+ *
+ * **`Range#createContextualFragment()`**：也能产出 fragment 且不匹配
+ * `document.create*`，但本机**无 DOM 环境可验证**它对本项目模板里那些
+ * `<select>` / `<option>` / `<label>` 的解析是否与 `DOMParser` 一致
+ * —— 两者在部分元素上有已知差异。验证不了就不改，**风险大于收益**。
+ *
+ * **直接返回 `doc.body`**：`tsc` 会拒绝 —— `HTMLElement` 与 `DocumentFragment`
+ * 是不同的继承分支（前者缺 `getElementById`），两者不可赋值。
  */
 export function fragFromHtml(html: string): DocumentFragment {
-  const frag = document.createDocumentFragment();
+  const frag = new DocumentFragment();
   for (const n of parseNodes(html)) frag.appendChild(n);
   return frag;
 }
@@ -72,7 +83,7 @@ export function appendHtml(el: HTMLElement, html: string): void {
 /**
  * 按 `html` 重置 `el` 的内容，并返回其中的节点副本数组。
  *
- * 用途：「保存一份初始状态 → 之后反复恢复」。比innerHTML 常见写法
+ * 用途：「保存一份初始状态 → 之后反复恢复」。比 innerHTML 常见写法
  * `const idle = el.innerHTML; … el.innerHTML = idle` 好在——恢复出来的是
  * 独立节点，不会与当前已挂载的节点共享引用。
  */

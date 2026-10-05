@@ -29,7 +29,7 @@ const find = (re) =>
 
 const checks = {
   "document.createElement": [/document\.createElement/],
-  "createDocumentFragment": [/createDocumentFragment/],
+  "document.createDocumentFragment": [/document\.createDocumentFragment/],
   "this 赋给外部变量": [/(?<![.\w])this\s*=\s*this/],
   "getSettingDefinitions 已实现": [/getSettingDefinitions\s*\(\)\s*:\s*SettingDefinitionItem/],
   "errText 残留": [/\berrText\b/],
@@ -42,7 +42,7 @@ const checks = {
 };
 
 // 期望「有命中」的项目（保留是故意的）
-const expectHit = new Set(["createDocumentFragment", "getSettingDefinitions 已实现"]);
+const expectHit = new Set(["getSettingDefinitions 已实现"]);
 
 for (const [name, [re]] of Object.entries(checks)) {
   const hits = find(re);
@@ -50,4 +50,21 @@ for (const [name, [re]] of Object.entries(checks)) {
   const mark = ok ? "PASS" : "FAIL";
   const detail = hits.length ? `${hits.length} (${hits.slice(0, 3).join(" ")})` : "0";
   console.log(`  [${mark}] ${name.padEnd(30)} ${detail}`);
+}
+
+// 「导入了但没用到」要跨文件比对 import 与使用点，无法用单条正则判定，故单独查。
+// 曾经的教训：panel.ts 留着 errMessage 的 import，但删 ctxMenu 时把唯一用到它的那行
+// 一起删了，于是社区报「errMessage is defined but never used」。tsc 不会报未使用的
+// import（noUnusedLocals 是 false），eslint 才会。
+console.log("");
+for (const fn of ["errText", "errMessage", "errStatus"]) {
+  const importers = codes.filter((x) => new RegExp(`import \\{[^}]*\\b${fn}\\b`).test(x.code));
+  for (const imp of importers) {
+    const body = imp.code.replace(/^import .*$/gm, "");
+    const uses = (body.match(new RegExp(`\\b${fn}\\b`, "g")) || []).length;
+    const ok = uses > 0;
+    console.log(
+      `  [${ok ? "PASS" : "FAIL"}] ${fn} 在 ${imp.f.padEnd(22)} 使用 ${uses} 次`
+    );
+  }
 }

@@ -11,7 +11,6 @@ import { DEFAULT_CATEGORIES, calEventColor } from "../core/types";
 import { occurrencesInRange } from "../core/ics";
 import { parseLocalStamp, stampOfMs, todayStamp, startOfWeek, addDays, isDateOnly, fmtTime, fmtDateCn, diffDays } from "../core/date";
 import { icons } from "./icons";
-import { errMessage } from "../core/errors";
 import { isMobile } from "@/obs/platform";
 import { openEditor } from "./editor";
 import { openDateAddMenu } from "./date-add-menu";
