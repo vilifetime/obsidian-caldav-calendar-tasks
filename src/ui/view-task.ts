@@ -86,7 +86,10 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   }
 
   const countOf = (f: TaskFilter) => todos.filter((t) => f.match(t.it, t.due)).length;
-  const current: FilterKey = ((viewEl.dataset.filter as FilterKey) || "allincomplete") as FilterKey;
+  //外层断言必要（dataset.filter 是 string，|| 之后仍是 string，需收窄到 FilterKey）；
+  // 内层那个 `as FilterKey` 紧跟在 `||` 结果之后，作用对象已是 string，**完全不改变类型**
+  // （社区扫描报的 no-unnecessary-type-assertion 就是它），故去掉。
+  const current: FilterKey = (viewEl.dataset.filter || "allincomplete") as FilterKey;
 
   /** iCal PRIORITY（1 最高、9 最低）→ 文案与配色级别；覆盖 1~9 全部取值 */
   const priorityMeta = (p?: number): { label: string; cls: string } => {

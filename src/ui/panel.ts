@@ -91,7 +91,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   const showTodosInput = root.querySelector('[data-opt="showTodos"]') as HTMLInputElement;
   const viewEl = root.querySelector(".caldav-view") as HTMLElement;
   const cursorTitleEl = root.querySelector(".caldav-cursor-title") as HTMLElement;
-  const segBtns = Array.from(root.querySelectorAll(".caldav-seg-btn")) as HTMLElement[];
+  const segBtns = Array.from(root.querySelectorAll<HTMLElement>(".caldav-seg-btn"));
   const viewToggleBtn = root.querySelector('[data-action="toggle-view"]') as HTMLElement;
   let destroyed = false;
 

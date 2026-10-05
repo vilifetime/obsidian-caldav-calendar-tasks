@@ -43,10 +43,16 @@ const checks = {
   "unescape（已弃用）": [/\bunescape\s*\(/],
   "closest(...) as HTMLElement | null": [/closest\("[^"]+"\) as HTMLElement \| null/],
   "querySelector(...) as HTMLElement": [/querySelector\("[^"]+"\) as (HTML\w+Element)/],
+  "querySelectorAll(...) as X[]": [/querySelectorAll\("[^"]+"\) as (HTML\w+Element)\[\]/],
   "as never": [/\bas never\b/],
   "async 事件监听器": [/addEventListener\([^)]*async/],
   "高版本 API：revealLeaf（需 1.7.2）": [/\bworkspace\.revealLeaf\(/],
-  // 注：getRightLeaf 的 @since 是 0.9.7，远低于 minAppVersion 1.5.0，**不在此列**。
+  // 2026-10-06 第五轮：as 断言类。社区扫描的 no-unnecessary-type-assertion
+  // 只报「不改变类型」的那类（如 `(x as T) as T`、动态 key 处的 `as Partial<T>`），
+  // **不报**非空断言 `!` —— 故未列入本检查。
+  "as Partial<T>（动态 key 场景，通常多余）": [/as Partial<\w+>/],
+  "同一表达式上重复的 as": [/\)\s*as\s+\w+[\s\S]{0,4}\bas\s+\w+/],
+  // 注：getRightLeaf 的 @since 是 0.9.7，远低于 minAppVersion，**不在此列**。
   // 加检查前务必先查 obsidian.d.ts 的 @since，别把安全 API 当违规。
 };
 

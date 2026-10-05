@@ -71,8 +71,12 @@ export function renderYearView({ ctx, viewEl, occurrences }: ViewArgs): void {
       return;
     }
     const cell = t.closest<HTMLElement>("[data-day]");
-    if (cell && !cell.classList.contains("is-out")) {
-      ctx.navigate?.("day", cell.dataset.day!);
+    // 上面的 closest 命中已保证元素带 data-day，但 TS 不知道该属性非空。
+    // 显式收窄 —— 比原来的 `cell.dataset.day!` 好：既消掉非空断言，
+    // 又让 navigate 的第二个参数类型正确，且 cell 为 undefined 时直接短路。
+    const day = cell?.dataset.day;
+    if (day && !cell.classList.contains("is-out")) {
+      ctx.navigate?.("day", day);
     }
   });
 }

@@ -28,6 +28,22 @@ import type { HostSettings } from "@/main";
 import { describeNetworkError, discoverCalendars, testConnection } from "@/core/caldav";
 import { calEventColor, calTodoColor, type CalCalendar } from "@/core/types";
 
+/**
+ * 按动态键读写设置对象的一个字段。
+ *
+ * 声明式设置的控件通过 `key` 字符串标识自己，而 `CalSettings` /
+ * `HostSettings` 都没有索引签名，故直接 `obj[key]` 过不了类型检查。
+ * 集中到这两个函数里，避免同一处`as unknown as Record<...>` 重复写三遍
+ * ——断言本身是必要的（不是社区扫描报的 unnecessary assertion）。
+ */
+function dynamicField(obj: object, key: string): unknown {
+  return (obj as Record<string, unknown>)[key];
+}
+
+function setDynamicField(obj: object, key: string, value: unknown): void {
+  (obj as Record<string, unknown>)[key] = value;
+}
+
 export class CalDavSettingTab extends PluginSettingTab {
   private plugin: CalDavPlugin;
 
@@ -54,7 +70,7 @@ export class CalDavSettingTab extends PluginSettingTab {
    */
   getControlValue(key: string): unknown {
     if (key.startsWith("host.")) return this.hostValue(key);
-    return (this.s as unknown as Record<string, unknown>)[key];
+    return dynamicField(this.s, key);
   }
 
   async setControlValue(key: string, value: unknown): Promise<void> {
@@ -64,18 +80,22 @@ export class CalDavSettingTab extends PluginSettingTab {
       // 这里做一次运行时校验：只接受 HostSettings 里真实存在的键，其余忽略 ——
       // 比原来的 `as never` 诚实（never 等于关掉类型检查，且拼错键会静默写坏数据）。
       const field = key.slice(5);
-      const known: readonly string[] = ["systemNotification", "dailyNoteFolder"];
-      if (!known.includes(field)) return;
-      await this.plugin.updateHostSettings({ [field]: value } as Partial<HostSettings>);
+      // 不用 `as Partial<HostSettings>` 断言：社区扫描报 unnecessary assertion ——
+      // 动态 key 的对象本身就能匹配 Partial<>，因为 HostSettings 全是可选字段。
+      // 也不用 satisfies：它把数组收窄成字面量元组，includes 的参数类型跟着变窄，
+      // 反而要求只能传那几个字面量。显式注解成 `readonly (keyof HostSettings)[]`：
+      // 键的可拼写性由注解保证；新增字段忘了加进这个列表，会被下面的运行时守卫拦下。
+      const known: readonly (keyof HostSettings)[] = ["systemNotification", "dailyNoteFolder"];
+      if (!known.includes(field as keyof HostSettings)) return;
+      await this.plugin.updateHostSettings({ [field]: value });
       return;
     }
-    (this.s as unknown as Record<string, unknown>)[key] = value;
+    setDynamicField(this.s, key, value);
     await this.save();
   }
 
   private hostValue(key: string): unknown {
-    const h = this.plugin.hostSettings() as unknown as Record<string, unknown>;
-    return h[key];
+    return dynamicField(this.plugin.hostSettings(), key);
   }
 
   /**
