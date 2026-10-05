@@ -30,6 +30,7 @@
  */
 import { Notice, PluginSettingTab, Setting, type App, type SettingDefinitionItem } from "obsidian";
 import type CalDavPlugin from "@/main";
+import type { HostSettings } from "@/main";
 import { describeNetworkError, discoverCalendars, testConnection } from "@/core/caldav";
 import { calEventColor, calTodoColor, type CalCalendar } from "@/core/types";
 
@@ -64,7 +65,14 @@ export class CalDavSettingTab extends PluginSettingTab {
 
   async setControlValue(key: string, value: unknown): Promise<void> {
     if (key.startsWith("host.")) {
-      await this.plugin.updateHostSettings({ [key.slice(5)]: value } as never);
+      // key 由本文件的 getSettingDefinitions 固定为 "host.systemNotification" /
+      // "host.dailyNoteFolder" 两个，动态拼出来的对象无法静态满足 Partial<HostSettings>。
+      // 这里做一次运行时校验：只接受 HostSettings 里真实存在的键，其余忽略 ——
+      // 比原来的 `as never` 诚实（never 等于关掉类型检查，且拼错键会静默写坏数据）。
+      const field = key.slice(5);
+      const known: readonly string[] = ["systemNotification", "dailyNoteFolder"];
+      if (!known.includes(field)) return;
+      await this.plugin.updateHostSettings({ [field]: value } as Partial<HostSettings>);
       return;
     }
     (this.s as unknown as Record<string, unknown>)[key] = value;

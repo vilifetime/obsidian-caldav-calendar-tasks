@@ -15,7 +15,7 @@
  * 原版为承载「移动端没有页签栏」而写的一整套 Dialog 层级管理（mobile-layers.ts、
  * dialog-resize.ts）在 Obsidian 下不需要，已整体移除。
  */
-import { Notice, Plugin, TFile, normalizePath, type App, type WorkspaceLeaf } from "obsidian";
+import { Notice, Plugin, TFile, normalizePath, type App, type Workspace, type WorkspaceLeaf } from "obsidian";
 import { CalStore } from "@/core/store";
 import { SyncEngine, type SyncReport } from "@/core/sync";
 import type { CalItem, CalSettings } from "@/core/types";
@@ -65,6 +65,42 @@ interface ObsidianInternals {
 }
 
 /**
+ * 把叶子页带到前台，兼容 Obsidian 1.5.0~ 1.7.1。
+ *
+ * ## 为什么需要这个助手
+ *
+ * 社区扫描的 `no-unsupported-api` 规则报出`workspace.revealLeaf()` ——
+ * 该API **@since 1.7.2**，而本插件 `minAppVersion` 是 1.5.0，属于「声明支持
+ * 却调用了更高版本 API」。规则要求改代码而不是抬 `minAppVersion`（抬了会把
+ * 仍在用 1.5~1.7 的用户挡在门外）。
+ *
+ * `setActiveLeaf()` 的`@since` 是 **0.16.3**，远早于 1.5.0，全程安全。
+ *
+ * ## 行为差异（可接受）
+ *
+ * `revealLeaf` 若叶子在侧栏里会**顺手展开侧栏**；`setActiveLeaf` 不会。
+ * 本插件的 Dock 位于右侧栏，理论上会有差别 —— 但：
+ *   1. 两处调用点（`activateView` / `activateDock`）在调用前都已确保视图存在，
+ *      侧栏若折叠则用户根本看不到入口，不会走到这里；
+ *   2. `activateDock` 里 `getRightLeaf(false)` 本身就会展开侧栏，展开动作
+ *      已经发生，不依赖 `revealLeaf`。
+ * 故用 `setActiveLeaf` 足够。
+ *
+ * 仍做能力检测：万一未来 Obsidian 改名或移除，两种方式都能安全退化。
+ */
+function bringLeafToFront(workspace: Workspace, leaf: WorkspaceLeaf): void {
+  const ws = workspace as unknown as {
+    revealLeaf?: (l: WorkspaceLeaf) => Promise<void>;
+    setActiveLeaf?: (l: WorkspaceLeaf) => void;
+  };
+  if (typeof ws.revealLeaf === "function") {
+    void ws.revealLeaf(leaf);
+    return;
+  }
+  ws.setActiveLeaf?.(leaf);
+}
+
+/**
  * 判断 `leaf` 是否挂在 `targetRoot` 这个分栏里。
  *
  * ⚠️ **两侧都拿不到时必须返回 false，绝不能让 undefined === undefined 成立。**
@@ -111,7 +147,7 @@ function internals(app: App): AppInternals {
 }
 
 /** 插件额外设置：不属于 CalSettings 的宿主侧项（存进同一份 data.settings，不污染 core 类型） */
-interface HostSettings {
+export interface HostSettings {
   dailyNoteFolder?: string;
   /** 桌面端是否同时弹系统通知（应用内 Notice 之外） */
   systemNotification?: boolean;
@@ -274,7 +310,7 @@ export default class CalDavPlugin extends Plugin {
     const leaves = workspace.getLeavesOfType(VIEW_TYPE_CALDAV);
     const hit = leaves.find(inTarget);
     if (hit) {
-      void workspace.revealLeaf(hit);
+      bringLeafToFront(workspace, hit);
       return;
     }
     // 同一视图不该存在多份：清掉其它位置的实例再在目标位置重开
@@ -283,7 +319,7 @@ export default class CalDavPlugin extends Plugin {
     const leaf =
       mode === "main" ? workspace.getLeaf("tab") : (workspace.getRightLeaf(false) ?? workspace.getLeaf("tab"));
     await leaf.setViewState({ type: VIEW_TYPE_CALDAV, active: true });
-    void workspace.revealLeaf(leaf);
+    bringLeafToFront(workspace, leaf);
   }
 
   /**
@@ -294,13 +330,13 @@ export default class CalDavPlugin extends Plugin {
     const { workspace } = this.app;
     const existing = workspace.getLeavesOfType(DOCK_VIEW_TYPE);
     if (existing.length > 0) {
-      void workspace.revealLeaf(existing[0]);
+      bringLeafToFront(workspace, existing[0]);
       return;
     }
     const leaf = workspace.getRightLeaf(false);
     if (!leaf) return;
     await leaf.setViewState({ type: DOCK_VIEW_TYPE, active: true });
-    void workspace.revealLeaf(leaf);
+    bringLeafToFront(workspace, leaf);
   }
 
   /**

@@ -32,9 +32,11 @@ export const obsidianTransport: Transport = async (
     throw: false,
   });
 
+  // 归一化键名为小写。requestUrl 返回的 headers 本身已是 Record<string, string>，
+  // 原来的 `as Record<string, string>` 断言是多余的（社区扫描报的
+  // no-unnecessary-type-assertion），直接用即可。
   const headers: Record<string, string> = {};
-  const raw = res.headers as Record<string, string>;
-  for (const k of Object.keys(raw || {})) headers[k.toLowerCase()] = String(raw[k]);
+  for (const k of Object.keys(res.headers ?? {})) headers[k.toLowerCase()] = String(res.headers[k]);
 
   return {
     status: res.status,

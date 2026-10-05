@@ -589,7 +589,8 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
       const target = tab.dataset.tab!;
       el.querySelectorAll<HTMLElement>(".caldav-tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === target));
       el.querySelectorAll<HTMLElement>(".caldav-tab-panel").forEach((p) => {
-        (p as HTMLElement).style.display = p.dataset.panel === target ? "block" : "none";
+        // p 已由 querySelectorAll<HTMLElement> 推断为 HTMLElement，无需再断言
+        p.style.display = p.dataset.panel === target ? "block" : "none";
       });
     });
   });
@@ -846,9 +847,9 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
   });
 
   // 进度
-  const percent = el.querySelector('[data-f="percent"]') as HTMLInputElement | null;
+  const percent = el.querySelector<HTMLInputElement>('[data-f="percent"]');
   percent?.addEventListener("input", () => {
-    (el.querySelector(".caldav-progress-val") as HTMLElement).textContent = percent.value + "%";
+    el.querySelector<HTMLElement>(".caldav-progress-val")!.textContent = percent.value + "%";
   });
 
   // 把识别结果写入日期/时间字段并同步显示
@@ -907,14 +908,10 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
       restoreNodes(delBtn, idleNodes);
       delBtn.classList.remove("is-armed");
     };
-    delBtn.addEventListener("click", async () => {
-      if (!armed) {
-        armed = true;
-        setHtml(delBtn, `${icons.trash} 再点一次确认删除`);
-        delBtn.classList.add("is-armed");
-        armTimer = window.setTimeout(disarm, 4000);
-        return;
-      }
+    //⚠️ 监听器刻意**不写 async**：`addEventListener` 期望返回 void，
+    // 而 async 回调返回 Promise<void>（eslint 报 no-misused-promises）。
+    // 改为调用一个 async 函数并显式 void 掉其Promise。
+    const doDelete = async (): Promise<void> => {
       disarm();
       delBtn.disabled = true;
       delBtn.textContent = "删除中…";
@@ -934,6 +931,16 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
         delBtn.disabled = false;
         restoreNodes(delBtn, idleNodes);
       }
+    };
+    delBtn.addEventListener("click", () => {
+      if (!armed) {
+        armed = true;
+        setHtml(delBtn, `${icons.trash} 再点一次确认删除`);
+        delBtn.classList.add("is-armed");
+        armTimer = window.setTimeout(disarm, 4000);
+        return;
+      }
+      void doDelete();
     });
   }
   el.querySelector('[data-action="save"]')?.addEventListener("click", () => {

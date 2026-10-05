@@ -3,6 +3,7 @@
  */
 import type { CalItem, CalSettings, PersistData } from "./types";
 import { DEFAULT_SETTINGS, normalizeCalendarColors } from "./types";
+import { deepCopy } from "./errors";
 import type { TimerHandle } from "../constants";
 import {
   adoptKeyring,
@@ -25,7 +26,7 @@ export interface StoreEnv {
 }
 
 export class CalStore {
-  settings: CalSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  settings: CalSettings = deepCopy(DEFAULT_SETTINGS);
   private items = new Map<string, CalItem>();
   lastSync?: string;
   lastError?: string;
@@ -45,7 +46,7 @@ export class CalStore {
   async load(): Promise<void> {
     const data = (await this.env.loadData()) as PersistData | undefined;
     if (data) {
-      this.settings = { ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), ...data.settings };
+      this.settings = { ...deepCopy(DEFAULT_SETTINGS), ...data.settings };
       // 老数据：单一日历色 → eventColor + todoColor（不改变现有观感，见 types.ts）
       normalizeCalendarColors(this.settings.calendars);
       this.items = new Map((data.items || []).map((it) => [keyOf(it), it]));

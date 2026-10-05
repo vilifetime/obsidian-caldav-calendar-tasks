@@ -8,6 +8,7 @@ import type { PanelCtx } from "./panel-ctx";
 import { escape } from "./view-common";
 import { icons } from "./icons";
 import { setHtml } from "./dom";
+import { deepCopy } from "../core/errors";
 
 const PALETTE = ["#e05a4c", "#3d82d6", "#43a05c", "#e0972f", "#8a63d2", "#2fa6a0", "#d4568f", "#6b7280"];
 
@@ -91,7 +92,7 @@ class CategoryManagerModal extends Modal {
     const src = ctx.store.settings.categories?.length
       ? ctx.store.settings.categories
       : DEFAULT_CATEGORIES;
-    this.cats = JSON.parse(JSON.stringify(src));
+    this.cats = deepCopy(src);
   }
 
   onOpen(): void {
@@ -152,7 +153,7 @@ class CategoryManagerModal extends Modal {
           return;
         }
         if (a === "reset") {
-          this.cats = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+          this.cats = deepCopy(DEFAULT_CATEGORIES);
           this.editIdx = null;
           this.errEl.textContent = "";
           render();

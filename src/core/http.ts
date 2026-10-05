@@ -87,8 +87,34 @@ async function viaTransport(url: string, opts: HttpOptions): Promise<HttpResult>
   return transport(url, opts);
 }
 
+/**
+ * 生成 HTTP Basic 认证头。
+ *
+ * Basic 认证的规范是「把 `user:pass` 的字节序列base64 编码」。
+ * 旧写法 `btoa(unescape(encodeURIComponent(s)))` 依赖已弃用的 `unescape`
+ * （社区扫描报的 deprecation 警告）。
+ *
+ * ## 等价性说明（重要，改写时勿简化）
+ *
+ * 旧写法的两步是：① `encodeURIComponent` 把字符串编成 UTF-8 并转义成 `%XX`；
+ * ② `unescape` 把 `%XX` 还原成**原始字节**（每个字节当作 Latin-1 码位）。
+ * 所以结果是「**UTF-8 字节序列**」再 base64。
+ *
+ * 直接用 `encodeURIComponent(s)` 会得到 `%XX` 文本（错的），
+ * 直接取码位低 8 位 `codePointAt(0) & 0xff` 也会得到不同字节（非 ASCII 时，
+ * 实测「名前:パス」两种写法结果不同）—— **两种"简化"都会改变行为**。
+ *
+ * 正确等价实现：`TextEncoder` 给出 UTF-8 字节（等价于 ①），
+ * 再把每个字节当 Latin-1 码位拼成字符串（等价于 ②）。
+ *
+ * 注：非 Latin-1 字符（如中文密码）严格说不该用 Basic 传输，标准做法是用户
+ * 改用 ASCII 密码；此处维持旧行为不变，避免影响现有用户的连接。
+ */
 export function basicAuthHeader(username: string, password: string): string {
-  return "Basic " + btoa(unescape(encodeURIComponent(username + ":" + password)));
+  const bytes = new TextEncoder().encode(username + ":" + password);
+  let latin1 = "";
+  for (const b of bytes) latin1 += String.fromCharCode(b);
+  return "Basic " + btoa(latin1);
 }
 
 /**

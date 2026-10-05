@@ -65,12 +65,12 @@ export function renderYearView({ ctx, viewEl, occurrences }: ViewArgs): void {
   // 导航：点月标题 → 月视图；点某天 → 日视图
   viewEl.querySelector(".cal-year-months")?.addEventListener("click", (ev) => {
     const t = ev.target as HTMLElement;
-    const mh = t.closest("[data-month]") as HTMLElement | null;
+    const mh = t.closest<HTMLElement>("[data-month]");
     if (mh) {
       ctx.navigate?.("month", mh.dataset.month + "-01");
       return;
     }
-    const cell = t.closest("[data-day]") as HTMLElement | null;
+    const cell = t.closest<HTMLElement>("[data-day]");
     if (cell && !cell.classList.contains("is-out")) {
       ctx.navigate?.("day", cell.dataset.day!);
     }

@@ -125,7 +125,7 @@ export function showReminderToast(opts: ReminderToastOptions): void {
   (card.querySelector(".caldav-reminder-body") as HTMLElement).textContent = opts.body;
 
   const onClick = (ev: Event) => {
-    const btn = (ev.target as HTMLElement).closest("[data-act]") as HTMLElement | null;
+    const btn = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
     if (!btn || !card.contains(btn)) return;
     const act = btn.dataset.act;
     if (act === "close") {

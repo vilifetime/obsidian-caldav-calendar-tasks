@@ -67,6 +67,11 @@ export interface CalCalendar {
    * @deprecated 旧的「整个日历一个默认颜色」。现在拆成 eventColor / todoColor，
    * 这里只作为迁移来源与向下兼容的镜像值（写数据时恒等于 eventColor），
    * 界面不再单独设置它。读取请一律走 calEventColor() / calTodoColor()。
+   *
+   * **为何不删掉这个字段**：它是用户**已存盘的数据**的一部分。删字段不会删掉
+   * data.json 里的旧 `color` 值，只会让升级后的版本读不到它 —— 老用户升级后
+   * 所有日历退回中性灰（整片变灰，正是 normalizeCalendarColors 注释里担心的
+   * 那种现象）。保留它 + 迁移时同步到 eventColor/todoColor 才是正解。
    */
   color?: string;
   /** 该日历「日程」的默认颜色（HEX）；空则回退 color / 中性灰 */

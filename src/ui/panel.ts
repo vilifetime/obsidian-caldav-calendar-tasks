@@ -329,7 +329,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
    */
   function blankDayCell(t: HTMLElement): HTMLElement | null {
     if (t.closest("[data-open]")) return null;
-    const cell = t.closest("[data-day]") as HTMLElement | null;
+    const cell = t.closest<HTMLElement>("[data-day]");
     return cell && app.contains(cell) && cell.dataset.day ? cell : null;
   }
 
@@ -356,7 +356,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
 
     // ① 条目上右键 → 开 / 收右侧栏并展示该条目详情。
     //    （表格本次修订新增；原先这里是弹「编辑 / 删除」菜单，现已改由双击条目进入编辑器）
-    const openEl = t.closest("[data-open]") as HTMLElement | null;
+    const openEl = t.closest<HTMLElement>("[data-open]");
     if (openEl && app.contains(openEl)) {
       const key = openEl.dataset.open!;
       if (!ctx.store.get(key)) return;
@@ -393,7 +393,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     // ① 条目上双击 → **直接进入编辑**。
     //    不是弹「编辑 / 删除」菜单：编辑器左下角本来就有删除按钮，再弹一层菜单是多余的
     //    —— 表格里写的「弹出编辑菜单」指的也是打开编辑器本身。
-    const openEl = t.closest("[data-open]") as HTMLElement | null;
+    const openEl = t.closest<HTMLElement>("[data-open]");
     if (openEl && app.contains(openEl)) {
       const item = ctx.store.get(openEl.dataset.open!);
       if (!item) return;
@@ -416,7 +416,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   // 触摸长按 → 等同于右键（命中区与右键一致：带 data-open 且 store 中存在的条目）
   on(app, "pointerdown", (ev) => {
     if (ev.pointerType !== "touch") return;
-    const openEl = (ev.target as HTMLElement).closest("[data-open]") as HTMLElement | null;
+    const openEl = (ev.target as HTMLElement).closest<HTMLElement>("[data-open]");
     if (!openEl || !app.contains(openEl)) return;
     const key = openEl.dataset.open!;
     if (!ctx.store.get(key)) return;
@@ -491,7 +491,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     const t0 = ev.target as HTMLElement;
 
     // 待办快速勾选
-    const toggleEl = t0.closest("[data-toggle]") as HTMLElement | null;
+    const toggleEl = t0.closest<HTMLElement>("[data-toggle]");
     if (toggleEl && app.contains(toggleEl)) {
       const item = ctx.store.get(toggleEl.dataset.toggle!);
       if (item && item.kind === "todo") {
@@ -525,14 +525,14 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     // 早先的实现用 `ev.detail >= 2` 在 click 里判双击并打开编辑器，后来改成监听
     // `dblclick` 事件时，那个分支忘了删 —— 结果一次双击被两条路径各处理一次，
     // **弹出两个编辑器**，点一次「取消」只关掉上面那个，用户就得点两次（实测反馈）。
-    const openEl = t0.closest("[data-open]") as HTMLElement | null;
+    const openEl = t0.closest<HTMLElement>("[data-open]");
     if (openEl && app.contains(openEl)) {
       const item = ctx.store.get(openEl.dataset.open!);
       if (item) {
         // 延后执行，理由见 clickTimer 的说明。
         // 日期取「用户实际点的那个格子」：同一条重复日程会出现在多个格子里，
         // 用条目自身的 start 会对不上用户看到的那个。
-        const cell = openEl.closest("[data-day]") as HTMLElement | null;
+        const cell = openEl.closest<HTMLElement>("[data-day]");
         const date = cell?.dataset.day || item.start.slice(0, 10);
         cancelPendingClick();
         clickTimer = window.setTimeout(() => {
@@ -549,7 +549,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     // ⚠️ 这里**只负责改内容，不负责打开右侧栏**：右侧栏若当前是关着的，这个事件没有
     // 接收者，自然什么都不会发生 —— 开关右侧栏是「双击空白处」的职责（见 notifyToggleDock）。
     // 这样单击与双击不会互相打架：双击空白处的第一下无副作用，第二下才真正切换。
-    const dayCell = t0.closest("[data-day]") as HTMLElement | null;
+    const dayCell = t0.closest<HTMLElement>("[data-day]");
     if (dayCell && app.contains(dayCell) && dayCell.dataset.day) {
       const day = dayCell.dataset.day;
       // 时间轴列上按点击的纵向位置算出小时（周 / 日视图才有）；其余格子为 null
@@ -572,14 +572,14 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     // closest("[data-view],[data-action],[data-cal]") 会跳过它直接命中父级 .caldav-cal-item，
     // 于是后面那句 target.classList.contains("caldav-cal-toggle") 永远为 false —— 这正是
     // 「点了眼睛没任何反应」的原因（旧实现在此处静默失效）。
-    const calItem = t0.closest(".caldav-cal-item") as HTMLElement | null;
+    const calItem = t0.closest<HTMLElement>(".caldav-cal-item");
     if (calItem && app.contains(calItem) && calItem.dataset.cal !== undefined) {
       toggleCalendar(+calItem.dataset.cal);
       ev.stopPropagation();
       return;
     }
 
-    const target = t0.closest("[data-view],[data-action],[data-cal]") as HTMLElement | null;
+    const target = t0.closest<HTMLElement>("[data-view],[data-action],[data-cal]");
     if (!target || !app.contains(target)) return;
 
     const view = target.dataset.view;
@@ -1451,13 +1451,13 @@ export function renderDockPanel(
     }
 
     // Dock 列表内部：复选框 / 卡片打开
-    const toggleEl = t.closest("[data-toggle]") as HTMLElement | null;
+    const toggleEl = t.closest<HTMLElement>("[data-toggle]");
     if (toggleEl && listEl.contains(toggleEl)) {
       const item = opts.store.get(toggleEl.dataset.toggle!);
       if (item && item.kind === "todo") {
         // 就地更新：只改这一行的完成态，不重建列表（否则整列闪烁、滚动位置复位）
         const nextDone = item.percent !== 100;
-        const row = toggleEl.closest(".caldav-dock-item") as HTMLElement | null;
+        const row = toggleEl.closest<HTMLElement>(".caldav-dock-item");
         row?.classList.toggle("is-done", nextDone);
         const cb = toggleEl.querySelector<HTMLInputElement>("input[type=checkbox]");
         if (cb) cb.checked = nextDone;
@@ -1479,7 +1479,7 @@ export function renderDockPanel(
       ev.stopPropagation();
       return;
     }
-    const openEl = t.closest("[data-open]") as HTMLElement | null;
+    const openEl = t.closest<HTMLElement>("[data-open]");
     if (openEl && listEl.contains(openEl)) {
       const item = opts.store.get(openEl.dataset.open!);
       if (item) opts.onOpenEditor(item);
@@ -1487,7 +1487,7 @@ export function renderDockPanel(
     }
 
     // 下拉内的动作
-    const popItem = t.closest("[data-action]") as HTMLElement | null;
+    const popItem = t.closest<HTMLElement>("[data-action]");
     if (popItem && root.contains(popItem)) {
       const a = popItem.dataset.action!;
       closePops();
@@ -1505,8 +1505,8 @@ export function renderDockPanel(
 
     // 分类筛选弹层
     const catPopEl = root.querySelector<HTMLElement>("[data-pop='category']");
-    const catItem = t.closest(".caldav-dock-cat-item") as HTMLElement | null;
-    const catAction = t.closest("[data-cat-action]") as HTMLElement | null;
+    const catItem = t.closest<HTMLElement>(".caldav-dock-cat-item");
+    const catAction = t.closest<HTMLElement>("[data-cat-action]");
     if (catPopEl && !catPopEl.hidden && (catItem || catAction)) {
       if (catAction) {
         if (catAction.dataset.catAction === "ok") {
@@ -1538,7 +1538,7 @@ export function renderDockPanel(
     }
 
     // 筛选下拉：选中某一项
-    const filterItem = t.closest("[data-dock-filter]") as HTMLElement | null;
+    const filterItem = t.closest<HTMLElement>("[data-dock-filter]");
     if (filterItem && root.contains(filterItem)) {
       dockFilter = filterItem.dataset.dockFilter as DockFilter;
       focusDate = null; // 选了预设筛选即退出「日期聚焦」
@@ -1549,7 +1549,7 @@ export function renderDockPanel(
     }
 
     // 菜单展开/收起
-    const toggle = t.closest("[data-toggle]") as HTMLElement | null;
+    const toggle = t.closest<HTMLElement>("[data-toggle]");
     if (toggle && root.contains(toggle)) {
       togglePop(toggle.dataset.toggle!);
       return;

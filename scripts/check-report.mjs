@@ -39,6 +39,15 @@ const checks = {
   "console.log": [/console\.log/],
   "globalThis": [/globalThis/],
   "裸定时器": [/(?<!\.)\b(setTimeout|clearTimeout|setInterval|clearInterval)\s*\(/],
+  // 以下为 2026-10-06 第四轮报告新增
+  "unescape（已弃用）": [/\bunescape\s*\(/],
+  "closest(...) as HTMLElement | null": [/closest\("[^"]+"\) as HTMLElement \| null/],
+  "querySelector(...) as HTMLElement": [/querySelector\("[^"]+"\) as (HTML\w+Element)/],
+  "as never": [/\bas never\b/],
+  "async 事件监听器": [/addEventListener\([^)]*async/],
+  "高版本 API：revealLeaf（需 1.7.2）": [/\bworkspace\.revealLeaf\(/],
+  // 注：getRightLeaf 的 @since 是 0.9.7，远低于 minAppVersion 1.5.0，**不在此列**。
+  // 加检查前务必先查 obsidian.d.ts 的 @since，别把安全 API 当违规。
 };
 
 // 期望「有命中」的项目（保留是故意的）
