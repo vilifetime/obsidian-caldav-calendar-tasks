@@ -69,10 +69,9 @@ function renders(entry, s) {
 
 const DETAIL = { ...fresh(), detailKey: "k1" };
 
-// ── 这三个入口在详情态下必须真的切走（本次修的就是这三个）──
+// ── 这些入口在详情态下必须真的切走（前几个 bug 修的就是这些）──
 const mustSwitch = [
   ["onFocusDate（单击格子）", "onFocusDate"],
-  ["onFocusDate（单击条目，同一入口）", "onFocusDate"],
   ["onDockScope（右击→该月）", "onDockScope"],
   ["onAllUndone（切所有未完成）", "onAllUndone"],
   ["onExitDetail（详情态右击）", "onExitDetail"],
@@ -117,6 +116,33 @@ assert.strictEqual(
   "list",
   "详情态下右击切月必须切走详情卡 —— 2026-10-06 的故障①"
 );
+
+console.log("");
+console.log("  ── 单击条目：切到本条目详情（2026-10-06 起的新行为）──");
+// 侧栏正显示 k1 的详情，用户单击另一条 k2 → 应显示 k2 的详情
+{
+  const n = applyEntry("onItemDetail", DETAIL);
+  const ok = n.detailKey === "k1"; // 复刻的 applyEntry 固定写 k1，故验证「仍是详情态」
+  if (!ok) failed++;
+  console.log(`  [${ok ? "PASS" : "FAIL"}] 详情态下单击条目仍渲染详情（不是清单）`);
+}
+// 关键：单击条目**不得**改focusDate / dockFilter —— 行为要求「不改变开合状态」，
+// 且不应顺带把主面板的日期聚焦也改掉
+{
+  const before = { focusDate: "2026-10-01", focusScope: "month", dockFilter: "undone", beforeFocusFilter: null, detailKey: null };
+  const n = applyEntry("onItemDetail", before);
+  const ok = n.focusDate === "2026-10-01" && n.focusScope === "month" && n.dockFilter === "undone";
+  if (!ok) failed++;
+  console.log(`  [${ok ? "PASS" : "FAIL"}] 单击条目不改动 focusDate/scope/dockFilter`);
+}
+// 反向：单击格子**必须**改 focusDate（两者行为不可混同）
+{
+  const before = { focusDate: null, focusScope: "day", dockFilter: "undone", beforeFocusFilter: null, detailKey: null };
+  const n = applyEntry("onFocusDate", before);
+  const ok = n.focusDate === "2026-10-08";
+  if (!ok) failed++;
+  console.log(`  [${ok ? "PASS" : "FAIL"}] 单击格子仍切到该日清单（focusDate 已变）`);
+}
 
 console.log(failed === 0 ? "\n✓ Dock 焦点入口回归测试通过" : `\n✗ ${failed} 个用例失败`);
 process.exit(failed === 0 ? 0 : 1);

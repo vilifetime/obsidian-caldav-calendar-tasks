@@ -519,26 +519,29 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       ev.stopPropagation();
       return;
     }
-    // 条目：单击 → 聚焦并列出该条目所在日期的清单。
+    // 条目：单击 → 右侧栏显示**该条目的详细信息**。
     //
     // ⚠️ 这里**只管单击**，双击一律交给下面的 dblclick 处理器。
     // 早先的实现用 `ev.detail >= 2` 在 click 里判双击并打开编辑器，后来改成监听
     // `dblclick` 事件时，那个分支忘了删 —— 结果一次双击被两条路径各处理一次，
     // **弹出两个编辑器**，点一次「取消」只关掉上面那个，用户就得点两次（实测反馈）。
+    //
+    // 行为（雄哥明确）：显示本条目详情，**不改变右侧栏的打开 / 隐藏状态**。
+    // 若侧栏此刻正显示着另一个条目的详情，就换成当前这条的详情。
+    //
+    //⚠️ 侧栏关闭时点条目**什么也不发生** —— 严格遵守「不改变开合状态」，
+    // 此时它就是一次无效点击。DOM 未挂载时 detailKey 设了也没有承载者，
+    // 强行打开侧栏会违背这条约定，故不做。
     const openEl = t0.closest<HTMLElement>("[data-open]");
     if (openEl && app.contains(openEl)) {
       const item = ctx.store.get(openEl.dataset.open!);
       if (item) {
         // 延后执行，理由见 clickTimer 的说明。
-        // 日期取「用户实际点的那个格子」：同一条重复日程会出现在多个格子里，
-        // 用条目自身的 start 会对不上用户看到的那个。
-        const cell = openEl.closest<HTMLElement>("[data-day]");
-        const date = cell?.dataset.day || item.start.slice(0, 10);
         cancelPendingClick();
         clickTimer = window.setTimeout(() => {
           clickTimer = null;
           if (destroyed) return;
-          notifyFocusDate(date);
+          notifyDockItemDetail(openEl.dataset.open!);
         }, 250);
       }
       return;
