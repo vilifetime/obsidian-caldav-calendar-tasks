@@ -1597,6 +1597,16 @@ export function renderDockPanel(
   const onFocusDate = (e: Event): void => {
     const date = (e as CustomEvent).detail as string;
     if (!date) return;
+    // ⚠️ **必须先退出详情态**。
+    //
+    // 主面板单击日历格子 / 单击条目都汇入本函数（经 notifyFocusDate），期望结果是
+    // 右侧栏切到该日清单。但详情模式（detailKey 非空）下，renderDockList 会优先
+    // 渲染详情卡而无视 focusDate —— 于是状态变了、界面不动，用户看到的是
+    // 「单击没反应」（2026-10-06 实测反馈）。
+    //
+    // 放在这里而非调用方，是因为这是「改变 Dock 焦点」的唯一入口，两条单击路径
+    // 与「返回列表」之外的任何聚焦切换都必经此处。
+    detailKey = null;
     if (focusDate === date && focusScope === "day") {
       // 再点同一日 → 取消聚焦，回到进入聚焦前的那份筛选
       focusDate = null;
@@ -1620,6 +1630,9 @@ export function renderDockPanel(
   const onDockScope = (e: Event): void => {
     const d = (e as CustomEvent).detail as { date?: string; scope?: FocusScope } | undefined;
     if (!d?.date) return;
+    // 同 onFocusDate：改变 Dock 焦点前必须先退出详情态，否则界面不响应。
+    // 触发路径是主面板右击日历空白处（切到该格子所在月/周）。
+    detailKey = null;
     beforeFocusFilter = dockFilter;
     focusDate = d.date;
     focusScope = d.scope ?? "day";
@@ -1643,6 +1656,8 @@ export function renderDockPanel(
 
   /** 双击日历空白处且右侧栏已打开 → 强制切到「所有未完成」（见 main.ts 的 toggleDock） */
   const onAllUndone = (): void => {
+    // 同理：「切到所有未完成」也必须先退出详情态，否则界面不响应
+    detailKey = null;
     focusDate = null;
     focusScope = "day";
     beforeFocusFilter = null;
