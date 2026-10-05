@@ -63,20 +63,9 @@ export interface CalItem {
 export interface CalCalendar {
   url: string;
   displayName: string;
-  /**
-   * @deprecated 旧的「整个日历一个默认颜色」。现在拆成 eventColor / todoColor，
-   * 这里只作为迁移来源与向下兼容的镜像值（写数据时恒等于 eventColor），
-   * 界面不再单独设置它。读取请一律走 calEventColor() / calTodoColor()。
-   *
-   * **为何不删掉这个字段**：它是用户**已存盘的数据**的一部分。删字段不会删掉
-   * data.json 里的旧 `color` 值，只会让升级后的版本读不到它 —— 老用户升级后
-   * 所有日历退回中性灰（整片变灰，正是 normalizeCalendarColors 注释里担心的
-   * 那种现象）。保留它 + 迁移时同步到 eventColor/todoColor 才是正解。
-   */
-  color?: string;
-  /** 该日历「日程」的默认颜色（HEX）；空则回退 color / 中性灰 */
+  /** 该日历「日程」的默认颜色（HEX）；空则回退中性灰 */
   eventColor?: string;
-  /** 该日历「待办」的默认颜色（HEX）；空则回退 eventColor / color / 中性灰 */
+  /** 该日历「待办」的默认颜色（HEX）；空则回退 eventColor / 中性灰 */
   todoColor?: string;
   enabled: boolean;
   /** 支持 VTODO */
@@ -94,29 +83,12 @@ export const NEUTRAL_ITEM_COLOR = "#64748b";
 
 /** 日历的「日程默认色」——顺带承担日历自身的身份色（点、徽标等） */
 export function calEventColor(cal?: CalCalendar | null): string {
-  return cal?.eventColor || cal?.color || NEUTRAL_ITEM_COLOR;
+  return cal?.eventColor || NEUTRAL_ITEM_COLOR;
 }
 
-/** 日历的「待办默认色」；没单独设过就跟着日程色走（迁移期观感不变） */
+/** 日历的「待办默认色」；没单独设过就跟着日程色走 */
 export function calTodoColor(cal?: CalCalendar | null): string {
-  return cal?.todoColor || cal?.eventColor || cal?.color || NEUTRAL_ITEM_COLOR;
-}
-
-/**
- * 老数据迁移：过去的 `color`（一个日历一个色）升级为 eventColor + todoColor。
- * 两者都取原色 —— 存量条目颜色因此**完全不变**，用户想区分再去设置里改待办色。
- * 同时把 color 镜像成 eventColor，万一有旧版本端读同一份数据，不至于整片变灰。
- * 幂等，可重复调用。
- */
-export function normalizeCalendarColors(cals: CalCalendar[] | undefined | null): void {
-  if (!cals) return;
-  for (const c of cals) {
-    if (!c) continue;
-    const base = c.eventColor || c.color || NEUTRAL_ITEM_COLOR;
-    c.eventColor = base;
-    c.todoColor = c.todoColor || base;
-    c.color = c.eventColor;
-  }
+  return cal?.todoColor || cal?.eventColor || NEUTRAL_ITEM_COLOR;
 }
 
 /** 任务分类定义（编辑弹窗的彩色药丸） */
