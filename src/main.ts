@@ -64,6 +64,28 @@ interface ObsidianInternals {
   rightSplit?: unknown;
 }
 
+/**
+ * 判断 `leaf` 是否挂在 `targetRoot` 这个分栏里。
+ *
+ * ⚠️ **两侧都拿不到时必须返回 false，绝不能让 undefined === undefined 成立。**
+ *
+ * 这不是洁癖，是实测踩过的坑：原先 `getRoot()` 出错时 catch 返回 `false`、
+ * 目标分栏也可能是 undefined，但那时 `false === undefined` 为假，恰好安全。
+ * 改成 `leafRoot()` / `splitOf()` 两个助手后，**两边都变成 undefined**，
+ * 于是 `undefined === undefined` 成立 ——「取不到根节点」被误判成
+ * 「正好在主区」，进而让 `toggleDock` 的三态判断整体错位：
+ * 右击单元格该切月视图的却隐藏了侧栏，右击条目该展开的却收起。
+ *
+ * `WorkspaceRoot` 是稳定公开 API（obsidian.d.ts 有声明），取不到说明
+ * Obsidian 变了，此时**保守判「不在目标区」**才是安全侧。
+ */
+function leafInSplit(leaf: WorkspaceLeaf, targetRoot: unknown): boolean {
+  if (targetRoot === undefined || targetRoot === null) return false;
+  const root = leafRoot(leaf);
+  if (root === undefined || root === null) return false;
+  return root === targetRoot;
+}
+
 /** 读叶子页所属的根分栏节点；API 变更时返回 undefined */
 function leafRoot(leaf: WorkspaceLeaf): unknown {
   try {
@@ -245,9 +267,8 @@ export default class CalDavPlugin extends Plugin {
     const { workspace } = this.app;
     const targetRoot = mode === "main" ? splitOf(workspace, "rootSplit") : splitOf(workspace, "rightSplit");
     const inTarget = (leaf: WorkspaceLeaf): boolean => {
-      // getRoot / rootSplit / rightSplit 未出现在公开类型定义里，splitOf 与
-      // leafRoot 声明了最小形状并用可选链兜底
-      return leafRoot(leaf) === targetRoot;
+      // 两侧任一取不到都判「不在目标区」，理由见 leafInSplit 的注释
+      return leafInSplit(leaf, targetRoot);
     };
 
     const leaves = workspace.getLeavesOfType(VIEW_TYPE_CALDAV);
@@ -410,7 +431,7 @@ export default class CalDavPlugin extends Plugin {
       return;
     }
     const inMain = (leaf: WorkspaceLeaf): boolean => {
-      return leafRoot(leaf) === splitOf(workspace, "rootSplit");
+      return leafInSplit(leaf, splitOf(workspace, "rootSplit"));
     };
     const inSidebar = leaves.filter((l) => !inMain(l));
     if (!inSidebar.length) {
