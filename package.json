@@ -1,13 +1,13 @@
 {
   "name": "obsidian-caldav-calendar-tasks",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "双向同步 CalDAV 服务器的事件与待办任务（思源插件 siyuan-plugin-caldav-sync 的 Obsidian 移植版）",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "typecheck": "tsc -noEmit -skipLibCheck",
-    "test": "node test/smoke.cjs && node test/leaf-split.cjs",
+    "test": "node test/smoke.cjs && node test/leaf-split.cjs && node test/dock-toggle.cjs",
     "deploy": "node scripts/deploy.mjs"
   },
   "keywords": [

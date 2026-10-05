@@ -765,6 +765,22 @@ export function notifyDockAllUndone(): void {
 }
 
 /**
+ * 让Dock 退出条目详情态、**保留当前清单筛选**。
+ *
+ * 用于「详情模式下右击日历格子」：此刻用户看到的是详情卡，清单状态仍是进入
+ * 详情前的那份（通常是「所有未完成」）。此时既不该切月也不该收起侧栏 ——
+ * 只需把详情卡撤掉，露出下面原有的清单，用户的浏览上下文不被打断。
+ *
+ * 与 `DOCK_SCOPE_EVENT`（切到某月/周）、`DOCK_ALL_UNDONE_EVENT`（强制「所有
+ * 未完成」）的区别：这两个都会**改写清单状态**，本事件只动 `detailKey`。
+ */
+export const DOCK_EXIT_DETAIL_EVENT = "caldav-dock-exit-detail";
+
+export function notifyDockExitDetail(): void {
+  document.dispatchEvent(new CustomEvent(DOCK_EXIT_DETAIL_EVENT));
+}
+
+/**
  * Dock 面板：标题「日历任务管理」（右侧带设置图标按钮）+ 一行 5 个按钮。
  * 新增 / 排序 为下拉菜单；日历视图 / 任务视图 打开主窗口页签；刷新 触发重新同步。
  * 设置入口从主面板「日历筛选」浮层迁到这里 —— 浮层只留过滤相关的动作，职责更单一。
@@ -825,6 +841,7 @@ export function renderDockPanel(
   destroy: () => void;
   isDefaultState: () => boolean;
   isScopedState: () => boolean;
+  isDetailState: () => boolean;
 } {
   root.classList.add("caldav-dock");
   root.classList.toggle("caldav-touch", isMobile());
@@ -963,6 +980,16 @@ export function renderDockPanel(
    * 点详情卡片上的「返回列表」即清空本状态。
    */
   let detailKey: string | null = null;
+
+  /**
+   * 是否处于条目详情态。
+   *
+   * 用 `!= null`（同时匹配 null 与 undefined）而非 `!== null`：若某条路径
+   * 让 detailKey 变成 undefined，严格比较会判成「不在详情」，于是
+   * toggleDock 会漏进「切到该格子所在月」分支 —— 而界面因 detailKey 仍
+   * 非空继续渲染详情，净效果是「点了没反应」。这种 bug 极难从表象定位。
+   */
+  const isDetailState = (): boolean => detailKey != null;
 
   /**
    * 各视图的默认筛选。
@@ -1362,7 +1389,7 @@ export function renderDockPanel(
   function renderDockList(): void {
     if (destroyed) return;
     // 详情模式：列表区整块让给条目详情（右击条目打开，点「返回列表」退出）
-    if (detailKey) {
+    if (isDetailState()) {
       renderItemDetail();
       return;
     }
@@ -1625,6 +1652,19 @@ export function renderDockPanel(
   };
   document.addEventListener(DOCK_ALL_UNDONE_EVENT, onAllUndone);
 
+  /**
+   * 退出条目详情、**保留当前清单筛选**（详情模式下右击日历时触发）。
+   *
+   * 只清 detailKey —— focusDate / dockFilter 一律不动，用户退详情后看到的
+   * 仍是进入详情前的那份清单（通常是「所有未完成」），浏览上下文不被打断。
+   */
+  const onExitDetail = (): void => {
+    if (!isDetailState()) return;
+    detailKey = null;
+    renderDockList();
+  };
+  document.addEventListener(DOCK_EXIT_DETAIL_EVENT, onExitDetail);
+
   // 筛选下拉已改为自定义控件（原生 <select> 的 change 监听随之移除）
 
   const onRootInput = (ev: Event) => {
@@ -1669,11 +1709,21 @@ export function renderDockPanel(
     },
     /**
      * 当前是否处于「所有未完成」默认态。
-     * 入口据此判断双击日历空白处该「切回默认」还是「隐藏右侧栏」（见 main.ts 的 toggleDock）。
+     * 入口据此判断右击日历空白处该「切到该日所在月/周」还是「隐藏右侧栏」
+     * （见 main.ts 的 toggleDock）。
+     *
+     * ⚠️ 详情模式下（detailKey 非空）这个判断**不成立** —— 详情是覆盖在列表之上的
+     * 一层界面，用户此刻看到的根本不是「所有未完成」清单。若仍按 true 处理，
+     * 右击会直接切到月视图，界面上「详情」凭空消失且用户没意识到发生了什么。
+     * 故 toggleDock 先查 isDetailState()。
      */
-    isDefaultState: () => focusDate === null && dockFilter === "undone",
-    /** 是否处于聚焦态（聚焦某日 / 某月 / 某周）—— 入口据此决定双击该切到月/周还是关闭右侧栏 */
+    isDefaultState: () => focusDate === null && dockFilter === "undone" && !isDetailState(),
+    /** 是否处于聚焦态（聚焦某日 / 某月 / 某周）—— 入口据此决定右击该切到月/周还是关闭右侧栏 */
     isScopedState: () => focusDate !== null,
+    /**
+     * 是否处于条目详情态（右击条目后展示的那张详情卡）—— 见 isDetailState 的说明。
+     */
+    isDetailState,
     destroy() {
       destroyed = true;
       // 先摘掉挂在容器自身上的监听：容器可能被复用（移动端 Dock），
@@ -1684,6 +1734,7 @@ export function renderDockPanel(
       document.removeEventListener(FOCUS_DATE_EVENT, onFocusDate);
       document.removeEventListener(VIEW_CHANGE_EVENT, onViewChange);
       document.removeEventListener(DOCK_ALL_UNDONE_EVENT, onAllUndone);
+      document.removeEventListener(DOCK_EXIT_DETAIL_EVENT, onExitDetail);
       document.removeEventListener(DOCK_SCOPE_EVENT, onDockScope);
       document.removeEventListener(DOCK_ITEM_DETAIL_EVENT, onItemDetail);
       listScrollEl?.removeEventListener("scroll", onScrollClose);

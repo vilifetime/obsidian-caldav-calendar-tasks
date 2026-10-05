@@ -26,6 +26,7 @@ export class CalDavDockView extends ItemView {
     destroy: () => void;
     isDefaultState: () => boolean;
     isScopedState: () => boolean;
+    isDetailState: () => boolean;
   } | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: CalDavPlugin) {
@@ -89,5 +90,10 @@ export class CalDavDockView extends ItemView {
   /** 是否处于聚焦态（聚焦某日 / 某月 / 某周） */
   isScopedState(): boolean {
     return this.dock?.isScopedState() ?? false;
+  }
+
+  /** 是否处于条目详情态（右击条目后展示的那张详情卡） */
+  isDetailState(): boolean {
+    return this.dock?.isDetailState() ?? false;
   }
 }

@@ -30,6 +30,7 @@ import { CalDavView } from "@/ui/main-view";
 import { CalDavDockView } from "@/ui/dock-view";
 import {
   notifyDockAllUndone,
+  notifyDockExitDetail,
   notifyDockItemDetail,
   notifyDockScope,
   TOGGLE_DOCK_EVENT,
@@ -377,6 +378,15 @@ export default class CalDavPlugin extends Plugin {
     const view = leaves[0].view;
     if (!(view instanceof CalDavDockView)) {
       notifyDockAllUndone();
+      return;
+    }
+    // ⓿ 详情模式 → 退出详情，**保留当前清单筛选**。
+    //    必须排在下面两个判断之前：详情是覆盖在列表之上的一层界面，此刻
+    //    focusDate / dockFilter 都没变（仍是进入详情前那一份），所以
+    //    isDefaultState() 会返回 true —— 若不先处理，②会切到该格子所在月，
+    //    而 renderDockList 因detailKey 非空仍渲染详情，界面看上去毫无反应。
+    if (view.isDetailState()) {
+      notifyDockExitDetail();
       return;
     }
     // ② 已打开且为「所有未完成」→ 切到该格子日期所在的月 / 周
