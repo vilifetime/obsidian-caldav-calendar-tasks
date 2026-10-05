@@ -1,6 +1,6 @@
 {
   "name": "obsidian-caldav-calendar-tasks",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "双向同步 CalDAV 服务器的事件与待办任务（思源插件 siyuan-plugin-caldav-sync 的 Obsidian 移植版）",
   "main": "main.js",
   "scripts": {
