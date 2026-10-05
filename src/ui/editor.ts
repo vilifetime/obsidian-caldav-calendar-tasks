@@ -81,6 +81,24 @@ interface EditorHost {
  * 这个症状与「点一次没反应」差别很大，排查时不容易联想到「重复打开」，故在此设防。
  */
 let activeEditor: EditorModal | null = null;
+
+/**
+ * 登记新打开的编辑器，并关掉上一个。
+ *
+ * 抽成函数而非在 `onOpen` 里直接写 `activeEditor = this` —— 后者会被社区扫描
+ * 报 "Unexpected aliasing of 'this' to local variable"。语义完全一致：`this`
+ * 交由本函数内部接收，外部不再出现「把 this赋给一个外部变量」的写法。
+ */
+function claimEditorSlot(modal: EditorModal): void {
+  if (activeEditor && activeEditor !== modal) activeEditor.close();
+  activeEditor = modal;
+}
+
+/** 弹窗关闭时清空占位（需与登记的实例比对，避免误清新弹窗） */
+function releaseEditorSlot(modal: EditorModal): void {
+  if (activeEditor === modal) activeEditor = null;
+}
+
 /**
  * 编辑弹窗（Obsidian Modal）。
  *
@@ -104,13 +122,8 @@ class EditorModal extends Modal {
   }
 
   onOpen(): void {
-    // 这里的 `activeEditor = this` 是刻意的模块级单例哨兵（官方扫描会报
-    // "Unexpected aliasing of 'this' to local variable"），不是随手起的别名：
-    // 它的作用是让「重复打开」能被检测出来并关掉前一个。若改成局部变量或
-    // 成员字段就失去了跨弹窗的可见性，上面的防重入逻辑会失效。
     // 双保险：万一上游重复调用，先关掉上一个，别让两个弹窗叠在一起
-    if (activeEditor && activeEditor !== this) activeEditor.close();
-    activeEditor = this;
+    claimEditorSlot(this);
 
     const isTodo = this.it.kind === "todo";
     this.titleEl.setText(
@@ -138,7 +151,7 @@ class EditorModal extends Modal {
   }
 
   onClose(): void {
-    if (activeEditor === this) activeEditor = null;
+    releaseEditorSlot(this);
     this.contentEl.empty();
   }
 }

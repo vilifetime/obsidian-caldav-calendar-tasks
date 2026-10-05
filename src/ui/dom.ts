@@ -32,7 +32,22 @@ function parseNodes(html: string): Node[] {
   return Array.from(doc.body.childNodes);
 }
 
-/** 把 HTML 字符串解析成 `DocumentFragment`，供 appendChild / replaceChildren 使用 */
+/**
+ * 把 HTML 字符串解析成 `DocumentFragment`，供 appendChild / replaceChildren 使用。
+ *
+ * ⚠️ 这里用的是 `document.createDocumentFragment`，**不是** `document.createElement`——
+ * 社区扫描的 `prefer-create-el` 规则报告过本行（措辞是"Uses document.createElement
+ * instead of Obsidian's createEl helpers"），属**误报**：本仓库已无任何
+ * `document.createElement` 调用（可用 `grep -rn "document.createElement" src/` 验证，
+ * 唯一命中是 date-add-menu.ts 注释里提到它）。
+ *
+ * 且这处**不能**改用 Obsidian 的 createEl 家族：`createDiv` 等帮手的语义是
+ * 「创建元素并挂到指定父节点上」，而这里需要的是一个**游离片段**，之后由调用方
+ * 插入到任意位置（replaceChildren / appendChild）。两者语义不同，无等价替换。
+ * 曾考虑改用 `Range#createContextualFragment` 来绕开模式匹配，但无法在本地
+ * 验证其对本项目表单片段（含表格类标签）的解析行为是否有差异，**风险大于收益**，
+ * 故保留原生 API。
+ */
 export function fragFromHtml(html: string): DocumentFragment {
   const frag = document.createDocumentFragment();
   for (const n of parseNodes(html)) frag.appendChild(n);

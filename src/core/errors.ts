@@ -9,13 +9,6 @@
  * 统一收敛到这里，catch 块写`catch (e: unknown)`，取值一律经下列函数。
  */
 
-/** 把任意捕获值转成可读文本；Error 取 message，其余走 String() */
-export function errText(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === "string") return e;
-  return String(e ?? "");
-}
-
 /** 取错误对象上的 `message` 字段（兼容非Error 的异常值） */
 export function errMessage(e: unknown): string {
   if (e instanceof Error) return e.message;

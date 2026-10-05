@@ -12,7 +12,7 @@ import { itemToEditedICS, itemToNewICS } from "./ics";
 import { dateStampOfMs, stampOfMs } from "./date";
 import type { Channel } from "./http";
 import type { TimerHandle } from "../constants";
-import { errMessage, errStatus, errText } from "./errors";
+import { errMessage, errStatus } from "./errors";
 
 export interface SyncReport {
   ok: boolean;

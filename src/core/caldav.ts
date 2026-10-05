@@ -4,7 +4,6 @@
 import type { CalCalendar, CalItem } from "./types";
 import { httpRequest, HttpError, isNetworkLevelError, type HttpResult, type Channel } from "./http";
 import { itemsFromICS } from "./ics";
-import { errText } from "./errors";
 
 export interface DavAuth {
   username: string;
