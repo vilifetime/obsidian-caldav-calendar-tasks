@@ -3034,65 +3034,6 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   color: var(--caldav-text-2);
 }
 
-/* ===== 右键菜单（日历/任务视图上的条目） ===== */
-.caldav-ctxmenu {
-  position: fixed;
-  z-index: 9999;
-  min-width: 132px;
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--caldav-bg, #fff);
-  border: 1px solid var(--caldav-border, #e4e7ed);
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
-  font-size: 13px;
-}
-.caldav-ctxmenu[hidden] { display: none; }
-
-.caldav-ctxmenu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--caldav-text, #1f2329);
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.caldav-ctxmenu-item svg { width: 14px; height: 14px; flex: 0 0 auto; }
-.caldav-ctxmenu-item:hover { background: var(--caldav-bg-3, #eef1f5); }
-.caldav-ctxmenu-item[disabled] { opacity: 0.6; cursor: default; }
-
-/* 删除项：常驻危险色；进入确认态变实心（与编辑弹窗内删除一致） */
-.caldav-ctxmenu-item[data-ctx="delete"] { color: var(--caldav-danger, #d23f31); }
-.caldav-ctxmenu-item[data-ctx="delete"]:hover {
-  background: color-mix(in srgb, var(--caldav-danger, #d23f31) 10%, transparent);
-}
-.caldav-ctxmenu-item[data-ctx="delete"].is-armed {
-  background: var(--caldav-danger, #d23f31);
-  color: #fff;
-}
-.caldav-ctxmenu-item[data-ctx="delete"].is-armed:hover {
-  background: color-mix(in srgb, var(--caldav-danger, #d23f31) 88%, #000);
-  color: #fff;
-}
-
-.caldav-ctxmenu-err {
-  max-width: 220px;
-  padding: 5px 9px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--caldav-danger, #d23f31);
-}
-.caldav-ctxmenu-err[hidden] { display: none; }
-
 /* ============================================================
    移动端（触摸 / 窄屏）
    思源的 addTab / openTab 在移动端是空实现（app/src/plugin/API.ts 里
@@ -3658,7 +3599,6 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
    ============================================================================ */
 
 body > .caldav-add-menu,
-body > .caldav-ctxmenu,
 body > .caldav-reminder-layer {
   --caldav-accent: var(--interactive-accent, #3575f0);
   --caldav-accent-2: var(--interactive-accent-hover, var(--interactive-accent, #3575f0));

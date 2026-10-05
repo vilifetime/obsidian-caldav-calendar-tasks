@@ -83,10 +83,6 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     <div class="caldav-view"></div>
   </main>
 </div>
-<div class="caldav-ctxmenu" hidden>
-  <button class="caldav-ctxmenu-item" data-ctx="edit">${icons.pencil} 编辑</button>
-  <button class="caldav-ctxmenu-item" data-ctx="delete">${icons.trash} 删除</button>
-  <div class="caldav-ctxmenu-err" hidden></div>
 </div>`
   );
 
@@ -96,12 +92,9 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   const showTodosInput = root.querySelector('[data-opt="showTodos"]') as HTMLInputElement;
   const viewEl = root.querySelector(".caldav-view") as HTMLElement;
   const cursorTitleEl = root.querySelector(".caldav-cursor-title") as HTMLElement;
-  const ctxMenu = root.querySelector(".caldav-ctxmenu") as HTMLElement;
   const segBtns = Array.from(root.querySelectorAll(".caldav-seg-btn")) as HTMLElement[];
   const viewToggleBtn = root.querySelector('[data-action="toggle-view"]') as HTMLElement;
   let destroyed = false;
-  /** 右键菜单当前指向的条目 key */
-  let ctxMenuKey: string | null = null;
 
   function renderCalList(): void {
     const cals = ctx.store.settings.calendars;
@@ -270,63 +263,11 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
 
   function renderAll(): void {
     if (destroyed) return;
-    hideCtxMenu();
     renderCalList();
     renderFilterOpts();
     renderView();
   }
 
-  // ---- 右键菜单（日历/任务视图上的条目） ----
-  const ctxErrEl = ctxMenu.querySelector(".caldav-ctxmenu-err") as HTMLElement;
-  const ctxDelBtn = ctxMenu.querySelector('[data-ctx="delete"]') as HTMLElement;
-  let ctxDisarmTimer: TimerHandle | null = null;
-
-  function resetCtxDelete(): void {
-    if (ctxDisarmTimer) {
-      window.clearTimeout(ctxDisarmTimer);
-      ctxDisarmTimer = null;
-    }
-    ctxDelBtn.classList.remove("is-armed");
-    setHtml(ctxDelBtn, `${icons.trash} 删除`);
-  }
-
-  function hideCtxMenu(): void {
-    if (ctxMenu.hidden) return;
-    ctxMenu.hidden = true;
-    ctxMenuKey = null;
-    resetCtxDelete();
-    ctxErrEl.hidden = true;
-    ctxErrEl.textContent = "";
-  }
-
-  /** 在鼠标位置展开菜单，并做视口边界收敛 */
-  function showCtxMenu(key: string, x: number, y: number): void {
-    ctxMenuKey = key;
-    ctxErrEl.hidden = true;
-    ctxErrEl.textContent = "";
-    resetCtxDelete();
-
-    /**
-     * 必须先挂到 body 下再定位。
-     *
-     * 菜单用 position:fixed，而 Obsidian 的视图容器带 `contain`（paint / layout）——
-     * 这会让容器成为 fixed 元素的**包含块**：于是 ev.clientX（视口坐标）被当成相对
-     * 容器的坐标，菜单整体右移一个「左栏宽度」，看起来跑到很远的地方。
-     * 挂到 body 下即恢复以视口为参照（与 .caldav-add-menu 的做法一致）。
-     * 点击监听本就绑在 ctxMenu 自身（见下方 on(ctxMenu, ...)），移动元素不影响。
-     */
-    if (ctxMenu.parentElement !== document.body) document.body.appendChild(ctxMenu);
-
-    ctxMenu.hidden = false;
-    // 先显示再量尺寸，否则 offsetWidth 为 0
-    const w = ctxMenu.offsetWidth;
-    const h = ctxMenu.offsetHeight;
-    const pad = 8;
-    const left = Math.max(pad, Math.min(x, window.innerWidth - w - pad));
-    const top = Math.max(pad, Math.min(y, window.innerHeight - h - pad));
-    ctxMenu.style.left = `${left}px`;
-    ctxMenu.style.top = `${top}px`;
-  }
 
   // ---- 条目菜单触发：桌面右键 / 触摸长按 ----
   // 触摸端长按是桌面右键的等价操作。不能只靠 contextmenu：iOS 的 WKWebView 不派发
@@ -434,12 +375,10 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     //    只广播，由入口（main.ts 的 toggleDock）决定具体行为 —— 开关 Dock 属于承载层的事。
     const cell = blankDayCell(t);
     if (!cell) {
-      hideCtxMenu();
       return;
     }
     ev.preventDefault();
     ev.stopPropagation();
-    hideCtxMenu();
     // 三态会改变右侧栏的整体状态（打开 / 换范围 / 隐藏），主面板无从预知最终是哪种，
     // 故一并清掉单击留下的高亮，免得边框与实际的聚焦范围对不上。
     markSelectedDay(null);
@@ -527,56 +466,6 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     true
   );
 
-  on(ctxMenu, "click", (ev) => {
-    const btn = (ev.target as HTMLElement).closest("[data-ctx]") as HTMLElement | null;
-    if (!btn || !ctxMenuKey) return;
-    const key = ctxMenuKey;
-    const item = ctx.store.get(key);
-    if (!item) {
-      hideCtxMenu();
-      return;
-    }
-    ev.stopPropagation();
-
-    if (btn.dataset.ctx === "edit") {
-      hideCtxMenu();
-      openEditor(ctx, { item });
-      return;
-    }
-    if (btn.dataset.ctx !== "delete") return;
-
-    // 二次点击确认：与编辑弹窗内删除保持一致，不用原生 confirm
-    if (!btn.classList.contains("is-armed")) {
-      btn.classList.add("is-armed");
-      setHtml(btn, `${icons.trash} 再点一次确认删除`);
-      ctxDisarmTimer = window.setTimeout(resetCtxDelete, 4000);
-      return;
-    }
-    resetCtxDelete();
-    btn.setAttribute("disabled", "");
-    btn.textContent = "删除中…";
-    void ctx.sync
-      .removeItem(item)
-      .then(() => {
-        if (ctx.store.get(key)) {
-          // 仍留在本地 = 服务端 DELETE 未成功，会留待下次同步重试
-          ctxErrEl.textContent = "服务器删除未成功，已记录，将在下次同步重试";
-          ctxErrEl.hidden = false;
-          btn.removeAttribute("disabled");
-          setHtml(btn, `${icons.trash} 删除`);
-          return;
-        }
-        hideCtxMenu();
-        renderCalList();
-        renderView();
-      })
-      .catch((e: unknown) => {
-        ctxErrEl.textContent = "删除失败：" + errMessage(e);
-        ctxErrEl.hidden = false;
-        btn.removeAttribute("disabled");
-        setHtml(btn, `${icons.trash} 删除`);
-      });
-  });
 
   // 视图内导航（年视图跳月/日）
   ctx.navigate = (mode: ViewMode, cursor?: string) => {
@@ -754,28 +643,22 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     ctx.store.saveSettings();
   });
 
-  // 点击面板其它区域时收起浮层（日历筛选 + 右键菜单）
+  // 点击面板其它区域时收起日历筛选浮层
   const onDocClick = (ev: MouseEvent) => {
     const t = ev.target as HTMLElement;
-    if (!ctxMenu.hidden && !t.closest(".caldav-ctxmenu")) hideCtxMenu();
     if (calfilterPop.hidden) return;
     if (t.closest(".caldav-calfilter-wrap")) return;
     calfilterPop.hidden = true;
   };
   document.addEventListener("click", onDocClick, true);
 
-  // Esc 关闭；滚动/窗口尺寸变化时菜单会与条目错位，直接收起
+  // Esc 关闭筛选浮层
   const onKeydown = (ev: KeyboardEvent) => {
     if (ev.key === "Escape") {
-      hideCtxMenu();
       calfilterPop.hidden = true;
     }
   };
-  const onReflow = () => hideCtxMenu();
   document.addEventListener("keydown", onKeydown, true);
-  window.addEventListener("resize", onReflow);
-  // 捕获阶段监听滚动（视图容器自身也可滚）
-  document.addEventListener("scroll", onReflow, true);
 
   const unsub = ctx.store.onChange(() => {
     if (!suppressRerender) renderAll();
@@ -785,17 +668,12 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   return {
     destroy() {
       destroyed = true;
-      // 摘掉挂在根元素/右键菜单上的监听（它们可能被复用，漏摘会叠加处理器）
+      // 摘掉挂在根元素上的监听（它可能被复用，漏摘会叠加处理器）
       offAll();
       document.removeEventListener("click", onDocClick, true);
       document.removeEventListener("keydown", onKeydown, true);
-      document.removeEventListener("scroll", onReflow, true);
-      window.removeEventListener("resize", onReflow);
       unsub();
       cancelPendingClick();
-      // ctxMenu 可能已被挂到 body 下（见 showCtxMenu），清空 root 清不掉它，
-      // 留着会在插件重载后变成孤儿节点
-      if (ctxMenu.parentElement === document.body) ctxMenu.remove();
       root.empty();
     },
     refresh() {
