@@ -155,7 +155,11 @@ export class CalDavSettingTab extends PluginSettingTab {
       {
         name: "连接与发现",
         desc: "先测试连接，再发现服务器上的日历。",
-        action: (el: HTMLElement) => this.renderConnectionButtons(el),
+        // 用 render 而非 action：action 的 el 已是 Obsidian 分配好的容器，
+        // 在里面再 `new Setting(el)` 会套出错误的嵌套结构 ——
+        // 表现为标题文字被挤成竖排、整行重复多次（实测踩到，2026-10-06）。
+        // render 收到的是已建好的 Setting，直接 addButton 即可。
+        render: (setting: Setting) => this.renderConnectionButtons(setting),
         aliases: ["测试", "连接", "发现", "test", "discover"],
       },
     ];
@@ -228,7 +232,8 @@ export class CalDavSettingTab extends PluginSettingTab {
         {
           name: "提醒状态",
           desc: this.plugin.mainCtx.reminderStatus?.() ?? "-",
-          action: (el: HTMLElement) => this.renderReminderTestButton(el),
+          // 同上：用 render 拿 Setting，不要在 action 的容器里再 new Setting
+          render: (setting: Setting) => this.renderReminderTestButton(setting),
           aliases: ["测试", "提醒状态", "test"],
         },
       ],
@@ -297,10 +302,15 @@ export class CalDavSettingTab extends PluginSettingTab {
   }
 
 
-  private renderConnectionButtons(el: HTMLElement): void {
-    new Setting(el)
-      .setName("连接与发现")
-      .setDesc("先测试连接，再发现服务器上的日历。")
+  /**
+   * 「连接与发现」两个按钮。
+   *
+   * ⚠️ `setting` 是**已建好的 Setting**（name/desc 已由 defs 设好），
+   * 直接 addButton即可。原写法 `new Setting(el)` 会造出嵌套的错误结构，
+   * 表现为标题文字竖排、整行重复 —— 2026-10-06 实测踩到。
+   */
+  private renderConnectionButtons(setting: Setting): void {
+    setting
       .addButton((b) =>
         b.setButtonText("测试连接").onClick(async () => {
           const auth = { username: this.s.username, password: this.s.password };
@@ -319,10 +329,9 @@ export class CalDavSettingTab extends PluginSettingTab {
       );
   }
 
-  private renderReminderTestButton(el: HTMLElement): void {
-    new Setting(el)
-      .setName("提醒状态")
-      .setDesc(this.plugin.mainCtx.reminderStatus?.() ?? "-")
+  /** 「提醒状态」+ 发送测试提醒按钮。同样直接用传入的 Setting。 */
+  private renderReminderTestButton(setting: Setting): void {
+    setting
       .addButton((b) =>
         b.setButtonText("发送测试提醒").onClick(async () => {
           await this.plugin.mainCtx.testReminder?.();

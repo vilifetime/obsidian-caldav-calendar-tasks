@@ -52,10 +52,16 @@ const checks = {
   // **不报**非空断言 `!` —— 故未列入本检查。
   "as Partial<T>（动态 key 场景，通常多余）": [/as Partial<\w+>/],
   "同一表达式上重复的 as": [/\)\s*as\s+\w+[\s\S]{0,4}\bas\s+\w+/],
-  // 🔴 2026-10-06 真实故障：声明式 render 回调的签名是 (setting: Setting, group: SettingGroup)，
-  // **不是** (el: HTMLElement)。写错时 tsc 不报错（回调参数无注解就隐式 any），
-  // 运行时在 new Setting(el) 处炸掉 → 表现为「该行及之后的设置项全部消失」。
+  // 🔴 2026-10-06 真实故障（两次，同一根因）：
+  // 声明式回调收到的是**已建好的 Setting 对象**，
+  //   render: (setting: Setting, group: SettingGroup) => void
+  //   action: (el: HTMLElement, index: number) => void
+  // 不是 (el: HTMLElement)。两种错法的症状不同：
+  //   ① render 用错签名 → new Setting(el) 抛异常 → **该行及之后设置项全部消失**
+  //   ② action 里再 new Setting(el) → 套出嵌套结构 → **标题竖排、整行重复多次**
+  // tsc 都不报错（联合类型的回调参数没有位置约束），只能靠自查 + 实测。
   "render 回调误用 HTMLElement": [/render:\s*\(\s*el: HTMLElement\s*\)/],
+  "action 回调里再 new Setting": [/action:[^\n]*\n(?:[^\n]*\n)??[^\n]*new Setting\(/],
   // 注：getRightLeaf 的 @since 是 0.9.7，远低于 minAppVersion，**不在此列**。
   // 加检查前务必先查 obsidian.d.ts 的 @since，别把安全 API 当违规。
 };
