@@ -205,6 +205,8 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     const overdue = !isDone && !!due && due < today;
     const pr = priorityMeta(it.priority);
     const cal = ctx.store.settings.calendars.find((c) => c.url === it.calendarUrl);
+    /** 条目前的小框标签：中文「日程/待办」，英文界面显示 event/task（走 i18n 键） */
+    const kindLabel = (): string => ctx.i18n(isEvent ? "kindEvent" : "kindTodo");
     const dueText = isDone
       ? it.completedAt
         ? "完成于 " + it.completedAt.slice(5, 10)
@@ -220,14 +222,14 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
       : due.slice(5);
     // 日程没有「完成」语义：勾选框改为「打开详情」，且不显示优先级（VEVENT 无 PRIORITY）
     const check = isEvent
-      ? `<span class="cal-task-check cal-task-check--event" title="日程，不可勾选"></span>`
+      ? `<span class="cal-task-check cal-task-check--event" title="${kindLabel()}"></span>`
       : `<button class="cal-task-check" data-toggle="${k}" title="${isDone ? "标记未完成" : "标记完成"}">${isDone ? "✓" : ""}</button>`;
     const prio = !isEvent && pr.label ? `<span class="cal-task-priority ${pr.cls}">${pr.label}</span>` : "";
     return `
-<div class="cal-task ${isDone ? "is-done" : ""} ${overdue ? "is-overdue" : ""} ${isEvent ? "is-event" : ""}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">
+<div class="cal-task ${isDone ? "is-done" : ""} ${overdue ? "is-overdue" : ""} ${isEvent ? "is-event" : "is-todo"}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">
   ${check}
   <div class="cal-task-body">
-    <div class="cal-task-title">${isEvent ? '<span class="cal-task-kind">日程</span>' : ""}${it.rrule ? "↻ " : ""}${escape(it.summary || "(无标题)")}
+    <div class="cal-task-title"><span class="cal-task-kind ${isEvent ? "is-event" : "is-todo"}">${kindLabel()}</span>${it.rrule ? "↻ " : ""}${escape(it.summary || "(无标题)")}
       ${prio}</div>
     <div class="cal-task-meta">
       <span class="${overdue ? "cal-task-overdue" : ""}">${dueText}</span>

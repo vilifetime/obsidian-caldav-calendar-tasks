@@ -795,7 +795,13 @@
 .cal-task-filter {
   flex: 0 0 auto;
   max-width: 220px;
-  padding: 7px 28px 7px 12px;
+  /* 与 .caldav-input 的高度对齐（2026-10-07 雄哥反馈「底部没对齐」）：
+     .caldav-input 是 padding 8px + 1px 边框 + line-height 1.4，
+     本框原来 padding 只有 7px 且 select 的 line-height 默认不同 → 矮 2~3px。
+     这里显式对齐 padding / line-height / box-sizing 三项。 */
+  padding: 8px 28px 8px 12px;
+  line-height: 1.4;
+  box-sizing: border-box;
   border: 1px solid var(--caldav-border);
   border-radius: 8px;
   background: var(--caldav-bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 4.5L6 7.5L9 4.5' stroke='%23646a73' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 10px center;
@@ -811,20 +817,25 @@
 
 .cal-task-quick { flex: 1; }
 
+/* 整框与左侧色条同色（2026-10-07雄哥要求）：
+   原先只 `border-left: 3px solid var(--cal-color)`，其余三边是灰线，
+   显得「半截」���现上下右边框都取同一个 --cal-color，透明度略低一档，
+   这样左侧粗条仍是视觉主导，但整张卡片带着日历色。 */
 .cal-task {
   display: flex;
   gap: 10px;
   padding: 8px 10px;
-  border: 1px solid var(--caldav-border);
+  border: 1px solid color-mix(in srgb, var(--cal-color, var(--caldav-border)) 42%, transparent);
+  border-left: 3px solid var(--cal-color, var(--caldav-border));
   border-radius: 9px;
   margin-bottom: 6px;
   cursor: pointer;
   background: var(--caldav-bg);
   transition: all 0.15s;
-  border-left: 3px solid var(--cal-color, transparent);
 }
-
 .cal-task:hover { box-shadow: 0 1px 6px rgba(0, 0, 0, 0.07); }
+/* 已完成条目淡出：连边框一起淡，避免完成项在彩色卡片群里过于抢眼 */
+.cal-task.is-done { border-color: color-mix(in srgb, var(--cal-color, var(--caldav-border)) 18%, transparent); }
 .cal-task.is-done .cal-task-title { text-decoration: line-through; opacity: 0.5; }
 
 .cal-task-check {
@@ -881,7 +892,13 @@
 .cal-task-cal i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
 .cal-task-overdue { color: var(--caldav-danger); font-weight: 500; }
-.cal-task.is-overdue { border-left-color: var(--caldav-danger); }
+/* 逾期条目整框用危险色（2026-10-07）。
+   原先只改 border-left-color，与「整框同色」的规则叠加后会一红一蓝，
+   故把四个边都改成 danger。逾期是唯一「需要打破日历配色」的状态。 */
+.cal-task.is-overdue {
+  border-color: color-mix(in srgb, var(--caldav-danger) 45%, transparent);
+  border-left-color: var(--caldav-danger);
+}
 
 /* ── 时间轴分组（2026-10-06）─────────────────────────────────
    此前 190 条待办平铺且无排序，扫不出轻重缓急。现按
@@ -939,16 +956,31 @@
   background: var(--cal-color, var(--caldav-text-2));
   flex: 0 0 auto;
 }
+/* 类型小框（2026-10-07）：日程 / 待办的中英标签。
+   中文「日程」「待办」，英文界面自动切成 event / task（i18n 键 kindEvent/kindTodo）。 */
 .cal-task-kind {
   font-size: 10px;
-  color: var(--caldav-text-2);
-  border: 0.5px solid var(--caldav-border);
+  line-height: 1.4;
   border-radius: 3px;
   padding: 0 4px;
   margin-right: 5px;
   vertical-align: 1px;
-  font-weight: 400;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  flex: 0 0 auto;
+  border: 0.5px solid;
 }
+.cal-task-kind.is-event {
+  color: #378ADD;
+  border-color: color-mix(in srgb, #378ADD 45%, transparent);
+  background: color-mix(in srgb, #378ADD 10%, transparent);
+}
+.cal-task-kind.is-todo {
+  color: #BA7517;
+  border-color: color-mix(in srgb, #BA7517 45%, transparent);
+  background: color-mix(in srgb, #BA7517 10%, transparent);
+}
+.cal-task.is-done .cal-task-kind { opacity: 0.5; }
 
 .cal-task-empty {
   text-align: center;

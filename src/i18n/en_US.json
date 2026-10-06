@@ -9,5 +9,7 @@
   "testReminder": "Send a test reminder",
   "statusBarSyncing": "Syncing…",
   "statusBarIdle": "CalDAV",
-  "statusBarError": "Sync failed"
+  "statusBarError": "Sync failed",
+  "kindEvent": "event",
+  "kindTodo": "task"
 }

@@ -9,5 +9,7 @@
   "testReminder": "发送一条测试提醒",
   "statusBarSyncing": "同步中…",
   "statusBarIdle": "CalDAV",
-  "statusBarError": "同步失败"
+  "statusBarError": "同步失败",
+  "kindEvent": "日程",
+  "kindTodo": "待办"
 }
