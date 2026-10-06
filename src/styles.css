@@ -689,34 +689,56 @@
 
 /* ===== 任务视图 ===== */
 .cal-task-view {
-  /* 2026-10-06：原先后是 720px，改为撑满主区域。
-     保留 `margin: 0 auto`（对超宽屏仍居中，但主区域不会宽到需要）、
-     去掉 max-width —— 雄哥实测反馈「空白要小一点、尽量撑满主窗口」。
-     padding 只留 16px 20px，横向占用降到最小。 */
+  /* 2026-10-06 三轮调整（均为雄哥实测反馈）：
+       初版 max-width 720px → 空白太大；
+       二版 1080px→ 他的窗口就1080px，等于没改；
+       三版去掉 max-width → 「太靠边界」。
+     现取**无上限 + 24px 横向内边距**：撑满主区域，同时留出呼吸空间。
+     24px 是参照 Obsidian 自身设置页/编辑器的内容边距（16~24px）取的，
+     窄窗口下自动收窄，视觉上不会显得空。 */
   margin: 0 auto;
-  padding: 16px 14px 40px;
+  padding: 16px 24px 40px;
   height: 100%;
   width: 100%;
   overflow: auto;
-  /* 原先没给这个容器写滚动条规则，走系统默认 —— Windows 上是「悬停才显示」。
-     显式给一道细滚动条，否则用户不知道下面还有内容。
-     scrollbar-gutter: stable —— 滚动条出现时不引起内容横向跳动。 */
+  /* 滚动条：默认隐藏，悬停到该区域才显形（雄哥要求）。
+     两套写法都要 —— 标准属性给 Firefox/未来实现，
+     ::-webkit-* 给 Chromium/Electron（Obsidian 桌面版实际走的）。
+     scrollbar-gutter: stable —— 显形时不引起内容横向跳动。 */
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--caldav-text-2) 45%, transparent) transparent;
+  scrollbar-color: transparent transparent;
   scrollbar-gutter: stable;
+  transition: scrollbar-color 0.2s ease;
+}
+.cal-task-view:hover {
+  scrollbar-color: color-mix(in srgb, var(--caldav-text-2) 45%, transparent) transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cal-task-view { transition: none; }
+  .cal-task-view::-webkit-scrollbar-thumb { transition: none; }
+}
+
+/* 窄窗口（侧栏较宽 / 手机）下 24px 偏多，收窄一档。
+   480px 这个断点沿用本文件既有的惯例（见文件末尾的 max-width: 480px 规则）。 */
+@media (max-width: 480px) {
+  .cal-task-view { padding: 12px 12px 32px; }
 }
 /* Chromium / Electron：与上面的标准属性等价 */
 .cal-task-view::-webkit-scrollbar { width: 10px; }
 .cal-task-view::-webkit-scrollbar-track { background: transparent; }
+/* 平时透明（但保留 border，故占位宽度稳定），hover 容器时显形 */
 .cal-task-view::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--caldav-text-2) 40%, transparent);
+  background: transparent;
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: content-box;
+  transition: background-color 0.2s ease;
+}
+.cal-task-view:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--caldav-text-2) 45%, transparent);
 }
 .cal-task-view::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--caldav-text-2) 60%, transparent);
-  background-clip: content-box;
+  background-color: color-mix(in srgb, var(--caldav-text-2) 65%, transparent);
 }
 
 /* 统计条（2026-10-06）：原先 4 张大卡片占满一行、纵向占 90px，
