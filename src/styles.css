@@ -689,31 +689,76 @@
 
 /* ===== 任务视图 ===== */
 .cal-task-view {
-  max-width: 720px;
+  /* 2026-10-06：原先 max-width: 720px，1080px 宽的窗口里两侧各留 180px 空白，
+     列表显得窄。放宽到 1080px —— 主区域通常不会有更宽的可用空间。
+     条目标题过长会自然换行，不需要额外的软上限。 */
+  max-width: 1080px;
   margin: 0 auto;
   padding: 16px 20px 40px;
   height: 100%;
   overflow: auto;
+  /* 原先没给这个容器写滚动条规则，走系统默认 —— Windows 上是「悬停才显示」。
+     显式给一道细滚动条，否则用户不知道下面还有内容。 */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--caldav-text-2) 45%, transparent) transparent;
+}
+/* Chromium / Electron：与上面的标准属性等价 */
+.cal-task-view::-webkit-scrollbar { width: 10px; }
+.cal-task-view::-webkit-scrollbar-track { background: transparent; }
+.cal-task-view::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--caldav-text-2) 40%, transparent);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.cal-task-view::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--caldav-text-2) 60%, transparent);
+  background-clip: content-box;
 }
 
+/* 统计条（2026-10-06）：原先 4 张大卡片占满一行、纵向占 90px，
+   改为**一行紧凑排列**的 6 项，节省纵向空间。
+   数字的字号与颜色沿用原来的（20px / 各组色），只改排布方式。 */
 .cal-task-summary {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  padding: 8px 14px;
   margin-bottom: 12px;
-}
-
-.cal-task-stat {
-  flex: 1;
   background: var(--caldav-bg-2);
   border: 1px solid var(--caldav-border);
   border-radius: 10px;
-  padding: 10px 14px;
 }
 
-.cal-task-stat b { font-size: 20px; font-weight: 700; display: block; }
+.cal-task-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+/* 分隔点：相邻两项之间一根竖线，靠 gap 撑开间距 */
+.cal-task-stat + .cal-task-stat::before {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 12px;
+  margin-right: 12px;
+  background: var(--caldav-border);
+  vertical-align: -1px;
+}
+/* 数字沿用原来的字号与字重（20px / 700），不因改成一行而缩小 */
+.cal-task-stat b { font-size: 20px; font-weight: 700; }
 .cal-task-stat span { font-size: 11.5px; color: var(--caldav-text-2); }
+
+/* 各组配色：与分组头色点一致，保持全页色彩语言统一。
+   「未来」用中性灰蓝、「无日期」用浅灰 —— 二者都属「不紧急」，
+   不该抢注意力；但也不能用得像已完成那样淡到看不见。 */
+.cal-stat-total b { color: var(--caldav-text); }
 .cal-stat-today b { color: var(--caldav-accent); }
 .cal-stat-overdue b { color: var(--caldav-danger); }
+.cal-stat-future b { color: #378ADD; }
+.cal-stat-nodate b { color: #8A8A85; }
 .cal-stat-done b { color: #10b981; }
 
 .cal-task-filterbar {

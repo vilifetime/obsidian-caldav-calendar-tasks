@@ -272,9 +272,33 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
       .join("");
   }
 
-  const total = todos.filter((t) => !done(t.it) && t.due === today).length;
-  const overdueCount = todos.filter((t) => !done(t.it) && t.due && t.due < today).length;
-  const doneCount = todos.filter((t) => done(t.it)).length;
+  /**
+   * 统计条（2026-10-06）：原先 4 张大卡片（各占 1/4 宽、90px 高），
+   * 现改为**一行 6 项**紧凑排列，省纵向空间。
+   *
+   * 数字的字号与配色沿用原样（20px / 各组色），只改排布。
+   * 新增的「未来」「无日期」用中性色 —— 二者都不紧急，不该抢注意力，
+   * 但也不能淡到像已完成那样看不见。
+   *
+   * ⚠️ 计数**复用 GROUPS 的 match**，不要另写一套 —— 两处口径容易漂移
+   * （统计说 190 待办、分组加起来却不是 190）。
+   */
+  const undone = todos.filter((t) => !done(t.it));
+  const countBy = (key: string): number => {
+    const g = GROUPS.find((x) => x.key === key);
+    return g ? todos.filter(g.match).length : 0;
+  };
+  const statHtml = [
+    { cls: "cal-stat-total", label: "待办总数", n: undone.length },
+    { cls: "cal-stat-today", label: "今日", n: countBy("today") },
+    { cls: "cal-stat-overdue", label: "逾期", n: countBy("overdue") },
+    // 「未来」= 明天之后的全部未完成（明天 / 本周 / 下周后 三组合并）
+    { cls: "cal-stat-future", label: "未来", n: undone.filter((t) => t.due !== "" && t.due > today).length },
+    { cls: "cal-stat-nodate", label: "无日期", n: undone.filter((t) => t.due === "").length },
+    { cls: "cal-stat-done", label: "已完成", n: countBy("done") }
+  ]
+    .map((s) => `<div class="cal-task-stat ${s.cls}"><b>${s.n}</b><span>${s.label}</span></div>`)
+    .join("");
 
   const optsHtml = filters
     .map((f) => `<option value="${f.key}" ${f.key === current ? "selected" : ""}>${f.label} (${countOf(f)})</option>`)
@@ -284,12 +308,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     viewEl,
     `
 <div class="cal-task-view">
-  <div class="cal-task-summary">
-    <div class="cal-task-stat"><b>${todos.length}</b><span>待办</span></div>
-    <div class="cal-task-stat cal-stat-today"><b>${total}</b><span>今日到期</span></div>
-    <div class="cal-task-stat cal-stat-overdue"><b>${overdueCount}</b><span>已逾期</span></div>
-    <div class="cal-task-stat cal-stat-done"><b>${doneCount}</b><span>已完成</span></div>
-  </div>
+  <div class="cal-task-summary">${statHtml}</div>
   <div class="cal-task-filterbar">
     <select class="cal-task-filter" data-filter title="按条件筛选">${optsHtml}</select>
     <input class="caldav-input cal-task-quick" placeholder="快速添加待办，回车保存（默认今天）…" data-quickadd/>
