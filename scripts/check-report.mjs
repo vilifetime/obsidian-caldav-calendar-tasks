@@ -55,7 +55,7 @@ const checks = {
   // 🔴 2026-10-06 真实故障：声明式 render 回调的签名是 (setting: Setting, group: SettingGroup)，
   // **不是** (el: HTMLElement)。写错时 tsc 不报错（回调参数无注解就隐式 any），
   // 运行时在 new Setting(el) 处炸掉 → 表现为「该行及之后的设置项全部消失」。
-  "render 回调误用 HTMLElement": [/render:////s*////(////s*el: HTMLElement\)/],
+  "render 回调误用 HTMLElement": [/render:\s*\(\s*el: HTMLElement\s*\)/],
   // 注：getRightLeaf 的 @since 是 0.9.7，远低于 minAppVersion，**不在此列**。
   // 加检查前务必先查 obsidian.d.ts 的 @since，别把安全 API 当违规。
 };
