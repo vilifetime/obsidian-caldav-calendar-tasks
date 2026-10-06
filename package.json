@@ -7,7 +7,7 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "typecheck": "tsc -noEmit -skipLibCheck",
-    "test": "node test/smoke.cjs && node test/leaf-split.cjs && node test/dock-toggle.cjs && node test/dock-focus-entry.cjs",
+    "test": "node test/smoke.cjs && node test/leaf-split.cjs && node test/dock-toggle.cjs && node test/dock-focus-entry.cjs && node test/task-bucket.cjs",
     "deploy": "node scripts/deploy.mjs"
   },
   "keywords": [

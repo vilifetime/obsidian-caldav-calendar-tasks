@@ -813,6 +813,73 @@
 .cal-task-overdue { color: var(--caldav-danger); font-weight: 500; }
 .cal-task.is-overdue { border-left-color: var(--caldav-danger); }
 
+/* ── 时间轴分组（2026-10-06）─────────────────────────────────
+   此前 190 条待办平铺且无排序，扫不出轻重缓急。现按
+   逾期 / 今天 / 明天 / 本周 / 下周后 / 无日期 / 已完成 分桶。
+   组头用 --group-color 承载该组的紧迫度色，点一下可折叠。 */
+.cal-task-group { margin-bottom: 4px; }
+.cal-task-group-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 4px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--caldav-border);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+}
+.cal-task-group-head:hover { background: var(--caldav-inset); }
+.cal-task-group-head:focus-visible {
+  outline: 2px solid var(--caldav-accent);
+  outline-offset: 1px;
+}
+.cal-task-group-caret {
+  font-size: 9px;
+  color: var(--caldav-text-2);
+  width: 10px;
+  flex: 0 0 auto;
+  line-height: 1;
+}
+.cal-task-group-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.cal-task-group-label { font-size: 13px; font-weight: 500; }
+.cal-task-group-count {
+  font-size: 11px;
+  color: var(--caldav-text-2);
+  background: var(--caldav-bg-3);
+  border-radius: 9px;
+  padding: 1px 7px;
+  line-height: 1.5;
+}
+/* 组内条目：左侧色条改用组色，视觉上把同组的东西串起来 */
+.cal-task-group-body .cal-task:first-child { border-top-left-radius: 4px; border-top-right-radius: 4px; }
+.cal-task-group-body .cal-task:last-child { border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; }
+
+/* 日程事件（混排时区分于待办）：无勾选框，用左侧小圆点标记 */
+.cal-task.is-event .cal-task-check--event {
+  width: 8px;
+  height: 8px;
+  margin: 0 4px;
+  border-radius: 50%;
+  background: var(--cal-color, var(--caldav-text-2));
+  flex: 0 0 auto;
+}
+.cal-task-kind {
+  font-size: 10px;
+  color: var(--caldav-text-2);
+  border: 0.5px solid var(--caldav-border);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 5px;
+  vertical-align: 1px;
+  font-weight: 400;
+}
+
 .cal-task-empty {
   text-align: center;
   color: var(--caldav-text-2);
@@ -1462,6 +1529,17 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 .caldav-switch-line--inline {
   padding: 2px 0 6px;
 }
+
+/* 第二层联动开关（任务视图显示过期日程）：缩进 + 左边线，
+   视觉上从属于上方的主开关，hidden 时整行不占位。 */
+.caldav-switch-line--nested {
+  padding-left: 14px;
+  margin-left: 4px;
+  border-left: 2px solid var(--caldav-border);
+  color: var(--caldav-text-2);
+}
+.caldav-switch-line--nested[hidden] { display: none; }
+.caldav-switch-line--nested .caldav-switch-label { font-size: 12.5px; }
 .caldav-switch-line {
   display: flex;
   justify-content: space-between;

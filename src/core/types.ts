@@ -132,6 +132,22 @@ export interface CalSettings {
    * 所以这是一个纯展示开关，不影响数据与同步。
    */
   showTodosInCalendar?: boolean;
+  /**
+   * 任务视图是否把**日程事件**（VEVENT）也一并显示，默认 false。
+   *
+   * 任务视图本来只列待办（VTODO）。打开后同一列表里会混入日程，
+   * 便于「今天既要做什么、又要做什么」一眼看全。
+   * 纯展示开关，不影响数据与同步。
+   */
+  showEventsInTaskView?: boolean;
+  /**
+   * 任务视图是否显示**已过期**的日程事件，默认 false。
+   *
+   * 仅在 `showEventsInTaskView` 为true 时才有意义（UI 上嵌套显示）——
+   * 日程过期后没有「完成」语义，默认藏起来免得污染列表；
+   * 需要追忆历史日程时才打开。
+   */
+  showExpiredEventsInTaskView?: boolean;
   /** 任务分类（编辑弹窗药丸选择），空数组时回退 DEFAULT_CATEGORIES */
   categories?: CategoryDef[];
   /** 分类是否允许多选 */

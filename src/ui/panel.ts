@@ -71,6 +71,21 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
                 <span class="caldav-switch-track"></span>
               </span>
             </label>
+            <label class="caldav-switch-line caldav-switch-line--inline caldav-calfilter-opt">
+              <span class="caldav-switch-label">任务视图中显示日程事件</span>
+              <span class="caldav-switch">
+                <input type="checkbox" data-opt="showEventsInTaskView"/>
+                <span class="caldav-switch-track"></span>
+              </span>
+            </label>
+            <label class="caldav-switch-line caldav-switch-line--inline caldav-calfilter-opt caldav-switch-line--nested"
+                   data-opt-row="showExpiredEvents" hidden>
+              <span class="caldav-switch-label">任务视图中显示过期日程</span>
+              <span class="caldav-switch">
+                <input type="checkbox" data-opt="showExpiredEventsInTaskView"/>
+                <span class="caldav-switch-track"></span>
+              </span>
+            </label>
             <div class="caldav-calfilter-foot">
               <button class="caldav-link" data-action="insert-diary">把今日日程与待办插入日记</button>
             </div>
@@ -89,6 +104,10 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   const calListEl = root.querySelector(".caldav-cal-list") as HTMLElement;
   const calfilterPop = root.querySelector(".caldav-calfilter-pop") as HTMLElement;
   const showTodosInput = root.querySelector('[data-opt="showTodos"]') as HTMLInputElement;
+  const showEventsInput = root.querySelector('[data-opt="showEventsInTaskView"]') as HTMLInputElement;
+  const showExpiredInput = root.querySelector('[data-opt="showExpiredEventsInTaskView"]') as HTMLInputElement;
+  /** 第二层开关所在的整行；仅当第一层打开时才显示 */
+  const showExpiredRow = root.querySelector<HTMLElement>('[data-opt-row="showExpiredEvents"]');
   const viewEl = root.querySelector(".caldav-view") as HTMLElement;
   const cursorTitleEl = root.querySelector(".caldav-cursor-title") as HTMLElement;
   const segBtns = Array.from(root.querySelectorAll<HTMLElement>(".caldav-seg-btn"));
@@ -141,8 +160,24 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     return ctx.store.settings.showTodosInCalendar !== false;
   }
 
+  /** 任务视图是否混入日程事件：默认 false（只有显式打开才为 true） */
+  function eventsShownInTaskView(): boolean {
+    return ctx.store.settings.showEventsInTaskView === true;
+  }
+
+  /**
+   * 第二层开关的显隐跟随第一层：主开关关闭时整行 hidden。
+   * 抽成函数是因为渲染初始值与 change 处理都要用到。
+   */
+  function syncExpiredRow(): void {
+    if (showExpiredRow) showExpiredRow.hidden = !showEventsInput.checked;
+  }
+
   function renderFilterOpts(): void {
     showTodosInput.checked = todosShownInCalendar();
+    showEventsInput.checked = eventsShownInTaskView();
+    showExpiredInput.checked = ctx.store.settings.showExpiredEventsInTaskView === true;
+    syncExpiredRow();
   }
 
   function cursorTitle(): string {
@@ -642,6 +677,23 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   // 自动 renderAll + 落盘），不用在这里手动重渲染。
   showTodosInput.addEventListener("change", () => {
     ctx.store.settings.showTodosInCalendar = showTodosInput.checked;
+    ctx.store.saveSettings();
+  });
+
+  // 「任务视图中显示日程事件」：默认关闭，打开后才显示第二层「显示过期日程」
+  showEventsInput.addEventListener("change", () => {
+    ctx.store.settings.showEventsInTaskView = showEventsInput.checked;
+    // 关闭主开关时把第二层也一并关掉 —— 留着「显示过期日程 = true」但主开关
+    // 关着，下次打开会突然冒出一堆过期日程，容易让人以为出bug。
+    if (!showEventsInput.checked) {
+      showExpiredInput.checked = false;
+      ctx.store.settings.showExpiredEventsInTaskView = false;
+    }
+    syncExpiredRow();
+    ctx.store.saveSettings();
+  });
+  showExpiredInput.addEventListener("change", () => {
+    ctx.store.settings.showExpiredEventsInTaskView = showExpiredInput.checked;
     ctx.store.saveSettings();
   });
 
