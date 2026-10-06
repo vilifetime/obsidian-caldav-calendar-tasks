@@ -104,17 +104,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
         continue;
       }
       const occs = todoDueOccurrences(it, parseLocalStamp(today).getTime(), endMs);
-      const due = occs.length && occs[0] ? occs[0].slice(0, 10) : dueSrc.slice(0, 10);
-
-      // 「显示过期日程」关闭时，**已过期且已完成**的待办一并藏掉
-      // （雄哥 2026-10-07 要求）：既不进列表、也不进统计条的「已完成」。
-      // 已过期的**未完成**待办仍要保留 —— 它们落在「逾期」组里、仍有行动价值。
-      //
-      // 该开关原先只管日程（见下方 event 分支），此处把作用范围扩展到
-      //「过期的已完成待办」，因为二者性质相同：都是「过去的、不再需要关注的东西」。
-      if (!showExpired && due !== "" && due < today && done(it)) continue;
-
-      rows.push({ it, due, isEvent: false });
+      rows.push({ it, due: occs.length && occs[0] ? occs[0].slice(0, 10) : dueSrc.slice(0, 10), isEvent: false });
       continue;
     }
 

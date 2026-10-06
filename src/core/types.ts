@@ -141,15 +141,11 @@ export interface CalSettings {
    */
   showEventsInTaskView?: boolean;
   /**
-   * 是否显示**已过期**的条目：过期的日程，以及已过期的已完成待办。
-   * 默认 false。
+   * 任务视图是否显示**已过期**的日程事件，默认 false。
    *
-   * 仅在 `showEventsInTaskView` 为true 时才有意义（UI 上嵌套显示）。
-   * 「过期」指归属日期早于今天 —— 已经没有行动价值的东西，默认藏起来
-   * 免得污染列表与统计数字（已完成 182 里约 105 个是过期的）。
-   *
-   * ⚠️ **过期的未完成待办不受本开关影响** —— 它们仍显示在「逾期」组里，
-   * 因为那正是最该看的。需要追忆历史时才打开。
+   * 仅在 `showEventsInTaskView` 为true 时才有意义（UI 上嵌套显示）——
+   * 日程过期后没有「完成」语义，默认藏起来免得污染列表；
+   * 需要追忆历史日程时才打开。
    */
   showExpiredEventsInTaskView?: boolean;
   /** 任务分类（编辑弹窗药丸选择），空数组时回退 DEFAULT_CATEGORIES */
