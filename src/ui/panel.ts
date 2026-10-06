@@ -80,7 +80,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
             </label>
             <label class="caldav-switch-line caldav-switch-line--inline caldav-calfilter-opt caldav-switch-line--nested"
                    data-opt-row="showExpiredEvents" hidden>
-              <span class="caldav-switch-label">任务视图中显示过期日程</span>
+              <span class="caldav-switch-label">任务视图中显示过期条目</span>
               <span class="caldav-switch">
                 <input type="checkbox" data-opt="showExpiredEventsInTaskView"/>
                 <span class="caldav-switch-track"></span>
