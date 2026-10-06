@@ -689,18 +689,21 @@
 
 /* ===== 任务视图 ===== */
 .cal-task-view {
-  /* 2026-10-06：原先 max-width: 720px，1080px 宽的窗口里两侧各留 180px 空白，
-     列表显得窄。放宽到 1080px —— 主区域通常不会有更宽的可用空间。
-     条目标题过长会自然换行，不需要额外的软上限。 */
-  max-width: 1080px;
+  /* 2026-10-06：原先后是 720px，改为撑满主区域。
+     保留 `margin: 0 auto`（对超宽屏仍居中，但主区域不会宽到需要）、
+     去掉 max-width —— 雄哥实测反馈「空白要小一点、尽量撑满主窗口」。
+     padding 只留 16px 20px，横向占用降到最小。 */
   margin: 0 auto;
-  padding: 16px 20px 40px;
+  padding: 16px 14px 40px;
   height: 100%;
+  width: 100%;
   overflow: auto;
   /* 原先没给这个容器写滚动条规则，走系统默认 —— Windows 上是「悬停才显示」。
-     显式给一道细滚动条，否则用户不知道下面还有内容。 */
+     显式给一道细滚动条，否则用户不知道下面还有内容。
+     scrollbar-gutter: stable —— 滚动条出现时不引起内容横向跳动。 */
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--caldav-text-2) 45%, transparent) transparent;
+  scrollbar-gutter: stable;
 }
 /* Chromium / Electron：与上面的标准属性等价 */
 .cal-task-view::-webkit-scrollbar { width: 10px; }
