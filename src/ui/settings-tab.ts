@@ -136,8 +136,11 @@ export class CalDavSettingTab extends PluginSettingTab {
         name: "密码",
         desc: "落盘时以 AES-GCM 加密存储；主密钥随插件数据一起保存，多设备可共用。",
         // 声明式的 text 控件没有 `password` 选项（无原生密码输入），
-        // 故用 render 自绘一个type=password 的输入框。
-        render: (el: HTMLElement) => this.renderPasswordRow(el),
+        // 故用 render 自绘。**签名必须是 (setting, group)** ——
+        // Obsidian 已建好 Setting 并设好 name/desc，我们只往它身上加控件。
+        // 传成 (el: HTMLElement) 会在 `new Setting(el)` 处炸掉，
+        // 表现为「密码框及之后的设置项全部消失」（实测踩到，2026-10-06）。
+        render: (setting: Setting) => this.renderPasswordRow(setting),
         aliases: ["password", "密码"],
       },
       ...(this.plugin.store.credentialsIssue()
@@ -199,7 +202,7 @@ export class CalDavSettingTab extends PluginSettingTab {
           name: "显示范围",
           desc: `过去 ${s.pastDays} 天 / 未来 ${s.futureDays} 天（影响拉取与视图范围）`,
           // 一个 Setting 需要两个数字输入，声明式里用 render 表达
-          render: (el: HTMLElement) => this.renderRangeRow(el),
+          render: (setting: Setting) => this.renderRangeRow(setting),
           aliases: ["范围", "过去", "未来", "range"],
         },
       ],
@@ -270,25 +273,27 @@ export class CalDavSettingTab extends PluginSettingTab {
     return {
       name: cal.displayName || cal.url,
       desc: caps ? `支持：${caps}` : cal.url,
-      render: (el: HTMLElement) => this.renderCalendarRow(el, cal),
+      render: (setting: Setting) => this.renderCalendarRow(setting, cal),
       aliases: ["日历", "calendar", cal.displayName || cal.url],
     };
   }
 
   /** 声明式下需要自绘的少数几处（多控件行/ 按钮组 / 密码框） */
 
-  /** 密码框：声明式的 text 控件不支持 password 类型，只能自绘 */
-  private renderPasswordRow(el: HTMLElement): void {
-    new Setting(el)
-      .setName("密码")
-      .setDesc("落盘时以 AES-GCM 加密存储；主密钥随插件数据一起保存，多设备可共用。")
-      .addText((t) => {
-        t.inputEl.type = "password";
-        t.setValue(this.s.password).onChange((v) => {
-          this.s.password = v;
-          void this.save();
-        });
+  /**
+   * 密码框：声明式的 text 控件不支持 password 类型，只能自绘。
+   *
+   * ⚠️ 收到的 `setting` 是**已建好的 Setting 对象**（Obsidian 已设好 name/desc），
+   * 直接往它身上 addText 即可 —— 不要再 `new Setting(...)`。
+   */
+  private renderPasswordRow(setting: Setting): void {
+    setting.addText((t) => {
+      t.inputEl.type = "password";
+      t.setValue(this.s.password).onChange((v) => {
+        this.s.password = v;
+        void this.save();
       });
+    });
   }
 
 
@@ -327,22 +332,22 @@ export class CalDavSettingTab extends PluginSettingTab {
       );
   }
 
-  /** 「显示范围」一行两个数字输入，声明式无对应控件类型，用 render 自绘 */
-  private renderRangeRow(el: HTMLElement): void {
+  /**
+   * 「显示范围」一行两个数字输入，声明式无对应控件类型，用 render 自绘。
+   *
+   * ⚠️ `setting` 是**已建好的 Setting**（name/desc 已由 defs 设好），
+   * 直接 addText两次即可。原注释写的「收到的是已分配好标题行的容器」是错的 ——
+   * 那正是 2026-10-06 设置项集体消失的根因。
+   */
+  private renderRangeRow(setting: Setting): void {
     const apply = (key: "pastDays" | "futureDays") => (v: string) => {
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0) return;
       this.s[key] = Math.floor(n);
       void this.save();
     };
-    // 声明式的 render 回调收到的是「已分配好标题行的容器」，
-    // 这里补出描述文字与两个数字输入（前者=过去天数，后者=未来天数）。
-    el.createEl("p", {
-      cls: "setting-item-description",
-      text: `过去 ${this.s.pastDays} 天 / 未来 ${this.s.futureDays} 天（影响拉取与视图范围）`,
-    });
-    new Setting(el)
-      .setName("显示范围")
+    setting.setDesc(`过去 ${this.s.pastDays} 天 / 未来 ${this.s.futureDays} 天（影响拉取与视图范围）`);
+    setting
       .addText((t) => {
         t.inputEl.type = "number";
         t.setPlaceholder("过去天数");
@@ -361,14 +366,13 @@ export class CalDavSettingTab extends PluginSettingTab {
 
 
   /** 单个日历：启用勾选 + 名称 + 日程色 / 待办色 */
-  private renderCalendarRow(containerEl: HTMLElement, cal: CalCalendar): void {
+  private renderCalendarRow(setting: Setting, cal: CalCalendar): void {
     const caps = [cal.supportsEvent ? "日程" : "", cal.supportsTodo ? "待办" : ""]
       .filter(Boolean)
       .join(" / ");
-
-    new Setting(containerEl)
-      .setName(cal.displayName || cal.url)
-      .setDesc(caps ? `支持：${caps}` : cal.url)
+    // name / desc 因日历而异，故在这里覆盖（defs 里只能给静态值）
+    setting.setName(cal.displayName || cal.url).setDesc(caps ? `支持：${caps}` : cal.url);
+    setting
       .addToggle((tg) =>
         tg.setValue(cal.enabled).onChange((v) => {
           cal.enabled = v;

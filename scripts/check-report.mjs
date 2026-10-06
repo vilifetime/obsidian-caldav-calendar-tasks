@@ -52,6 +52,10 @@ const checks = {
   // **不报**非空断言 `!` —— 故未列入本检查。
   "as Partial<T>（动态 key 场景，通常多余）": [/as Partial<\w+>/],
   "同一表达式上重复的 as": [/\)\s*as\s+\w+[\s\S]{0,4}\bas\s+\w+/],
+  // 🔴 2026-10-06 真实故障：声明式 render 回调的签名是 (setting: Setting, group: SettingGroup)，
+  // **不是** (el: HTMLElement)。写错时 tsc 不报错（回调参数无注解就隐式 any），
+  // 运行时在 new Setting(el) 处炸掉 → 表现为「该行及之后的设置项全部消失」。
+  "render 回调误用 HTMLElement": [/render:////s*////(////s*el: HTMLElement\)/],
   // 注：getRightLeaf 的 @since 是 0.9.7，远低于 minAppVersion，**不在此列**。
   // 加检查前务必先查 obsidian.d.ts 的 @since，别把安全 API 当违规。
 };
