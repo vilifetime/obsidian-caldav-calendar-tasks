@@ -1634,10 +1634,12 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 
 /* 第二层联动开关（任务视图显示过期日程）：缩进 + 左边线，
    视觉上从属于上方的主开关，hidden 时整行不占位。 */
+/* 第二层联动开关（任务视图显示过期日程）。
+   缩进 + 浅色文字已足够表达「从属于上方主开关」。
+   ⚠️ 不要再加 border-left —— 本行已有 border-bottom（分隔线），
+   左边再来一道竖线会拼成一个「口」字形，看着像输入框（实测踩到，雄哥反馈）。 */
 .caldav-switch-line--nested {
-  padding-left: 14px;
-  margin-left: 4px;
-  border-left: 2px solid var(--caldav-border);
+  padding-left: 20px;
   color: var(--caldav-text-2);
 }
 .caldav-switch-line--nested[hidden] { display: none; }
