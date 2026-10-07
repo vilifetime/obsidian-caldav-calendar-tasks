@@ -194,5 +194,41 @@ const expected = ["overdue", "today", "tomorrow", "thisweek", "later", "nodate",
   console.log(`  [${ok ? "PASS" : "FAIL"}] 统计自洽：待办 ${undoneBefore}→${undoneAfter}，已完成 ${doneBefore}→${doneAfter}`);
 }
 
+// ── 12. 「所有项目」下统计栏与组头计数必须一致（2026-10-07）──
+//雄哥反馈：「列表『已完成』分组的数量和上面统计栏的数字不一致」。
+// 根因：统计栏基于【全部 todos】，组头基于【当前筛选结果】，基数不同。
+// 正解：新增 allitems（不做任何过滤）选项，并把它设为默认 ——
+//此时两者基数相同，数字必然一致。
+{
+  const ALL = [T("未完成甲", TODAY), T("未完成乙", TOMORROW), DONE("已完成丙", "2026-10-01"),
+    { it: { summary: "过期日程", percent: 0 }, due: "2026-09-01", isEvent: true, expired: true }];
+
+  // allitems：不做任何过滤
+  const allitemsList = ALL;
+  const statDone = ALL.filter(isDone).length;
+  const headDone = allitemsList.filter(GROUPS.find(g => g.key === "done").match).length;
+  if (statDone !== headDone) failed++;
+  console.log(`  [${statDone === headDone ? "PASS" : "FAIL"}]所有项目下 统计栏(${statDone}) = 组头(${headDone})`);
+
+  // allincomplete：列表不含已完成项 → 组头必为 0（这是预期，不是 bug）
+  const allincList = ALL.filter(r => !isDone(r));
+  const headDone2 = allincList.filter(GROUPS.find(g => g.key === "done").match).length;
+  if (headDone2 !== 0) failed++;
+  console.log(`  [${headDone2 === 0 ? "PASS" : "FAIL"}] 所有未完成下 组头不含已完成（${headDone2}）`);
+}
+
+// ── 13. filters 与 GROUPS 的「已完成」判定必须同源 ──
+// 2026-10-07 修的深层问题：filters 的 match 只收 (it, due)，
+// 拿不到 expired，导致「过期日程」在筛选里算未完成、在分组里算已完成。
+// 改收 Row 后两处才能共用 isDone。
+{
+  const filterDone = { key: "doneall", label: "已完成", match: (r) => isDone(r) };
+  const groupDone = GROUPS.find(g => g.key === "done").match;
+  const expiredEvent = { it: { summary: "过期日程", percent: 0 }, due: "2026-09-01", isEvent: true, expired: true };
+  const ok = filterDone.match(expiredEvent) === true && groupDone(expiredEvent) === true;
+  if (!ok) failed++;
+  console.log(`  [${ok ? "PASS" : "FAIL"}]筛选与分组对「过期日程」判定一致`);
+}
+
 console.log(failed === 0 ? "\n✓ 任务分组回归测试通过" : `\n✗ ${failed} 个用例失败`);
 process.exit(failed === 0 ? 0 : 1);

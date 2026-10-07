@@ -29,16 +29,29 @@ type FilterKey =
   | "future"
   | "overdue"
   | "past7"
+  | "allitems"
   | "allincomplete"
   | "nodate"
   | "todaydone"
   | "yesterdaydone"
   | "doneall";
 
+/**
+ * 列表里的一行。 为归属日期（YYYY-MM-DD），无日期为空串；
+ *  仅日程有 —— 过期日程按「已完成」处理（见下方 isDone）。
+ */
+type Row = { it: CalItem; due: string; isEvent: boolean; expired?: boolean };
+
 interface TaskFilter {
   key: FilterKey;
   label: string;
-  match: (it: CalItem, due: string) => boolean;
+  /**
+   * 筛选判定。**收整个 Row 而非 (it, due)** ——
+   * 「已完成」有两条路径（percent===100 / 过期日程），只在 `it` 上判断会漏掉后者，
+   * 导致**筛选数字与分组数字对不上**（实测反馈，2026-10-07）。
+   * 改收 Row 后可与 GROUPS 共用同一个 `isDone(row)`，两处口径永远一致。
+   */
+  match: (row: Row) => boolean;
 }
 
 function completedOn(it: CalItem, dateStr: string): boolean {
@@ -54,31 +67,35 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   const weekEnd = addDays(weekStart, 6);
   const past7Start = addDays(today, -7);
 
+  // isDone 在下方定义（函数声明会被提升，此处可安全引用）
   const filters: TaskFilter[] = [
-    { key: "today", label: "今日", match: (_it, d) => !done(_it) && d === today },
-    { key: "tomorrow", label: "明日", match: (_it, d) => !done(_it) && d === tomorrow },
+    // 「所有项目」= 不做任何过滤。此时列表内容与统计栏基数相同，数字必然一致。
+    // 2026-10-07 雄哥要求：只有这个选项下两者要对得上。
+    { key: "allitems", label: "所有项目", match: () => true },
+    { key: "today", label: "今日", match: (r) => !isDone(r) && r.due === today },
+    { key: "tomorrow", label: "明日", match: (r) => !isDone(r) && r.due === tomorrow },
     {
       key: "next7",
       label: "未来七天",
-      match: (_it, d) => !done(_it) && d > tomorrow && d <= in7
+      match: (r) => !isDone(r) && r.due > tomorrow && r.due <= in7
     },
     {
       key: "thisweek",
       label: "本周",
-      match: (_it, d) => !done(_it) && d >= weekStart && d <= weekEnd
+      match: (r) => !isDone(r) && r.due >= weekStart && r.due <= weekEnd
     },
-    { key: "future", label: "未来", match: (_it, d) => !done(_it) && d > in7 },
-    { key: "overdue", label: "过期", match: (_it, d) => !done(_it) && !!d && d < today },
+    { key: "future", label: "未来", match: (r) => !isDone(r) && r.due > in7 },
+    { key: "overdue", label: "过期", match: (r) => !isDone(r) && !!r.due && r.due < today },
     {
       key: "past7",
       label: "过去七天",
-      match: (_it, d) => !done(_it) && !!d && d >= past7Start && d < today
+      match: (r) => !isDone(r) && !!r.due && r.due >= past7Start && r.due < today
     },
-    { key: "allincomplete", label: "所有未完成", match: (_it) => !done(_it) },
-    { key: "nodate", label: "无日期", match: (_it, d) => !done(_it) && !d },
-    { key: "todaydone", label: "今日已完成", match: (it) => completedOn(it, today) },
-    { key: "yesterdaydone", label: "昨日已完成", match: (it) => completedOn(it, yesterday) },
-    { key: "doneall", label: "已完成", match: (it) => done(it) }
+    { key: "allincomplete", label: "所有未完成", match: (r) => !isDone(r) },
+    { key: "nodate", label: "无日期", match: (r) => !isDone(r) && !r.due },
+    { key: "todaydone", label: "今日已完成", match: ({ it }) => completedOn(it, today) },
+    { key: "yesterdaydone", label: "昨日已完成", match: ({ it }) => completedOn(it, yesterday) },
+    { key: "doneall", label: "已完成", match: (r) => isDone(r) }
   ];
 
   // 收集启用日历下的条目。默认只有待办（VTODO）；
@@ -130,11 +147,15 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   }
   const todos = rows;
 
-  const countOf = (f: TaskFilter) => todos.filter((t) => f.match(t.it, t.due)).length;
-  //外层断言必要（dataset.filter 是 string，|| 之后仍是 string，需收窄到 FilterKey）；
+  const countOf = (f: TaskFilter) => todos.filter(f.match).length;
+// 外层断言必要（dataset.filter 是 string，|| 之后仍是 string，需收窄到 FilterKey）；
   // 内层那个 `as FilterKey` 紧跟在 `||` 结果之后，作用对象已是 string，**完全不改变类型**
   // （社区扫描报的 no-unnecessary-type-assertion 就是它），故去掉。
-  const current: FilterKey = (viewEl.dataset.filter || "allincomplete") as FilterKey;
+  //
+  // 默认「所有项目」而非「所有未完成」（2026-10-07 雄哥要求）：
+  // 只有前者统计栏与组头计数基数相同、数字必然一致；后者列表里没有已完成项，
+  // 组头恒为 0 而统计栏显示全量，看着像对不上。已完成组默认折叠，不展开也不碍事。
+  const current: FilterKey = (viewEl.dataset.filter || "allitems") as FilterKey;
 
   /** iCal PRIORITY（1 最高、9 最低）→ 文案与配色级别；覆盖 1~9 全部取值 */
   const priorityMeta = (p?: number): { label: string; cls: string } => {
@@ -169,7 +190,11 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
    * ⚠️ 统计条与分组**必须共用这一个判定**，否则会出现「已完成 +2 但待办总数
    * 没减」这种自相矛盾的数字（分组与统计是两处独立代码，最容易漂移）。
    */
-  const isDone = (r: Row): boolean => done(r.it) || r.expired === true;
+  /** ⚠️ 必须用**函数声明**而非箭头函数 —— 上面的 filters（第 71 行起）在用它，
+   * 而 `const f = () => {}` 不会被提升，届时直接 ReferenceError。 */
+  function isDone(r: Row): boolean {
+    return done(r.it) || r.expired === true;
+  }
 
   const GROUPS: { key: string; label: string; color: string; match: (r: Row) => boolean }[] = [
     { key: "overdue", label: "逾期", color: "var(--caldav-danger)", match: (r) => !isDone(r) && r.due !== "" && r.due < today },
@@ -304,7 +329,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
 
   function listHtml(filterKey: FilterKey): string {
     const f = filters.find((x) => x.key === filterKey)!;
-    const list = todos.filter((t) => f.match(t.it, t.due));
+    const list = todos.filter(f.match);
     if (!list.length) {
       return `<div class="cal-task-empty">该筛选下暂无任务</div>`;
     }
