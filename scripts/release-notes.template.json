@@ -1,5 +1,5 @@
 {
   "name": "release-notes-template",
-  "note": "占位符由 build-notes.js 替换",
-  "body": "**{{NAME}}** `{{VERSION}}`\n\n在 Obsidian 中打开「设置 → 第三方插件」，或从本 Release 下载\n`main.js`、`manifest.json`、`styles.css` 三个文件放入：\n\n```\n<库名>/.obsidian/plugins/{{ID}}/\n```\n\n> 从社区插件目录安装更方便：Obsidian 内搜索插件名即可，无需手动下载。"
+  "note": "占位符由 build-notes.mjs 替换。{{CHANGELOG}} 取自 CHANGELOG.md 的「未发布」段落，为空时整节自动省略。",
+  "body": "**{{NAME}}** `{{VERSION}}`\n\n## 本次更新\n\n{{CHANGELOG}}\n\n## 安装\n\n在 Obsidian 中打开「设置 → 第三方插件」，或从本 Release 下载\n`main.js`、`manifest.json`、`styles.css` 三个文件放入：\n\n```\n<库名>/.obsidian/plugins/{{ID}}/\n```\n\n> 从社区插件目录安装更方便：Obsidian 内搜索插件名即可，无需手动下载。\n\n**完整更新记录**：<https://github.com/vilifetime/obsidian-caldav-calendar-tasks/blob/main/CHANGELOG.md>"
 }
