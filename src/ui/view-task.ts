@@ -151,11 +151,13 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
 // 外层断言必要（dataset.filter 是 string，|| 之后仍是 string，需收窄到 FilterKey）；
   // 内层那个 `as FilterKey` 紧跟在 `||` 结果之后，作用对象已是 string，**完全不改变类型**
   // （社区扫描报的 no-unnecessary-type-assertion 就是它），故去掉。
+  // 默认「所有未完成」（2026-10-07 雄哥要求）：进任务视图先看该做的，
+  // 已完成折叠着沉在下面。
   //
-  // 默认「所有项目」而非「所有未完成」（2026-10-07 雄哥要求）：
-  // 只有前者统计栏与组头计数基数相同、数字必然一致；后者列表里没有已完成项，
-  // 组头恒为 0 而统计栏显示全量，看着像对不上。已完成组默认折叠，不展开也不碍事。
-  const current: FilterKey = (viewEl.dataset.filter || "allitems") as FilterKey;
+  // 注：早先默认是「所有项目」，为的是让统计栏与组头计数基数一致。
+  // 两者的差异只在这一个筛选下成立 —— 「所有项目」时基数相同、数字必然对得上；
+  // 切到别的筛选时组头是「当前筛选内」的计数、统计栏仍是全局概览。
+  const current: FilterKey = (viewEl.dataset.filter || "allincomplete") as FilterKey;
 
   /** iCal PRIORITY（1 最高、9 最低）→ 文案与配色级别；覆盖 1~9 全部取值 */
   const priorityMeta = (p?: number): { label: string; cls: string } => {

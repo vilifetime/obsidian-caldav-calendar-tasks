@@ -19,6 +19,7 @@ import { renderWeekView } from "./view-week";
 import { renderTaskView } from "./view-task";
 import { renderYearView } from "./view-year";
 import { todoDueOccurrences } from "./view-common";
+import { saveViewMode } from "./view-pref";
 import { setHtml } from "./dom";
 
 /**
@@ -743,6 +744,10 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
 export const VIEW_CHANGE_EVENT = "caldav-view-change";
 
 export function notifyViewChange(mode: ViewMode): void {
+  // 顺手持久化「上次用的哪个视图」（2026-10-07）。
+  // 选这里是因为它是三处视图切换（navigate / segBtn / toggleBtn）**唯一的汇聚点** ——
+  // 在别处写都会漏掉某条路径。
+  saveViewMode(mode);
   document.dispatchEvent(new CustomEvent(VIEW_CHANGE_EVENT, { detail: mode }));
 }
 

@@ -37,6 +37,7 @@ import {
   TOGGLE_DOCK_ITEM_EVENT,
   type FocusScope,
 } from "@/ui/panel";
+import { initialViewMode } from "@/ui/view-pref";
 import { CalDavSettingTab } from "@/ui/settings-tab";
 import { todoDueOccurrences } from "@/ui/view-common";
 import { clearReminderToasts, showReminderToast } from "@/ui/reminder-toast";
@@ -511,7 +512,9 @@ export default class CalDavPlugin extends Plugin {
       openSettings: () => this.openSetting(),
       insertTodayToDiary: () => this.insertTodayToDiary(),
       unsaved: new Set(),
-      viewMode: "month" as ViewMode,
+      // 恢复上次使用的视图（2026-10-07 雄哥要求）；无记录时为月视图。
+      // 纯 UI 偏好，存 localStorage 而非 data.json —— 理由见 ui/view-pref.ts。
+      viewMode: initialViewMode(),
       cursor: todayStamp(),
       sortMode: "start",
       testReminder: () => this.testReminder(),
