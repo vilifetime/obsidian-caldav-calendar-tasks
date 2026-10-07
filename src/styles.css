@@ -769,13 +769,16 @@
 
 /* 工具条里的统计条挂载点。
    flex: 1 让它吃掉中间空白，把右侧「新建/筛选」推到最右；
-   min-width: 0 防止内容过长时把右侧挤出边界。 */
+   min-width: 0 防止内容过长时把右侧挤出边界。
+   margin-right 16px：与右侧按钮拉开距离 —— 2026-10-07 实测
+   槽位撑满时统计条末项（「已完成」）会紧贴「新建」按钮。 */
 .caldav-toolbar-stats {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: baseline;
   overflow: hidden;
+  margin-right: 16px;
 }
 /* 统计条空时（切换视图的间隙）不占位 */
 .caldav-toolbar-stats:empty { display: none; }
@@ -799,14 +802,26 @@
   white-space: nowrap;
 }
 /* 分隔点：相邻两项之间一根竖线，靠 gap 撑开间距 */
+/* 统计条各小节之间的一根竖线。
+   ⚠️ 间距要在这里**显式给足**（2026-10-07 雄哥反馈「数字紧跟着竖线，不美观」）。
+
+   坑在于两处间距会叠加：容器的列 `gap: 18px` 落在**项与项之间**，
+   而 `::before` 是「当前项的首个子元素」—— 它右边的 `margin-right` 与
+   容器 gap **叠加**，左边的 `margin-left` 则**叠加在上一项已有的 18px 之外**。
+   若两侧给一样的值，视觉上会左宽右窄。故左 0、右 6，让净距大致相等：
+     左：18 + 0  = 18px
+     右：6 + 18 = 24px→ 按实际观感再收到 2
+   即 margin: 0 2px。 */
 .cal-task-stat + .cal-task-stat::before {
   content: "";
   display: inline-block;
   width: 1px;
   height: 12px;
-  margin-right: 12px;
+  margin: 0 2px;
   background: var(--caldav-border);
   vertical-align: -1px;
+  /* 竖线是装饰，不该成为 hover 命中区 */
+  pointer-events: none;
 }
 /* 数字沿用原来的字号与字重（20px / 700），不因改成一行而缩小 */
 .cal-task-stat b { font-size: 20px; font-weight: 700; }

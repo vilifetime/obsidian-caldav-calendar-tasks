@@ -299,6 +299,16 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     else if (ctx.viewMode === "week") renderWeekView(args, 7);
     else if (ctx.viewMode === "day") renderWeekView(args, 1);
     else renderTaskView(args);
+    /**
+     * 统计条只在**任务视图**显示（2026-10-07 雄哥要求）。
+     * 切到日历视图时 `renderTaskView` 不会执行，但槽位里上一轮的统计 DOM
+     * 仍留着 —— 实测会跟着年/月/周/日 一起显示出来。故在这里显式清空。
+     * 用 `replaceChildren()` 而非 setHtml('')：槽位可能不存在（旧面板实例），
+     * 可选链兜住。
+     */
+    if (ctx.viewMode !== "task") {
+      viewEl.closest(".caldav-main")?.querySelector('[data-slot="task-stats"]')?.replaceChildren();
+    }
     // DOM 刚被重建，恢复选中格高亮
     applySelectedDay();
   }
