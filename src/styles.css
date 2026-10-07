@@ -923,7 +923,7 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  /* 2026-10-07：倒三角放大到 36px 后，若不压 padding 会把组头撑成 36px 高、
+  /* 2026-10-07：三角放大后若不压 padding 会把组头撑得很高、
      七个分组纵向拉得很散。故压缩上下 padding，并用三角的负外边距「拉回」行高。 */
   padding: 4px 4px;
   margin-bottom: 4px;
@@ -937,32 +937,32 @@
   outline: 2px solid var(--caldav-accent);
   outline-offset: 1px;
 }
-/* 倒三角：2026-10-07 先 9→12px，雄哥要求再**放大三倍** → 36px。
-   只改字号不改色 —— 颜色仍随所属组的紧迫度。
-   ⚠️ 36px 的三角比组头文字（16px）还高，视觉上会很跳；
-   若显得突兀可回调到 24px 左右（三倍是相对原 9px 而言）。
+/* 倒三角：2026-10-07 尺寸反复调过三轮 —— 9px → 12px → 36px（雄哥要「三倍」）
+   → **24px**（36px 比标题文字还高，视觉太跳，实测后回调）。
+   教训：这类「放大 N 倍」的诉求，基准是当时那个**过小**的原值，
+   照着字面放大往往过头 —— 该问的是「你觉得多大合适」。
+   只改字号不改色，颜色仍随所属组的紧迫度。
    负 margin 让它不撑高组头那一行。 */
 .cal-task-group-caret {
-  font-size: 36px;
+  font-size: 24px;
   color: var(--caldav-text-2);
-  width: 36px;
+  width: 24px;
   flex: 0 0 auto;
   line-height: 1;
-  margin: -9px 0;
+  margin: -5px 0;
   cursor: pointer;
 }
-/* 组头色点：2026-10-07 由 7px 放大到 11px（雄哥要求「稍微放大」）。
-   与放大的三角、标题字号配套，保持组头三元素的视觉份量均衡。 */
+/* 组头色点：2026-10-07 由 7px → 11px → **10px**（与三角、标题配套微调）。 */
 .cal-task-group-dot {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex: 0 0 auto;
 }
 /* 组头标题：13px → 16px（雄哥要求「稍微放大」） */
-.cal-task-group-label { font-size: 16px; font-weight: 500; }
+.cal-task-group-label { font-size: 15px; font-weight: 500; }
 .cal-task-group-count {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--caldav-text-2);
   background: var(--caldav-bg-3);
   border-radius: 9px;
