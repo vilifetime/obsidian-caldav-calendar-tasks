@@ -179,5 +179,22 @@ const check = (name, cond, extra = "") => {
   check("constants.ts 已删除 DIARY_SECTION_TITLE", !/export const DIARY_SECTION_TITLE/.test(consts));
 }
 
+// 11. 关键钉子：弹窗必须显式 open()
+//     `new Modal(app)` 只构造不显示 —— 漏 open() 的症状是「点了毫无反应」，
+//     tsc / eslint / 冒烟测试全都抓不到（2026-10-07 真实踩过一次）。
+{
+  const fs = require("fs");
+  const src = fs.readFileSync(require.resolve("./../src/ui/diary-range-modal.ts"), "utf8");
+  const fn = (src.match(/export function askDiaryRange[\s\S]*\n\}/) || [""])[0];
+  check("弹窗函数里调用了 modal.open()", /\bmodal\.open\(\)/.test(fn), "漏 open() 则点了没反应");
+  check("open() 在 close() 钩子之前（构造完即显示）", fn.indexOf("modal.open()") > 0);
+  // Modal 首参必须是 App —— 传 document.body 会 tsc 报错但值得钉住意图
+  check("Modal 用 new Modal(app) 构造", /new Modal\(app\)/.test(fn));
+  // 确认回调不得在 open() 之前被触发
+  const openAt = fn.indexOf("modal.open()");
+  const pickAt = fn.indexOf("onPick(range)");
+  check("onPick 在 open 之后才可能被调用", pickAt > 0 && pickAt < openAt, `pick=${pickAt} open=${openAt}`);
+}
+
 console.log(failed === 0 ? "\n✓ 插入日记范围回归测试通过" : `\n✗ ${failed} 个用例失败`);
 process.exit(failed === 0 ? 0 : 1);

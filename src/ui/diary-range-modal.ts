@@ -81,4 +81,8 @@ export function askDiaryRange(app: App, onPick: (range: DiaryRange) => void): vo
 
   // 焦点默认落在「取消」上：这一步会写文件，防误触更安全
   window.setTimeout(() => cancel.focus(), 0);
+
+  // ⚠️ 必须显式 open() —— `new Modal(app)` 只构造，**不会自动显示**
+  // （漏这行 = 点按钮毫无反应；2026-10-07 首次实测踩过）
+  modal.open();
 }
