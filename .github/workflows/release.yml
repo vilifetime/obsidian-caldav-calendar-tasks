@@ -18,6 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # 生成 artifact attestation（构建溯源签名）必需 —— 官方 actions/attest-build-provenance
+      # 用 OIDC 换取签名凭证，没有 id-token: write 会直接失败。
+      # 仓库侧还需 Settings → Actions → General → Workflow permissions 允许
+      # Read and write permissions 且启用 OIDC（API：PUT /actions/permissions，
+      # body 需带 enabled:true，否则 422）。
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,3 +75,19 @@ jobs:
             manifest.json
             styles.css
           body_path: RELEASE_NOTES.md
+
+      # ---- 构建溯源签名（2026-10-07，社区扫描 Recommendation）----
+      # 必须放在 Release 创建**之后**：attest-build-provenance 是对
+      # 「已存在的产物」签名并生成 *.sigstore.json 附加到该 Release，
+      # 顺序反了会找不到资产。
+      #
+      # 作用：让用户能密码学验证 main.js 确实由本仓库源码构建而成，
+      # 而非第三方塞进去的。验证命令：
+      #   gh attestation verify main.js --repo vilifetime/obsidian-caldav-calendar-tasks
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            styles.css
+            manifest.json
