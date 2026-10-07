@@ -71,6 +71,18 @@ const cssStripped = strip(cssRaw);
     `  [${ok ? "PASS" : "FAIL"}] styles.css 无 !important（实际 ${hits.length} 处）` +
       (ok ? "" : " —— 改用提高选择器特异性")
   );
+
+  /* :has() 同样被社区扫描点名：「can cause significant performance issues
+     due to broad selector invalidation」——它在每次 DOM 变更时会触发匹配关系
+     的重评估，在 Obsidian 这种频繁重渲染的宿主里代价明显。
+     替代写法：由 JS 直接切class（如 .is-checked），CSS 查普通类。
+     同样必须剥注释 —— 替换处留了解释为何不用 :has 的注释。 */
+  const hasHits = [...cssStripped.matchAll(/:has\(/g)];
+  const hasOk = hasHits.length === 0;
+  console.log(
+    `  [${hasOk ? "PASS" : "FAIL"}] styles.css 无 :has()（实际 ${hasHits.length} 处）` +
+      (hasOk ? "" : " —— 改由 JS 切 class，避免选择器重评估")
+  );
   // 顺带扫一下思源遗留类名：它们在 Obsidian 下永不匹配，属于该清的死代码。
   // 只作提示（不算 FAIL）—— 这类残留不影响任何社区报项，
   // 属清理债而非合规问题，别让自查脚本误报成红项。

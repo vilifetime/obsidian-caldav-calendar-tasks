@@ -60,11 +60,26 @@ export function askDiaryRange(app: App, onPick: (range: DiaryRange) => void): vo
 </div>`
   );
 
-  modal.contentEl.querySelectorAll<HTMLInputElement>('input[name="caldav-range"]').forEach((r) => {
+  // 选中态由 JS 直接切 class，不用 CSS `:has(input:checked)`
+  //（2026-10-07 社区扫描报「Avoid :has — can cause significant performance
+  //  issues due to broad selector invalidation」：`:has()` 会让浏览器在**每次
+  //  DOM 变更**时重新评估匹配关系，在 Obsidian 这种频繁重渲染的宿主里代价明显。）
+  const rows = Array.from(
+    modal.contentEl.querySelectorAll<HTMLInputElement>('input[name="caldav-range"]')
+  );
+  rows.forEach((r) => {
     r.addEventListener("change", () => {
-      if (r.checked) picked = r.value as DiaryRange;
+      if (!r.checked) return;
+      picked = r.value as DiaryRange;
+      rows.forEach((other) => {
+        const label = other.closest<HTMLElement>(".caldav-range-opt");
+        if (label) label.classList.toggle("is-checked", other === r);
+      });
     });
   });
+  // 默认项（当日）初始即为选中态
+  const firstLabel = rows[0]?.closest<HTMLElement>(".caldav-range-opt");
+  firstLabel?.classList.add("is-checked");
 
   const actions = modal.contentEl.createDiv({ cls: "caldav-range-actions" });
   const cancel = actions.createEl("button", { text: "取消" });

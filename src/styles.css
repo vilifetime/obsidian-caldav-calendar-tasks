@@ -4015,10 +4015,18 @@ body > .caldav-reminder-layer {
   cursor: pointer;
 }
 .caldav-range-opt:hover { background: var(--caldav-inset); }
-/* 选中态：整行淡蓝底+ 描边，与日历格子的选中样式一致 */
-.caldav-range-opt:has(input:checked) {
+/* 选中态：整行淡蓝底 + 描边，与日历格子的选中样式一致。
+   用 JS 加的 .is-checked 而非 `:has(input:checked)` —— 见 diary-range-modal.ts
+   里的说明：`:has()` 会在每次 DOM 变更时触发全量匹配重评估，
+   在 Obsidian 频繁重渲染的宿主里性能代价明显。 */
+.caldav-range-opt.is-checked {
   border-color: var(--caldav-accent);
   background: color-mix(in srgb, var(--caldav-accent) 10%, transparent);
+}
+/* 选中项悬停时给更深的蓝，否则 .is-checked 排在 :hover 之后会把它盖掉 ——
+   特异度相同（都是「一个类 + 一个伪类/类」）时后来者胜。 */
+.caldav-range-opt.is-checked:hover {
+  background: color-mix(in srgb, var(--caldav-accent) 16%, transparent);
 }
 .caldav-range-opt input { margin: 2px 0 0; flex: 0 0 auto; }
 .caldav-range-opt-body { display: flex; flex-direction: column; gap: 2px; }
