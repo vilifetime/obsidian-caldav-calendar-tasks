@@ -3975,3 +3975,40 @@ body > .caldav-reminder-layer {
   word-break: break-word;
   white-space: pre-wrap; /* 描述里的换行原样保留 */
 }
+
+/* ---- 插入日记 · 范围选择对话框（2026-10-07）---- */
+.caldav-range-lead {
+  font-size: 13px;
+  color: var(--caldav-text-2);
+  margin-bottom: 10px;
+}
+.caldav-range-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.caldav-range-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.caldav-range-opt:hover { background: var(--caldav-inset); }
+/* 选中态：整行淡蓝底+ 描边，与日历格子的选中样式一致 */
+.caldav-range-opt:has(input:checked) {
+  border-color: var(--caldav-accent);
+  background: color-mix(in srgb, var(--caldav-accent) 10%, transparent);
+}
+.caldav-range-opt input { margin: 2px 0 0; flex: 0 0 auto; }
+.caldav-range-opt-body { display: flex; flex-direction: column; gap: 2px; }
+.caldav-range-opt-label { font-size: 13px; font-weight: 500; }
+.caldav-range-opt-hint { font-size: 11.5px; color: var(--caldav-text-2); }
+.caldav-range-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}

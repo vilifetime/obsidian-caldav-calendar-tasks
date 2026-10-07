@@ -12,6 +12,7 @@ import type { App } from "obsidian";
 import type { CalStore } from "@/core/store";
 import type { SyncEngine } from "@/core/sync";
 import type { SortMode } from "@/core/types";
+import type { DiaryRange } from "./diary-range";
 
 export type ViewMode = "year" | "month" | "week" | "day" | "task";
 
@@ -32,7 +33,8 @@ export interface PanelCtx {
    */
   openSettings: () => void;
   /** 把今日日程插入日记（由入口注入，依赖宿主的文件 API） */
-  insertTodayToDiary: () => Promise<string>;
+  /** 写入日记；不传范围时按「当日」处理（命令行调用与旧行为一致） */
+  insertTodayToDiary: (range?: DiaryRange) => Promise<string>;
   /** 发送一条测试提醒（由入口注入，用于自检提醒投递通道） */
   testReminder?: () => Promise<string>;
   /** 提醒状态摘要（由入口注入，显示已排程条数与带提醒时间的条目数） */

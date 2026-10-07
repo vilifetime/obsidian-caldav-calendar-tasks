@@ -21,6 +21,7 @@ import { SyncEngine, type SyncReport } from "@/core/sync";
 import type { CalItem, CalSettings } from "@/core/types";
 import { occurrencesInRange } from "@/core/ics";
 import { parseLocalStamp, todayStamp, fmtTime } from "@/core/date";
+import { diarySpanOf, spanContains, type DiaryRange } from "@/ui/diary-range";
 import { setTransport } from "@/core/http";
 import { ReminderEngine } from "@/core/reminder";
 import { obsidianTransport } from "@/obs/http-transport";
@@ -42,7 +43,7 @@ import { CalDavSettingTab } from "@/ui/settings-tab";
 import { todoDueOccurrences } from "@/ui/view-common";
 import { clearReminderToasts, showReminderToast } from "@/ui/reminder-toast";
 import type { PanelCtx, ViewMode } from "@/ui/panel-ctx";
-import { DIARY_SECTION_TITLE, DOCK_VIEW_TYPE, ICON_ID, VIEW_TYPE_CALDAV } from "@/constants";
+import { DOCK_VIEW_TYPE, ICON_ID, VIEW_TYPE_CALDAV } from "@/constants";
 import type { TimerHandle } from "./constants";
 
 export { VIEW_TYPE_CALDAV };
@@ -690,18 +691,29 @@ export default class CalDavPlugin extends Plugin {
    *   /api/block/deleteBlock     →  同上，一次替换小节，无需先删后插
    *   openTab({doc:{id}})        →  workspace.getLeaf().openFile()
    *
-   * 重复点击是「刷新」而非无限追加：靠 DIARY_SECTION_TITLE 定位旧小节并整段替换。
+   * 重复点击是「刷新」而非无限追加：靠小节标题定位旧小节并整段替换
+   * （标题随插入范围变化，故按实际写入的那一行匹配，见 writeDiarySection）。
    */
-  async insertTodayToDiary(): Promise<string> {
+  /**
+   * 把日程与待办插入日记。
+   *
+   * 2026-10-07 雄哥要求：原按钮直接插「今日」，改为**先问范围**
+   * （当日 / 本周 / 本月 / 所有，默认当日）。故签名从无参改为收范围，
+   * 默认值仍是 "day" —— 命令行调用（`insertTodayToDiary` 那条）与旧行为一致。
+   *
+   * 范围计算见 ui/diary-range.ts（纯函数，有契约测试）。
+   */
+  async insertTodayToDiary(range: DiaryRange = "day"): Promise<string> {
     try {
+      const span = diarySpanOf(range);
+      const startMs = parseLocalStamp(span.from + "T00:00:00").getTime();
+      const endMs = parseLocalStamp(span.toExclusive + "T00:00:00").getTime();
       const today = todayStamp();
-      const startMs = parseLocalStamp(today + "T00:00:00").getTime();
-      const endMs = startMs + 86400000;
       const enabled = new Set(
         this.store.settings.calendars.filter((c) => c.enabled).map((c) => c.url)
       );
 
-      // 收集真正落在今天的实例：日程展开重复规则，待办取到期时刻
+      // 收集落在区间内的实例：日程展开重复规则，待办取到期时刻
       const rows: { ms: number; line: string }[] = [];
       for (const it of this.store.getAll()) {
         if (it.deleted || it.dirty || !enabled.has(it.calendarUrl)) continue;
@@ -713,7 +725,7 @@ export default class CalDavPlugin extends Plugin {
         for (const occ of occs) {
           if (!occ) continue;
           const ms = parseLocalStamp(occ).getTime();
-          if (!Number.isFinite(ms) || ms < startMs || ms >= endMs) continue;
+          if (!Number.isFinite(ms) || !spanContains(span, ms)) continue;
           const timed = !it.allDay && /T\d{1,2}:\d{2}/.test(occ);
           const mark = it.kind === "todo" ? "☑️" : "📅";
           rows.push({
@@ -723,12 +735,14 @@ export default class CalDavPlugin extends Plugin {
         }
       }
       rows.sort((a, b) => a.ms - b.ms);
-      if (!rows.length) return this.notify("今天没有日程或待办");
+      if (!rows.length) return this.notify(`${span.label}没有日程或待办`);
 
-      const md = `## ${DIARY_SECTION_TITLE}\n${rows.map((r) => r.line).join("\n")}\n`;
+      const md = `## ${span.sectionTitle}\n${rows.map((r) => r.line).join("\n")}\n`;
 
+      // 日记文件按「区间起始日」命名：当日=今天、本周=周一、本月=1 号、全部=今天
+      const targetStamp = range === "all" ? today : span.from;
       const folder = this.getDailyNoteFolder();
-      const path = normalizePath(folder ? `${folder}/${today}.md` : `${today}.md`);
+      const path = normalizePath(folder ? `${folder}/${targetStamp}.md` : `${targetStamp}.md`);
       const existing = this.app.vault.getAbstractFileByPath(path);
       // 用 instanceof 窄化而非 `as TFile` 强转（官方规则）：强转会掩盖
       // 「路径其实指向 TFolder」的情况，写入时才炸。
@@ -747,7 +761,7 @@ export default class CalDavPlugin extends Plugin {
       await this.app.workspace.getLeaf(false).openFile(target);
 
       return this.notify(
-        `已${replaced ? "更新" : "写入"}今日日记「${DIARY_SECTION_TITLE}」${rows.length} 条`
+        `已${replaced ? "更新" : "写入"}日记「${span.sectionTitle}」${rows.length} 条`
       );
     } catch (e) {
       // 静默失败会让用户以为没执行而重复点击，异常必须有反馈
@@ -777,13 +791,19 @@ export default class CalDavPlugin extends Plugin {
   /**
    * 写入 / 替换日记中的目标小节。
    * 返回 true 表示命中了已有小节并替换，false 表示追加到文末。
+   *
+   * ⚠️ `sectionTitle` 必须由调用方传入**实际要写的那一行标题**，不能用固定常量。
+   * 2026-10-07 起跨日范围的小节标题带区间（如「日程与待办（10-06 ~ 10-12）」），
+   * 若这里仍按常量匹配，就永远命中不了 —— 结果是每次点击都**追加一个重复小节**，
+   * 而「重复点击是刷新而非追加」的设计意图失效。
    */
   private async writeDiarySection(file: TFile, md: string): Promise<boolean> {
     let replaced = false;
     const block = md.trimEnd().split("\n");
+    const header = block[0]; //形如 "##日程与待办（…）"，与 md 首行一致
     await this.app.vault.process(file, (data) => {
       const lines = data.split("\n");
-      const start = lines.findIndex((l) => l.trim() === `## ${DIARY_SECTION_TITLE}`);
+      const start = lines.findIndex((l) => l.trim() === header.trim());
       if (start >= 0) {
         // 小节范围：到下一个同级或更高级标题为止（含空行），文件尾则到末尾
         let end = lines.length;

@@ -45,5 +45,6 @@ export const DOCK_VIEW_TYPE = "caldav-dock-view";
  */
 export const ICON_ID = "calendar-check";
 
-/** 写入日记的小节标题，兼作「重复点击 → 替换而非追加」的识别标记 */
-export const DIARY_SECTION_TITLE = "今日日程与待办";
+// 原 DIARY_SECTION_TITLE 已删（2026-10-07）：插入日记改为可选范围后，
+// 小节标题随范围变化（如「日程与待办（10-06 ~ 10-12）」），
+// 不再是固定常量。标题生成规则见 ui/diary-range.ts。

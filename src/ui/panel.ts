@@ -20,6 +20,7 @@ import { renderTaskView } from "./view-task";
 import { renderYearView } from "./view-year";
 import { todoDueOccurrences } from "./view-common";
 import { saveViewMode } from "./view-pref";
+import { askDiaryRange } from "./diary-range-modal";
 import { setHtml } from "./dom";
 
 /**
@@ -95,7 +96,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
               </span>
             </label>
             <div class="caldav-calfilter-foot">
-              <button class="caldav-link" data-action="insert-diary">把今日日程与待办插入日记</button>
+              <button class="caldav-link" data-action="insert-diary">把日程与待办插入日记</button>
             </div>
           </div>
         </div>
@@ -672,8 +673,9 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       return;
     }
     if (action === "insert-diary") {
-      // 反馈与「打开日记页签」都在入口侧完成（含失败提示），这里不重复处理
-      void ctx.insertTodayToDiary();
+      // 先问范围（当日 / 本周 / 本月 / 所有，默认当日），确认后才写入。
+      // 反馈与「打开日记页签」都在 insertTodayToDiary 里完成（含失败提示）。
+      askDiaryRange(ctx.app, (range) => void ctx.insertTodayToDiary(range));
       return;
     }
     if (action === "new") {
