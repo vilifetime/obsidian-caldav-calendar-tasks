@@ -282,6 +282,19 @@
   color: var(--caldav-text);
 }
 
+/* 主面板视图宿主（ItemView 的 contentEl，Obsidian 额外挂了 .view-content）
+   2026-10-07 雄哥反馈：页签标题栏与工具条之间空白太多。
+
+   那段空白**来自 Obsidian 的 .view-content 默认内边距**，不是插件画的。
+   本插件的工具条自带 padding: 8px 14px，叠加后上方显得空。
+   与右侧栏 Dock 的处理一致（见 .caldav-dock-host 的 padding: 0）。
+
+   用 `.view-content.caldav-view` 提高特异性盖过 Obsidian 的默认值 ——
+   只写 `.caldav-view` 时若Obsidian 主题自带 padding 会压不过。 */
+.view-content.caldav-view {
+  padding: 0;
+}
+
 .caldav-view {
   flex: 1;
   overflow: auto;
