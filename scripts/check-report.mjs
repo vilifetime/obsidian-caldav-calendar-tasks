@@ -28,6 +28,42 @@ const codes = files.map((f) => ({ f, code: strip(fs.readFileSync(f, "utf8")) }))
 const cssPath = "src/styles.css";
 const cssRaw = fs.readFileSync(cssPath, "utf8");
 const cssStripped = strip(cssRaw);
+
+/* ---- artifact attestation（构建溯源签名）----
+   社区扫描的 Recommendation 项：「Missing GitHub artifact attestations for
+   release assets」。
+
+   ⚠️ 只查**配置**，查不了线上是否已生成 —— 后者要拿产物的 sha256 去问
+   GitHub API（`GET /attestations/{sha256}`），而自查脚本跑在本地、没有网络。
+   所以这里防的是「配置漏了」，实际上传成功与否仍要看 Actions 日志。
+   踩过的坑：第一次只写 `id-token: write`、漏了 `attestations: write`，
+   线上一直报「Failed to persist attestation: Resource not accessible by
+   integration」—— 官方文档要求三项齐全。
+   ⚠️ 且**改了工作流必须重打 tag**：`rerun` 跑的是当时那一版 YAML，
+   不重新读main 的最新文件。 */
+{
+  const wfPath = ".github/workflows/release.yml";
+  if (fs.existsSync(wfPath)) {
+    const wf = fs.readFileSync(wfPath, "utf8");
+    const hasStep = /actions\/attest-build-provenance@v\d/.test(wf);
+    const hasIdToken = /id-token:\s*write/.test(wf);
+    const hasAttestations = /attestations:\s*write/.test(wf);
+    // attest 必须排在 Release 创建之后 —— 它签的是「已上传的产物」
+    const stepAt = wf.indexOf("attest-build-provenance");
+    const relAt = wf.indexOf("action-gh-release");
+    const orderOk = stepAt > 0 && relAt > 0 && stepAt > relAt;
+
+    const allOk = hasStep && hasIdToken && hasAttestations && orderOk;
+    console.log(
+      `  [${allOk ? "PASS" : "FAIL"}] 工作流已配置 artifact attestation` +
+        (allOk
+          ? "（步骤 + id-token + attestations + 顺序）"
+          : ` —— step=${hasStep} id-token=${hasIdToken} attestations=${hasAttestations} 顺序=${orderOk}`)
+    );
+  } else {
+    console.log("  [提示] 未找到 .github/workflows/release.yml，跳过 attestation 配置检查");
+  }
+}
 {
   const hits = [...cssStripped.matchAll(/!important/g)];
   const ok = hits.length === 0;
