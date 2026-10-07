@@ -18,12 +18,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      # 生成 artifact attestation（构建溯源签名）必需 —— 官方 actions/attest-build-provenance
-      # 用 OIDC 换取签名凭证，没有 id-token: write 会直接失败。
-      # 仓库侧还需 Settings → Actions → General → Workflow permissions 允许
-      # Read and write permissions 且启用 OIDC（API：PUT /actions/permissions，
-      # body 需带 enabled:true，否则 422）。
+      # ---- 生成 artifact attestation 必需（官方文档明确要求这三项）----
+      # id-token: write —— 用 OIDC 换取签名凭证
+      # attestations: write —— 写入attestation 记录。
+      # ⚠️ 2026-10-07 实测踩过：只写 id-token 会报
+      #   「Failed to persist attestation: Resource not accessible by integration」——
+      #    因为日志里的 GITHUB_TOKEN Permissions 只有 Contents/Metadata，
+      #    缺 attestations 就写不进去。三项缺一不可。
+      # 日志中该step 排在 Release 创建之后，故它失败**不影响附件上传**。
       id-token: write
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
