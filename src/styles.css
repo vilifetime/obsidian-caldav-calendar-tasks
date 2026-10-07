@@ -923,7 +923,9 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 9px 4px 8px;
+  /* 2026-10-07：倒三角放大到 36px 后，若不压 padding 会把组头撑成 36px 高、
+     七个分组纵向拉得很散。故压缩上下 padding，并用三角的负外边距「拉回」行高。 */
+  padding: 4px 4px;
   margin-bottom: 4px;
   border-bottom: 1px solid var(--caldav-border);
   cursor: pointer;
@@ -935,23 +937,30 @@
   outline: 2px solid var(--caldav-accent);
   outline-offset: 1px;
 }
-/* 倒三角：2026-10-07 由 9px 放大到 12px（原太小难点中）。
-   只改字号不改色 —— 颜色仍随所属组的紧迫度。 */
+/* 倒三角：2026-10-07 先 9→12px，雄哥要求再**放大三倍** → 36px。
+   只改字号不改色 —— 颜色仍随所属组的紧迫度。
+   ⚠️ 36px 的三角比组头文字（16px）还高，视觉上会很跳；
+   若显得突兀可回调到 24px 左右（三倍是相对原 9px 而言）。
+   负 margin 让它不撑高组头那一行。 */
 .cal-task-group-caret {
-  font-size: 12px;
+  font-size: 36px;
   color: var(--caldav-text-2);
-  width: 12px;
+  width: 36px;
   flex: 0 0 auto;
   line-height: 1;
+  margin: -9px 0;
   cursor: pointer;
 }
+/* 组头色点：2026-10-07 由 7px 放大到 11px（雄哥要求「稍微放大」）。
+   与放大的三角、标题字号配套，保持组头三元素的视觉份量均衡。 */
 .cal-task-group-dot {
-  width: 7px;
-  height: 7px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   flex: 0 0 auto;
 }
-.cal-task-group-label { font-size: 13px; font-weight: 500; }
+/* 组头标题：13px → 16px（雄哥要求「稍微放大」） */
+.cal-task-group-label { font-size: 16px; font-weight: 500; }
 .cal-task-group-count {
   font-size: 11px;
   color: var(--caldav-text-2);
