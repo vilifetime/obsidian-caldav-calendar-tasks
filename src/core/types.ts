@@ -141,11 +141,15 @@ export interface CalSettings {
    */
   showEventsInTaskView?: boolean;
   /**
-   * 任务视图是否显示**已过期**的日程事件，默认 false。
+   * 「已过期日程」开关**只管日程**，与上面那个开关相互独立：
    *
-   * 仅在 `showEventsInTaskView` 为true 时才有意义（UI 上嵌套显示）——
-   * 日程过期后没有「完成」语义，默认藏起来免得污染列表；
-   * 需要追忆历史日程时才打开。
+   * - `showEventsInTaskView = false` → 日程**完全不进列表**，统计里也不含它
+   *   （与 `showExpiredEventsInTaskView` 无关，两值组合下都如此）
+   * - `showEventsInTaskView = true`  → 日程进列表与统计；此时才由
+   *   `showExpiredEventsInTaskView` 决定**过期的**那些是否也进来
+   *
+   * 二者是「要不要显示日程」与「过期日程要不要显示」两层，
+   * 不是同一个开关的两级。
    */
   showExpiredEventsInTaskView?: boolean;
   /** 任务分类（编辑弹窗药丸选择），空数组时回退 DEFAULT_CATEGORIES */
