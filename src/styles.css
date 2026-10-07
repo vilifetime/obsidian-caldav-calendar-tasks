@@ -3986,6 +3986,24 @@ body > .caldav-reminder-layer {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* 用 fieldset 承担 radiogroup 语义（aria-label 会被部分环境渲染成悬浮提示，
+     雄哥要求去掉），fieldstream 默认带边框与内边距，须归零。
+     .sr-only 的 legend 仅供读屏器，不参与视觉。 */
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.caldav-range-opts > .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 .caldav-range-opt {
   display: flex;

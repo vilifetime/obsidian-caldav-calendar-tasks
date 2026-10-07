@@ -511,7 +511,10 @@ export default class CalDavPlugin extends Plugin {
       app: this.app,
       i18n: (k) => t(k),
       openSettings: () => this.openSetting(),
-      insertTodayToDiary: () => this.insertTodayToDiary(),
+      // ⚠️ 必须把 range 透传下去 —— 写成 `() => this.insertTodayToDiary()`
+      // 会**吞掉传入的范围**，永远走默认 "day"。症状：选「本周/本月/所有」
+      // 却提示「当日没有日程或待办」（2026-10-07 雄哥实测发现）。
+      insertTodayToDiary: (range) => this.insertTodayToDiary(range),
       unsaved: new Set(),
       // 恢复上次使用的视图（2026-10-07 雄哥要求）；无记录时为月视图。
       // 纯 UI 偏好，存 localStorage 而非 data.json —— 理由见 ui/view-pref.ts。

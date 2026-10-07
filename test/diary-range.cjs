@@ -196,5 +196,34 @@ const check = (name, cond, extra = "") => {
   check("onPick 在 open 之后才可能被调用", pickAt > 0 && pickAt < openAt, `pick=${pickAt} open=${openAt}`);
 }
 
+// 12. 关键钉子：ctx 注入处必须把 range 透传下去
+//     写成 `() => this.insertTodayToDiary()` 会**吞掉传入范围**、永远走
+//     默认 "day"。症状：选「本周/本月/所有」却提示「当日没有日程或待办」
+//     （2026-10-07 雄哥实测发现，tsc 与测试全绿）。
+{
+  const fs = require("fs");
+  const src = fs.readFileSync(require.resolve("./../src/main.ts"), "utf8");
+  check(
+    "ctx 注入处透传 range",
+    /insertTodayToDiary:\s*\(range\)\s*=>\s*this\.insertTodayToDiary\(range\)/.test(src),
+    "写成 () => this.insertTodayToDiary() 会吞掉范围"
+  );
+  check("不存在吞参数的旧写法", !/insertTodayToDiary:\s*\(\)\s*=>/.test(src));
+  // 命令行那条是「无参 = 当日」，保持原样即可（不能被误改成传参）
+  const cmd = (src.match(/callback:\s*\(\)\s*=>\s*void this\.insertTodayToDiary\(\)/) || [])[0];
+  check("命令行入口仍是当日（不传参）", Boolean(cmd), "命令行应保持原行为");
+}
+
+// 13. 关键钉子：弹窗不得有 aria-label（会被渲染成悬浮提示）
+{
+  const fs = require("fs");
+  const src = fs.readFileSync(require.resolve("./../src/ui/diary-range-modal.ts"), "utf8");
+  check("弹窗内无 aria-label", !/aria-label/.test(src), "aria-label 会触发 tooltip");
+  check("用 fieldset 承担分组语义", /<fieldset class="caldav-range-opts">/.test(src));
+  const css = fs.readFileSync(require.resolve("./../src/styles.css"), "utf8");
+  const sel = (css.match(/\.caldav-range-opts \{[\s\S]*?\n\}/) || [""])[0];
+  check("fieldset 默认边框已归零", /border:\s*0/.test(sel) && /padding:\s*0/.test(sel));
+}
+
 console.log(failed === 0 ? "\n✓ 插入日记范围回归测试通过" : `\n✗ ${failed} 个用例失败`);
 process.exit(failed === 0 ? 0 : 1);

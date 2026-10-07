@@ -44,7 +44,8 @@ export function askDiaryRange(app: App, onPick: (range: DiaryRange) => void): vo
     `
 <div class="caldav-range">
   <div class="caldav-range-lead">要把哪个范围的日程与待办写入日记？</div>
-  <div class="caldav-range-opts" role="radiogroup" aria-label="插入范围">
+  <fieldset class="caldav-range-opts">
+    <legend class="sr-only">插入范围</legend>
     ${OPTIONS.map(
       (o) => `
     <label class="caldav-range-opt">
@@ -55,7 +56,7 @@ export function askDiaryRange(app: App, onPick: (range: DiaryRange) => void): vo
       </span>
     </label>`
     ).join("")}
-  </div>
+  </fieldset>
 </div>`
   );
 
