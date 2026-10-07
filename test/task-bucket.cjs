@@ -18,14 +18,24 @@ const TOMORROW = "2026-10-07";
 const WEEK_END = "2026-10-11";
 
 const done = (it) => it.percent === 100;
+
+/**
+ * 2026-10-07：过期的日程**算作已完成**（雄哥要求）。
+ * 日程没有「完成」语义，时间过去了就等于结束。
+ * 故 isDone 从「只看 percent」扩展为「percent 或 过期」。
+ *
+ * ⚠️ 这行是整个分组逻辑的关键 —— 统计条与分组都共用它，
+ * 若两处各写一份，会出现「已完成 +N 但待办总数没减」的自相矛盾。
+ */
+const isDone = (r) => done(r.it) || r.expired === true;
 const GROUPS = [
-  { key: "overdue", label: "逾期", match: (r) => !done(r.it) && r.due !== "" && r.due < TODAY },
-  { key: "today", label: "今天", match: (r) => !done(r.it) && r.due === TODAY },
-  { key: "tomorrow", label: "明天", match: (r) => !done(r.it) && r.due === TOMORROW },
-  { key: "thisweek", label: "本周", match: (r) => !done(r.it) && r.due > TOMORROW && r.due <= WEEK_END },
-  { key: "later", label: "下周后", match: (r) => !done(r.it) && r.due > WEEK_END },
-  { key: "nodate", label: "无日期", match: (r) => !done(r.it) && r.due === "" },
-  { key: "done", label: "已完成", match: (r) => done(r.it) }
+  { key: "overdue", label: "逾期", match: (r) => !isDone(r) && r.due !== "" && r.due < TODAY },
+  { key: "today", label: "今天", match: (r) => !isDone(r) && r.due === TODAY },
+  { key: "tomorrow", label: "明天", match: (r) => !isDone(r) && r.due === TOMORROW },
+  { key: "thisweek", label: "本周", match: (r) => !isDone(r) && r.due > TOMORROW && r.due <= WEEK_END },
+  { key: "later", label: "下周后", match: (r) => !isDone(r) && r.due > WEEK_END },
+  { key: "nodate", label: "无日期", match: (r) => !isDone(r) && r.due === "" },
+  { key: "done", label: "已完成", match: (r) => isDone(r) }
 ];
 
 function bucketize(list) {
@@ -151,6 +161,37 @@ const expected = ["overdue", "today", "tomorrow", "thisweek", "later", "nodate",
   const ok = keys[keys.length - 1] === "nodate";
   if (!ok) failed++;
   console.log(`  [${ok ? "PASS" : "FAIL"}] 无日期沉到下周后之后（实际 ${JSON.stringify(keys)}）`);
+}
+
+// ── 11. 过期日程算「已完成」（2026-10-07 新增）──
+{
+  const expiredEvent = { it: { summary: "过期日程", percent: 0 }, due: "2026-09-01", isEvent: true, expired: true };
+  const b = bucketize([expiredEvent]);
+  const ok = b.length === 1 && b[0].key === "done";
+  if (!ok) failed++;
+  console.log(`  [${ok ? "PASS" : "FAIL"}] 过期日程归入已完成组（实际 ${JSON.stringify(b.map(x=>x.key))}）`);
+}
+// 关键：过期日程**不能**落进「逾期」组 —— 逾期是给「没做完且过期」的待办用的
+{
+  const expiredEvent = { it: { summary: "过期日程", percent: 0 }, due: "2026-09-01", isEvent: true, expired: true };
+  const b = bucketize([expiredEvent, T("真逾期待办", "2026-09-01")]);
+  const overdueNames = (b.find(x => x.key === "overdue") || { items: [] }).items.map(i => i.it.summary);
+  const doneNames = (b.find(x => x.key === "done") || { items: [] }).items.map(i => i.it.summary);
+  const ok = overdueNames.length === 1 && overdueNames[0] === "真逾期待办" && doneNames.includes("过期日程");
+  if (!ok) failed++;
+  console.log(`  [${ok ? "PASS" : "FAIL"}] 过期日程不入逾期组（逾期=${JSON.stringify(overdueNames)}，已完成=${JSON.stringify(doneNames)}）`);
+}
+// 统计口径自洽：过期日程让「已完成 +1」的同时必须让「待办总数 -1」
+{
+  const before = [T("a", TODAY), DONE("b", "2026-10-01")];
+  const after = [T("a", TODAY), DONE("b", "2026-10-01"), { it: { summary: "过期日程", percent: 0 }, due: "2026-09-01", isEvent: true, expired: true }];
+  const undoneBefore = before.filter(r => !isDone(r)).length;
+  const undoneAfter = after.filter(r => !isDone(r)).length;
+  const doneBefore = bucketize(before).find(x => x.key === "done")?.items.length || 0;
+  const doneAfter = bucketize(after).find(x => x.key === "done")?.items.length || 0;
+  const ok = undoneAfter === undoneBefore && doneAfter === doneBefore + 1;
+  if (!ok) failed++;
+  console.log(`  [${ok ? "PASS" : "FAIL"}] 统计自洽：待办 ${undoneBefore}→${undoneAfter}，已完成 ${doneBefore}→${doneAfter}`);
 }
 
 console.log(failed === 0 ? "\n✓ 任务分组回归测试通过" : `\n✗ ${failed} 个用例失败`);

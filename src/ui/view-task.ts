@@ -87,7 +87,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   const showEvents = ctx.store.settings.showEventsInTaskView === true;
   const showExpired = ctx.store.settings.showExpiredEventsInTaskView === true;
   /** 列表里的一行。`due` 为归属日期（YYYY-MM-DD），无日期为空串。 */
-  const rows: { it: CalItem; due: string; isEvent: boolean }[] = [];
+  const rows: { it: CalItem; due: string; isEvent: boolean; expired?: boolean }[] = [];
   const endMs = parseLocalStamp(addDays(today, 400)).getTime();
   const startMs = parseLocalStamp(addDays(today, -400)).getTime();
   for (const it of ctx.store.getAll()) {
@@ -123,7 +123,10 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     // 「显示过期日程」未开启时，过期日程不进列表（没有「完成」语义，
     // 默认显示只会污染待办列表）。注意是 continue 不是 break —— 还要继续遍历。
     if (isPast && !showExpired) continue;
-    rows.push({ it, due, isEvent: true });
+    // 过期日程**归入「已完成」组**（雄哥 2026-10-07要求）：日程没有「完成」
+    // 语义，时间过去了就等于结束了，故按已结束处理 —— 而非塞进「逾期」
+    // （逾期是给「没做完且过期」的待办用的，对日程不适用）。
+    rows.push({ it, due, isEvent: true, expired: isPast });
   }
   const todos = rows;
 
@@ -153,15 +156,29 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
    * 组头用 --group-color 承载该组紧迫度色，点一下可折叠；只有一组时不显示组头
    * （避免「今天到期」这类筛选下多出一层无用标题）。
    */
-  type Row = { it: CalItem; due: string; isEvent: boolean };
+  type Row = { it: CalItem; due: string; isEvent: boolean; expired?: boolean };
+
+  /**
+   * 「是否算已完成」的**唯一判定**。
+   *
+   * 两种情况（雄哥 2026-10-07）：
+   * 1. 待办 percent === 100 —— 本来就做完了
+   * 2. **过期的日程** —— 日程没有「完成」语义，时间过去了就等于结束，
+   *    故按已结束处理
+   *
+   * ⚠️ 统计条与分组**必须共用这一个判定**，否则会出现「已完成 +2 但待办总数
+   * 没减」这种自相矛盾的数字（分组与统计是两处独立代码，最容易漂移）。
+   */
+  const isDone = (r: Row): boolean => done(r.it) || r.expired === true;
+
   const GROUPS: { key: string; label: string; color: string; match: (r: Row) => boolean }[] = [
-    { key: "overdue", label: "逾期", color: "var(--caldav-danger)", match: (r) => !done(r.it) && r.due !== "" && r.due < today },
-    { key: "today", label: "今天", color: "#BA7517", match: (r) => !done(r.it) && r.due === today },
-    { key: "tomorrow", label: "明天", color: "#378ADD", match: (r) => !done(r.it) && r.due === tomorrow },
-    { key: "thisweek", label: "本周", color: "#1D9E75", match: (r) => !done(r.it) && r.due > tomorrow && r.due <= weekEnd },
-    { key: "later", label: "下周后", color: "#888780", match: (r) => !done(r.it) && r.due > weekEnd },
-    { key: "nodate", label: "无日期", color: "#B4B2A9", match: (r) => !done(r.it) && r.due === "" },
-    { key: "done", label: "已完成", color: "#1D9E75", match: (r) => done(r.it) }
+    { key: "overdue", label: "逾期", color: "var(--caldav-danger)", match: (r) => !isDone(r) && r.due !== "" && r.due < today },
+    { key: "today", label: "今天", color: "#BA7517", match: (r) => !isDone(r) && r.due === today },
+    { key: "tomorrow", label: "明天", color: "#378ADD", match: (r) => !isDone(r) && r.due === tomorrow },
+    { key: "thisweek", label: "本周", color: "#1D9E75", match: (r) => !isDone(r) && r.due > tomorrow && r.due <= weekEnd },
+    { key: "later", label: "下周后", color: "#888780", match: (r) => !isDone(r) && r.due > weekEnd },
+    { key: "nodate", label: "无日期", color: "#B4B2A9", match: (r) => !isDone(r) && r.due === "" },
+    { key: "done", label: "已完成", color: "#1D9E75", match: (r) => isDone(r) }
   ];
 
   /** 把筛选后的列表按组切分；每组内部按「日期升序 → 有优先级的在前」排 */
@@ -198,18 +215,22 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     else delete viewEl.dataset.collapsedGroups;
   }
 
-  /** 单条渲染；抽成函数是为了让「分组列表」与「不分组的扁平列表」共用同一份标记 */
-  function itemHtml({ it, due, isEvent }: Row): string {
+    /** 单条渲染；抽成函数是为了让「分组列表」与「不分组的扁平列表」共用同一份标记 */
+  function itemHtml({ it, due, isEvent, expired }: Row): string {
     const k = keyOfItem(it);
-    const isDone = done(it);
-    const overdue = !isDone && !!due && due < today;
+    // 复用外层的 isDone（含「过期日程算已完成」），不另写一份 ——
+    // 本函数解构了 expired，故仍需把整个 row 传入
+    const finished = isDone({ it, due, isEvent, expired });
+    const overdue = !finished && !!due && due < today;
     const pr = priorityMeta(it.priority);
     const cal = ctx.store.settings.calendars.find((c) => c.url === it.calendarUrl);
     /** 条目前的小框标签：中文「日程/待办」，英文界面显示 event/task（走 i18n 键） */
     const kindLabel = (): string => ctx.i18n(isEvent ? "kindEvent" : "kindTodo");
-    const dueText = isDone
+    const dueText = finished
       ? it.completedAt
         ? "完成于 " + it.completedAt.slice(5, 10)
+        : expired
+        ? "已过期"
         : "已完成"
       : !due
       ? "无日期"
@@ -220,13 +241,14 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
       : overdue
       ? `逾期 ${Math.abs(diffDays(due, today))} 天`
       : due.slice(5);
-    // 日程没有「完成」语义：勾选框改为「打开详情」，且不显示优先级（VEVENT 无 PRIORITY）
+    // 日程没有「完成」语义：勾选框改为圆点标记，且不显示优先级（VEVENT 无 PRIORITY）。
+    // 注意过期日程虽归入「已完成」组，但仍走圆点分支 —— 它并没有真的被勾选。
     const check = isEvent
       ? `<span class="cal-task-check cal-task-check--event" title="${kindLabel()}"></span>`
-      : `<button class="cal-task-check" data-toggle="${k}" title="${isDone ? "标记未完成" : "标记完成"}">${isDone ? "✓" : ""}</button>`;
+      : `<button class="cal-task-check" data-toggle="${k}" title="${finished ? "标记未完成" : "标记完成"}">${finished ? "✓" : ""}</button>`;
     const prio = !isEvent && pr.label ? `<span class="cal-task-priority ${pr.cls}">${pr.label}</span>` : "";
     return `
-<div class="cal-task ${isDone ? "is-done" : ""} ${overdue ? "is-overdue" : ""} ${isEvent ? "is-event" : "is-todo"}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">
+<div class="cal-task ${finished ? "is-done" : ""} ${overdue ? "is-overdue" : ""} ${isEvent ? "is-event" : "is-todo"}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">
   ${check}
   <div class="cal-task-body">
     <div class="cal-task-title"><span class="cal-task-kind ${isEvent ? "is-event" : "is-todo"}">${kindLabel()}</span>${it.rrule ? "↻ " : ""}${escape(it.summary || "(无标题)")}
@@ -262,8 +284,9 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
         const caret = collapsed ? "▸" : "▾";
         return `
 <div class="cal-task-group" data-group="${g.key}">
-  <div class="cal-task-group-head" data-toggle-group="${g.key}" role="button" tabindex="0">
-    <span class="cal-task-group-caret">${caret}</span>
+  <div class="cal-task-group-head" data-toggle-group="${g.key}" role="button" tabindex="0"
+       aria-expanded="${collapsed ? "false" : "true"}" title="点击${collapsed ? "展开" : "折叠"}此分组">
+    <span class="cal-task-group-caret" aria-hidden="true">${caret}</span>
     <span class="cal-task-group-dot" style="background:${g.color}"></span>
     <span class="cal-task-group-label">${g.label}</span>
     <span class="cal-task-group-count">${items.length}</span>
@@ -285,7 +308,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
    * ⚠️ 计数**复用 GROUPS 的 match**，不要另写一套 —— 两处口径容易漂移
    * （统计说 190 待办、分组加起来却不是 190）。
    */
-  const undone = todos.filter((t) => !done(t.it));
+  const undone = todos.filter((t) => !isDone(t));
   const countBy = (key: string): number => {
     const g = GROUPS.find((x) => x.key === key);
     return g ? todos.filter(g.match).length : 0;

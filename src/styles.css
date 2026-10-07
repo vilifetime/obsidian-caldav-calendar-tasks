@@ -788,6 +788,7 @@
 
 .cal-task-filterbar {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -795,13 +796,14 @@
 .cal-task-filter {
   flex: 0 0 auto;
   max-width: 220px;
-  /* 与 .caldav-input 的高度对齐（2026-10-07 雄哥反馈「底部没对齐」）：
-     .caldav-input 是 padding 8px + 1px 边框 + line-height 1.4，
-     本框原来 padding 只有 7px 且 select 的 line-height 默认不同 → 矮 2~3px。
-     这里显式对齐 padding / line-height / box-sizing 三项。 */
+  /* 与 .caldav-input 等高（2026-10-07 雄哥反馈「框变小了、底部没对齐」）。
+     ⚠️ 上一轮只补padding/line-height 反而更矮 —— 因为 `select` 没有显式 height，
+     在 `box-sizing: border-box` 下高度会被内容撑死（差约 14px）。
+     正解是**显式给出 height**，直接对齐输入框的 8+8+1+1+18.2 ≈ 36.2px。 */
+  box-sizing: border-box;
+  height: 36px;
   padding: 8px 28px 8px 12px;
   line-height: 1.4;
-  box-sizing: border-box;
   border: 1px solid var(--caldav-border);
   border-radius: 8px;
   background: var(--caldav-bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 4.5L6 7.5L9 4.5' stroke='%23646a73' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 10px center;
@@ -900,11 +902,23 @@
   border-left-color: var(--caldav-danger);
 }
 
-/* ── 时间轴分组（2026-10-06）─────────────────────────────────
+/* ── 时间轴分组（2026-10-06，2026-10-07 调整）───────────────────
    此前 190 条待办平铺且无排序，扫不出轻重缓急。现按
    逾期 / 今天 / 明天 / 本周 / 下周后 / 无日期 / 已完成 分桶。
-   组头用 --group-color 承载该组的紧迫度色，点一下可折叠。 */
-.cal-task-group { margin-bottom: 4px; }
+   组头用 --group-color 承载该组的紧迫度色，点一下可折叠。
+   2026-10-07：分组间加明显分割 —— 此前 margin-bottom: 4px 太弱，
+   条目密集时看不出哪里是一个组的边界。 */
+.cal-task-group {
+  margin-bottom: 10px;
+  /* 组间分隔：上边框 + 段内留白，比单靠 margin 更容易辨认边界 */
+  border-top: 1px solid var(--caldav-border);
+  padding-top: 8px;
+}
+.cal-task-group:first-child {
+  /* 首个分组不需要上边框，否则紧贴筛选栏显得多余 */
+  border-top: none;
+  padding-top: 0;
+}
 .cal-task-group-head {
   display: flex;
   align-items: center;
@@ -921,12 +935,15 @@
   outline: 2px solid var(--caldav-accent);
   outline-offset: 1px;
 }
+/* 倒三角：2026-10-07 由 9px 放大到 12px（原太小难点中）。
+   只改字号不改色 —— 颜色仍随所属组的紧迫度。 */
 .cal-task-group-caret {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--caldav-text-2);
-  width: 10px;
+  width: 12px;
   flex: 0 0 auto;
   line-height: 1;
+  cursor: pointer;
 }
 .cal-task-group-dot {
   width: 7px;
