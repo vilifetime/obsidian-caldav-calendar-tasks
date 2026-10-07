@@ -18,6 +18,38 @@ const files = [];
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const codes = files.map((f) => ({ f, code: strip(fs.readFileSync(f, "utf8")) }));
 
+/* ---- CSS 专项：!important ----
+   社区扫描明确点名这条。2026-10-07 清理时发现 16 处里有 15 处是**思源死代码**
+   （b3-dialog__* / caldav-mobile-dialog 等在 Obsidian 版 TS 中根本不存在的类），
+   唯一「活」的那处靠提高选择器特异性解决，无需 !important。
+
+   **必须剥掉注释再匹配** —— 清理时留下了多处解释「为什么移除」的注释，
+   注释里出现 !important 会被误判。 */
+const cssPath = "src/styles.css";
+const cssRaw = fs.readFileSync(cssPath, "utf8");
+const cssStripped = strip(cssRaw);
+{
+  const hits = [...cssStripped.matchAll(/!important/g)];
+  const ok = hits.length === 0;
+  console.log(
+    `  [${ok ? "PASS" : "FAIL"}] styles.css 无 !important（实际 ${hits.length} 处）` +
+      (ok ? "" : " —— 改用提高选择器特异性")
+  );
+  // 顺带扫一下思源遗留类名：它们在 Obsidian 下永不匹配，属于该清的死代码。
+  // 只作提示（不算 FAIL）—— 这类残留不影响任何社区报项，
+  // 属清理债而非合规问题，别让自查脚本误报成红项。
+  const deadClasses = ["b3-dialog", "caldav-mobile-dialog", "caldav-mobile-host", "caldav-resize"];
+  const found = deadClasses.filter((c) => cssStripped.includes("." + c));
+  if (found.length) {
+    console.log(
+      `  [提示] styles.css 仍有思源遗留死类名 ${found.length} 种（不影响报项，清理债）：` +
+        found.join(", ")
+    );
+  } else {
+    console.log("  [PASS] styles.css 无思源遗留死类名");
+  }
+}
+
 const find = (re) =>
   codes.flatMap((x) =>
     x.code
