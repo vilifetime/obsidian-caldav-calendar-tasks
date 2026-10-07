@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>设置 GitHub Token</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    font-family: var(--font-sans, system-ui, "Segoe UI", sans-serif);
+    background: var(--color-background-primary, #fff);
+    color: var(--color-text-primary, #1f2329);
+    max-width: 720px; margin: 0 auto; padding: 40px 24px 60px;
+    line-height: 1.7;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; }
+  .sub { color: var(--color-text-secondary, #646a73); font-size: 0.9rem; margin-bottom: 28px; }
+  section {
+    border: 0.5px solid var(--color-border-tertiary, #e4e7ed);
+    border-radius: 10px; padding: 18px 20px; margin-bottom: 18px;
+    background: var(--color-background-secondary, #f6f8fa);
+  }
+  h2 { font-size: 1rem; margin: 0 0 10px; }
+  ol, ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  code {
+    font-family: var(--font-mono, Consolas, monospace); font-size: 0.85em;
+    background: var(--color-background-tertiary, #eef1f5);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  a { color: var(--text-accent, #3575f0); }
+  .warn {
+    border-left: 3px solid var(--text-error, #d23f31);
+    padding: 8px 0 8px 14px; margin: 14px 0;
+    color: var(--color-text-secondary, #646a73); font-size: 0.9rem;
+  }
+  .scope { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .scope span {
+    font-size: 0.8rem; padding: 3px 10px; border-radius: 12px;
+    border: 0.5px solid var(--color-border-tertiary, #e4e7ed);
+    color: var(--color-text-secondary, #646a73);
+  }
+  .scope span.on {
+    border-color: var(--text-accent, #3575f0);
+    color: var(--text-accent, #3575f0);
+  }
+</style>
+</head>
+<body>
+
+<h1>设置 GitHub Token</h1>
+<p class="sub">用于发版时自动创建 / 更新 GitHub Release、查看 Actions 状态。<strong>不会</strong>用它做别的事。</p>
+
+<section>
+  <h2>第一步 · 生成 token</h2>
+  <ol>
+    <li>打开 <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener">github.com/settings/tokens/new</a></li>
+    <li>Note 随便填，比如 <code>workbuddy-release</code></li>
+    <li>Expiration 选个期限（建议 90 天，到期再续）</li>
+    <li>勾权限（见下方说明）</li>
+    <li>点 Generate token → <strong>复制那串以 <code>ghp_</code> 开头的字符</strong></li>
+  </ol>
+  <div class="scope">
+    <span class="on">repo ← Release 增删改</span>
+    <span>read:user ← 只读账号信息</span>
+  </div>
+  <p style="font-size:0.9rem;color:var(--color-text-secondary,#646a73)">
+    最小可用是 <code>repo</code>。若只想让我读状态、不改Release，<code>public_repo</code> 也够 ——
+    但那样以后改说明就做不了了。
+  </p>
+</section>
+
+<section>
+  <h2>第二步 · 写到文件（推荐）</h2>
+  <p>在下面这个路径创建文件，把 token 粘进去存盘：</p>
+  <p><code>C:\Users\xiong\.workbuddy\.github-token</code></p>
+  <p>内容就是 token 那一行，<strong>不要加引号</strong>、不要加 <code>=</code>。</p>
+  <div class="warn">
+    别把 token 粘进和我的对话里 —— 对话历史会被留存，token 落进去等于长期泄露。<br>
+    存在这个文件里则完全安全：它在项目目录之外，不会被 git 提交，我也只会读取、不打印。
+  </div>
+</section>
+
+<section>
+  <h2>第三步 · 验证（可选）</h2>
+  <p>存好后在终端跑这行，应该打印出你的 GitHub 用户名：</p>
+  <p><code>curl -s -H "Authorization: Bearer $(node C:\Users\xiong\.workbuddy\scripts\gh-token.cjs)" https://api.github.com/user | grep login</code></p>
+</section>
+
+<section>
+  <h2>备选 · 环境变量</h2>
+  <p>不想落文件的话，设个用户级环境变量也行（<strong>关掉终端才生效</strong>）：</p>
+  <p><code>setx GITHUB_TOKEN "ghp_你的token"</code></p>
+  <p>我的脚本两个来源都认，环境变量优先。</p>
+</section>
+
+</body>
+</html>
