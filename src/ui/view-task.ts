@@ -202,15 +202,55 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   }
 
   /** 已完成组的折叠状态存在 viewEl 的 dataset 上，跨筛选切换保持 */
+  /**
+   * 该分组是否处于折叠态。
+   *
+   * 折叠状态存`viewEl.dataset.collapsedGroups`（逗号分隔的分组 key），
+   * **所有分组一视同仁** —— 任何组都能点组头折叠/ 展开。
+   *
+   * ⚠️ 这里踩过两个坑（2026-10-07 实测反馈后连修两次）：
+   *
+   * ① 原写成 `if (gkey !== "done") return false;`（只有已完成组可折叠）——
+   *    把「已完成默认折叠」这个**默认值**错当成**权限限制**，
+   *    其他分组永远返回 false，写了状态也读不回来，等于锁死。
+   *
+   * ② 只存「折叠了哪些」无法表达「用户明确要求展开已完成」：
+   *    展开时删掉 key → 读回时又走默认值判成折叠 → 点一下没反应。
+   *
+   * ③ 更隐蔽的：把默认值和用户状态混在**同一个字段**里 ——
+   *    一旦用户折叠了别的组（如逾期），字段就非空，
+   *    「已完成」便不再走默认值，被**静默判成展开**（用户点过展开的意图丢失）。
+   *
+   * 正解：**默认值只认「字段未设置」这一种情况**，
+   * 一旦用户动过任何分组，就完全以显式列表为准。
+   * 此时「已完成」默认展开；要让它折叠，用户自己点一下即可
+   * （点一下会显式写入 "done"，语义清晰）。
+   *
+   * ⚠️⚠️ 上面三条是连修三次的记录，最终解法见 EXPANDED_KEY 的注释。
+   */
+  /** 「已完成」被用户**显式展开**的标记 —— 解决「默认值与用户状态混在一个字段」的致命问题 */
+  const EXPANDED_KEY = "__none__";
   function isCollapsed(gkey: string): boolean {
-    if (gkey !== "done") return false; // 只有已完成组可折叠
-    const raw = viewEl.dataset.collapsedGroups;
-    if (!raw) return true; // 已完成默认折叠 —— 181 条不该和待办抢注意力
-    return raw.split(",").includes(gkey);
+    // 仅在「从未被操作过」时用默认值（181 条不该和待办抢注意力）
+    if (!viewEl.dataset.collapsedGroups) return gkey === "done";
+    const set = viewEl.dataset.collapsedGroups.split(",");
+    // 已完成且被显式展开 → 永不折叠（其余分组不受影响）
+    if (gkey === "done" && set.includes(EXPANDED_KEY)) return false;
+    return set.includes(gkey);
   }
+
   function setCollapsed(gkey: string, collapsed: boolean): void {
     const cur = (viewEl.dataset.collapsedGroups || "").split(",").filter(Boolean);
-    const next = collapsed ? [...new Set([...cur, gkey])] : cur.filter((x) => x !== gkey);
+    let next: string[];
+    if (collapsed) {
+      // 折叠：写入本组；若折的是「已完成」，同时移除「显式展开」标记
+      next = [...new Set([...cur.filter((x) => x !== EXPANDED_KEY), gkey])];
+    } else {
+      // 展开：移除本组
+      next = cur.filter((x) => x !== gkey);
+      // 展开「已完成」要留下显式标记，否则会被默认值判回折叠（缺陷②）
+      if (gkey === "done" && !next.includes(EXPANDED_KEY)) next.push(EXPANDED_KEY);
+    }
     if (next.length) viewEl.dataset.collapsedGroups = next.join(",");
     else delete viewEl.dataset.collapsedGroups;
   }
