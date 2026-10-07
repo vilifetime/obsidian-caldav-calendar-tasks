@@ -757,16 +757,39 @@
 /* 统计条（2026-10-06）：原先 4 张大卡片占满一行、纵向占 90px，
    改为**一行紧凑排列**的 6 项，节省纵向空间。
    数字的字号与颜色沿用原来的（20px / 各组色），只改排布方式。 */
+/* 统计条（2026-10-06 改一行六项，2026-10-07 移入工具条）
+   原先独占一行、自带卡片背景；现挂在工具条上（`.caldav-toolbar-stats`），
+   故去掉背景/边框/圆角/外边距 —— 它现在是工具条的一部分，不是独立卡片。 */
 .cal-task-summary {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 6px 18px;
-  padding: 8px 14px;
-  margin-bottom: 12px;
-  background: var(--caldav-bg-2);
-  border: 1px solid var(--caldav-border);
-  border-radius: 10px;
+}
+
+/* 工具条里的统计条挂载点。
+   flex: 1 让它吃掉中间空白，把右侧「新建/筛选」推到最右；
+   min-width: 0 防止内容过长时把右侧挤出边界。 */
+.caldav-toolbar-stats {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  overflow: hidden;
+}
+/* 统计条空时（切换视图的间隙）不占位 */
+.caldav-toolbar-stats:empty { display: none; }
+
+/* 空间不足时按重要性裁掉次要项（.cal-task-stat按重要性降序排列，
+   末尾的是「无日期 / 已完成」—— 保留在分组标题里仍能看到）。
+   用 flex 顺序而非 display:none 逐个写，简化维护。 */
+@media (max-width: 900px) {
+  .caldav-toolbar-stats .cal-task-stat:nth-child(n + 6) { display: none; }
+}
+@media (max-width: 760px) {
+  .caldav-toolbar-stats .cal-task-stat:nth-child(n + 5) { display: none; }
+  /* 数字也要降一档，否则仅剩两项时仍显拥挤 */
+  .caldav-toolbar-stats .cal-task-stat b { font-size: 17px; }
 }
 
 .cal-task-stat {

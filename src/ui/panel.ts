@@ -58,6 +58,13 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
           <button class="caldav-seg-btn" data-view="day">日</button>
         </div>
       </div>
+      <!--
+        统计条挂载点（2026-10-07 雄哥要求：把统计数字从列表上方移到工具条这一行）。
+        放在 toolbar-right **之前** —— 任务视图时左中两块被隐藏，统计条自然靠左；
+        日历视图时本元素为空（见 view-task.ts 的挂载条件），不占位。
+        实际内容由 view-task.ts 渲染后 append 进来（统计数据的来源在那边）。
+      -->
+      <div class="caldav-toolbar-stats" data-slot="task-stats"></div>
       <div class="caldav-toolbar-right">
         <button class="caldav-btn caldav-btn-primary" data-action="new">${icons.plus} 新建</button>
         <div class="caldav-calfilter-wrap">

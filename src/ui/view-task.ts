@@ -401,7 +401,6 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     viewEl,
     `
 <div class="cal-task-view">
-  <div class="cal-task-summary">${statHtml}</div>
   <div class="cal-task-filterbar">
     <select class="cal-task-filter" data-filter title="按条件筛选">${optsHtml}</select>
     <input class="caldav-input cal-task-quick" placeholder="快速添加待办，回车保存（默认今天）…" data-quickadd/>
@@ -409,6 +408,24 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   <div class="cal-task-list">${listHtml(current)}</div>
 </div>`
   );
+
+  /**
+   * 统计条**挂进工具条**（2026-10-07 雄哥要求）。
+   *
+   * 原先它在列表上方独占一行，纵向占约 40px。任务视图时工具条的
+   * 左（导航/日期）与中（年/月/周/日）两块本来就被 `.is-task` 隐藏、
+   * 只剩右侧「新建/筛选」—— 正好有地方放，且省掉一整行。
+   *
+   * 为什么用挂载点而非直接把DOM 挪过去：统计条每轮重渲染都会重建，
+   * 留在工具条里能让它跟着重渲染走，不会与列表的渲染时机脱节。
+   *
+   * 挂载点在 `panel.ts` 的模板里（`[data-slot="task-stats"]`），
+   * 它与 `viewEl` 是兄弟节点，故要从 `viewEl` 往上找父级。
+   */
+  const statsSlot = viewEl
+    .closest(".caldav-main")
+    ?.querySelector<HTMLElement>('[data-slot="task-stats"]');
+  if (statsSlot) setHtml(statsSlot, statHtml);
 
   const select = viewEl.querySelector<HTMLSelectElement>("[data-filter]");
   select?.addEventListener("change", () => {
