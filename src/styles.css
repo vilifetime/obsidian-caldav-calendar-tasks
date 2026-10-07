@@ -761,14 +761,14 @@
    原先独占一行、自带卡片背景；现挂在工具条上（`.caldav-toolbar-stats`），
    故去掉背景/边框/圆角/外边距 —— 它现在是工具条的一部分，不是独立卡片。
 
-   列间距 18px → **32px**（2026-10-07 雄哥反馈「还是紧凑，右边空着」）：
+   列间距 18px → 32px → **48px**（2026-10-07 雄哥两次反馈「还是紧凑」）：
    移入工具条后右侧要留给「新建/筛选/切换」按钮，统计条不再需要为省宽度
-   而收紧。32px 配合 20px 数字，六项总宽约 800px，在 1080px 窗口下仍不撞按钮。 */
+   而收紧。实测 48px 时六项总宽约 870px，1080px 窗口下仍不撞按钮。 */
 .cal-task-summary {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px 32px;
+  gap: 6px 48px;
 }
 
 /* 工具条里的统计条挂载点。
@@ -811,15 +811,16 @@
    坑在两处间距会叠加：容器的列 gap 落在**项与项之间**，
    而 ::before 是「当前项的首个子元素」—— 它右边的 margin-right 与
    容器 gap **叠加**，左边则直接吃容器 gap。
-   故左侧给 0、右侧给 6px，让线与右侧数字再断开一些：
-     左：32 +0  = 32px
-     右：6 + 32 = 38px */
+   故左侧给 0、右侧给 8px，让线与右侧数字再断开些（随列间距同步放大）：
+     左：48 + 0  = 48px
+     右：8 + 48 = 56px→ 右侧略宽，与「线在左、数字在右」的分组语义一致
+*/
 .cal-task-stat + .cal-task-stat::before {
   content: "";
   display: inline-block;
   width: 1px;
   height: 12px;
-  margin: 0 6px;
+  margin: 0 8px;
   background: var(--caldav-border);
   vertical-align: -1px;
   /* 竖线是装饰，不该成为 hover 命中区 */
