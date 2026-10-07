@@ -350,6 +350,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
         return `
 <div class="cal-task-group" data-group="${g.key}">
   <div class="cal-task-group-head" data-toggle-group="${g.key}" role="button" tabindex="0"
+       style="--group-color:${g.color}"
        aria-expanded="${collapsed ? "false" : "true"}" title="点击${collapsed ? "展开" : "折叠"}此分组">
     <span class="cal-task-group-caret" aria-hidden="true">${caret}</span>
     <span class="cal-task-group-dot" style="background:${g.color}"></span>

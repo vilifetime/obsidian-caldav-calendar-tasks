@@ -827,7 +827,9 @@
   display: flex;
   gap: 10px;
   padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--cal-color, var(--caldav-border)) 42%, transparent);
+  /* 2026-10-07：曾把四个边都染成日历色（增加色彩感），实测后雄哥要求撤回 ——
+     整框彩色太抢眼，条目之间糊成一片。恢复中性边框，只保留左侧色条。 */
+  border: 1px solid var(--caldav-border);
   border-left: 3px solid var(--cal-color, var(--caldav-border));
   border-radius: 9px;
   margin-bottom: 6px;
@@ -836,8 +838,8 @@
   transition: all 0.15s;
 }
 .cal-task:hover { box-shadow: 0 1px 6px rgba(0, 0, 0, 0.07); }
-/* 已完成条目淡出：连边框一起淡，避免完成项在彩色卡片群里过于抢眼 */
-.cal-task.is-done { border-color: color-mix(in srgb, var(--cal-color, var(--caldav-border)) 18%, transparent); }
+/* 已完成条目：只把左侧色条淡化，其余边框维持中性 */
+.cal-task.is-done { border-left-color: color-mix(in srgb, var(--cal-color, var(--caldav-border)) 18%, transparent); }
 .cal-task.is-done .cal-task-title { text-decoration: line-through; opacity: 0.5; }
 
 .cal-task-check {
@@ -894,11 +896,9 @@
 .cal-task-cal i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
 .cal-task-overdue { color: var(--caldav-danger); font-weight: 500; }
-/* 逾期条目整框用危险色（2026-10-07）。
-   原先只改 border-left-color，与「整框同色」的规则叠加后会一红一蓝，
-   故把四个边都改成 danger。逾期是唯一「需要打破日历配色」的状态。 */
+/* 逾期条目：只把左侧色条改成危险色，其余边框维持中性。
+   （曾整框染红，已撤回 —— 与上方「整框中性」保持一致。） */
 .cal-task.is-overdue {
-  border-color: color-mix(in srgb, var(--caldav-danger) 45%, transparent);
   border-left-color: var(--caldav-danger);
 }
 
@@ -927,7 +927,9 @@
      七个分组纵向拉得很散。故压缩上下 padding，并用三角的负外边距「拉回」行高。 */
   padding: 4px 4px;
   margin-bottom: 4px;
-  border-bottom: 1px solid var(--caldav-border);
+  /* 分割线取**该组色点的同色**（--group-color 由模板 inline 传入）——
+     组头与它的分隔线同色，视觉上把「组名」和「组内条目」连成一块。 */
+  border-bottom: 1px solid var(--group-color, var(--caldav-border));
   cursor: pointer;
   user-select: none;
   border-radius: 4px;
