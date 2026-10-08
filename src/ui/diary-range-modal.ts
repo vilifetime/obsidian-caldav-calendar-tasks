@@ -59,20 +59,19 @@ export function askDiaryRange(
     <legend class="sr-only">${t("diary.legend")}</legend>
     ${OPTIONS.map(
       (o) => `
-    <label class="caldav-range-opt">
-      <input type="radio" name="caldav-range" value="${o.key}"${o.key === "day" ? " checked" : ""}/>
-      <span class="caldav-range-opt-body">
-        <span class="caldav-range-opt-label">${t(o.label)}</span>
-        <span class="caldav-range-opt-hint">${t(o.hint)}</span>
-      </span>
-    </label>`
+    <div class="caldav-range-opt" data-range-row="${o.key}">
+      <div class="caldav-range-head">
+        <label class="caldav-range-pick">
+          <input type="radio" name="caldav-range" value="${o.key}"${o.key === "day" ? " checked" : ""}/>
+          <span class="caldav-range-opt-label">${t(o.label)}</span>
+        </label>
+        <!-- 子选项槽：只有被选中的范围行才往里渲染（见 renderSub） -->
+        <span class="caldav-range-inline" data-inline></span>
+      </div>
+      <span class="caldav-range-opt-hint">${t(o.hint)}</span>
+    </div>`
     ).join("")}
   </fieldset>
-  <!-- 只有「本周 / 本月」才有两个目标可选（见 targetOptionsOf），此时才展开 -->
-  <div class="caldav-range-sub" data-sub hidden>
-    <div class="caldav-range-sub-lead">${t("diary.targetLead")}</div>
-    <fieldset class="caldav-range-opts caldav-range-opts--sub" data-sub-opts></fieldset>
-  </div>
 </div>`
   );
 
@@ -80,54 +79,47 @@ export function askDiaryRange(
   //（2026-10-07 社区扫描报「Avoid :has — can cause significant performance
   //  issues due to broad selector invalidation」：`:has()` 会让浏览器在**每次
   //  DOM 变更**时重新评估匹配关系，在 Obsidian 这种频繁重渲染的宿主里代价明显。）
-  const markChecked = (inputs: HTMLInputElement[], current: HTMLInputElement) => {
+  //
+  // `scope` 必须显式给：子选项的 radio 身处的 `.caldav-range-inline` 也在
+  // `.caldav-range-opt` 内，一律 closest(".caldav-range-opt") 会在切换目标时
+  // 把**外层范围行**的选中态一并改掉。
+  const markChecked = (inputs: HTMLInputElement[], current: HTMLInputElement, scope: string) => {
     inputs.forEach((other) => {
-      const label = other.closest<HTMLElement>(".caldav-range-opt");
+      const label = other.closest<HTMLElement>(scope);
       if (label) label.classList.toggle("is-checked", other === current);
     });
   };
 
-  const subWrap = modal.contentEl.querySelector<HTMLElement>("[data-sub]");
-  const subOpts = modal.contentEl.querySelector<HTMLElement>("[data-sub-opts]");
-
   /**
-   * 重建目标子选项区。
+   * 重建目标子选项。
    *
-   * 换范围就重建 DOM（选项文案随范围变：本周一 / 本月 1 日），比预渲染四种
-   * 再靠 hidden 切换更省心 —— 也避免「上次选的 spanStart 留在新范围上」这种
-   * 状态残留（week 的 spanStart 与 month 的 spanStart 是两回事）。
+   * 先清空**所有**行的槽再渲染到选中行 —— 只清当前行的话，「本周」换成「本月」后
+   * 本周行里那份「本周一」会留在原地。换范围就整块重建 DOM（文案随范围变），
+   * 比预渲染四种再靠 hidden 切换更省心，也避免「上次选的 spanStart 留在新范围上」。
    */
   const renderSub = () => {
-    if (!subWrap || !subOpts) return;
+    const hosts = Array.from(modal.contentEl.querySelectorAll<HTMLElement>("[data-inline]"));
+    hosts.forEach((n) => n.empty());
+    pickedTarget = "today";
     const opts = targetOptionsOf(picked);
-    // 只有一项时不渲染子选项区：问「插入到今天的日记 / 插入到今天的日记」没有意义
-    if (opts.length < 2) {
-      subWrap.hidden = true;
-      subOpts.empty();
-      pickedTarget = "today";
-      return;
-    }
-    subWrap.hidden = false;
-    subOpts.empty();
+    // 只有一项时不渲染：问「今天的日记 / 今天的日记」没有意义
+    if (opts.length < 2) return;
+    const host = modal.contentEl.querySelector<HTMLElement>(`[data-range-row="${picked}"] [data-inline]`);
+    if (!host) return;
     opts.forEach((o, i) => {
-      const label = subOpts.createDiv({ cls: `caldav-range-opt${i === 0 ? " is-checked" : ""}` });
+      const label = host.createEl("label", { cls: `caldav-range-target${i === 0 ? " is-checked" : ""}` });
       const input = label.createEl("input", { type: "radio" }) as HTMLInputElement;
       input.name = "caldav-target";
       input.value = o.key;
       input.checked = i === 0;
-      const body = label.createDiv({ cls: "caldav-range-opt-body" });
-      body.createDiv({ cls: "caldav-range-opt-label", text: o.label });
-      body.createDiv({ cls: "caldav-range-opt-hint", text: o.hint });
+      label.createEl("span", { cls: "caldav-range-target-text", text: o.label });
       input.addEventListener("change", () => {
         if (!input.checked) return;
         pickedTarget = input.value as DiaryTarget;
-        const inputs = Array.from(
-          subOpts.querySelectorAll<HTMLInputElement>('input[name="caldav-target"]')
-        );
-        markChecked(inputs, input);
+        const inputs = Array.from(host.querySelectorAll<HTMLInputElement>('input[name="caldav-target"]'));
+        markChecked(inputs, input, ".caldav-range-target");
       });
     });
-    pickedTarget = "today";
   };
 
   const rows = Array.from(
@@ -137,7 +129,7 @@ export function askDiaryRange(
     r.addEventListener("change", () => {
       if (!r.checked) return;
       picked = r.value as DiaryRange;
-      markChecked(rows, r);
+      markChecked(rows, r, ".caldav-range-opt");
       renderSub();
     });
   });

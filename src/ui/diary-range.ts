@@ -122,12 +122,16 @@ export function spanContains(span: DiarySpan, ms: number): boolean {
 
 export interface DiaryTargetOption {
   key: DiaryTarget;
-  /** 弹窗里的选项文案（完整句式，见 t("diary.target.*")） */
+  /**
+   * 弹窗里的紧凑文案（「今天的日记」这种，见 t("diary.target.*")）。
+   *
+   * ⚠️ 不能再是「插入到今天的日记」这种完整长句：子选项现在**跟在「本周 /
+   * 本月」右侧的同一行**（见 diary-range-modal.ts），长句会把范围行撑爆。
+   * 具体日期因此从 hint 并进 label（那里就是原先唯一的日期出处）。
+   */
   label: string;
   /** 结果提示里的短文案 */
   short: string;
-  /** 选项下方的补充说明（一般写具体日期） */
-  hint: string;
 }
 
 /**
@@ -146,7 +150,6 @@ export function targetOptionsOf(
     key: "today",
     label: t("diary.target.today"),
     short: t("diary.target.todayShort"),
-    hint: t("diary.target.todayHint"),
   };
   if (range === "week") {
     const mon = startOfWeek(today);
@@ -154,9 +157,8 @@ export function targetOptionsOf(
       todayOpt,
       {
         key: "spanStart",
-        label: t("diary.target.weekStart"),
+        label: t("diary.target.weekStart", { date: mon }),
         short: t("diary.target.weekStartShort", { date: mon }),
-        hint: mon,
       },
     ];
   }
@@ -166,9 +168,8 @@ export function targetOptionsOf(
       todayOpt,
       {
         key: "spanStart",
-        label: t("diary.target.monthStart"),
+        label: t("diary.target.monthStart", { date: first }),
         short: t("diary.target.monthStartShort", { date: first }),
-        hint: first,
       },
     ];
   }

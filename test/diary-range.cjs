@@ -280,10 +280,36 @@ const check = (name, cond, extra = "") => {
   const src = fs.readFileSync(require.resolve("./../src/ui/diary-range-modal.ts"), "utf8");
   check("弹窗内无 aria-label", !/aria-label/.test(src), "aria-label 会触发 tooltip");
   check("用 fieldset 承担分组语义", /<fieldset class="caldav-range-opts">/.test(src));
-  // 子选项区也走 fieldset（radiogroup 语义），且带 [hidden] 兜底样式
-  const subCss = fs.readFileSync(require.resolve("./../src/styles.css"), "utf8");
-  check("子选项区有 [hidden] 兜底", /\.caldav-range-sub\[hidden\] \{ display: none; \}/.test(subCss));
+  // 2026-10-08：子选项改为内联在「本周 / 本月」右侧同一行 —— 不再是独立一段
+  check(
+    "子选项渲染进被选中那行的 [data-inline] 槽",
+    /data-range-row="\$\{o\.key\}"/.test(src) && /\[data-range-row="\$\{picked\}"\] \[data-inline\]/.test(src),
+    "要跟在范围右侧同一行"
+  );
+  check(
+    "换范围先清空所有行的槽",
+    /querySelectorAll<HTMLElement>\("\[data-inline\]"\)[\s\S]{0,120}\.empty\(\)/.test(src),
+    "只清当前行的话旧行的子选项会留在原地"
+  );
+  check(
+    "目标选中态限定在 .caldav-range-target 内",
+    /markChecked\(inputs, input, "\.caldav-range-target"\)/.test(src),
+    "不限定 scope 会连带改掉外层范围行的 is-checked"
+  );
   const css = fs.readFileSync(require.resolve("./../src/styles.css"), "utf8");
+  check("内联槽空时不占位", /\.caldav-range-inline:empty \{ display: none; \}/.test(css));
+  check("旧的独立子选项区样式已清除", !/caldav-range-sub/.test(css), "残留样式会让人误以为还有一块");
+  // Modal 挂在 body 下的 .modal-container 里，不在 .caldav-root 之内 ——
+  // 少这份变量：边框退化成 currentColor（黑），选中行的 color-mix 整条失效
+  check(
+    "弹窗自带一份 CSS 变量",
+    /\.caldav-diary-range-modal \{[\s\S]*?--caldav-border:/.test(css),
+    "Modal 拿不到 .caldav-root 的变量声明"
+  );
+  check(
+    "悬停底色不再依赖编辑器作用域的 --caldav-inset",
+    !/\.caldav-range-opt:hover \{ background: var\(--caldav-inset\)/.test(css)
+  );
   const sel = (css.match(/\.caldav-range-opts \{[\s\S]*?\n\}/) || [""])[0];
   check("fieldset 默认边框已归零", /border:\s*0/.test(sel) && /padding:\s*0/.test(sel));
 }
