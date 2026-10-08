@@ -12,7 +12,7 @@ import type { App } from "obsidian";
 import type { CalStore } from "@/core/store";
 import type { SyncEngine } from "@/core/sync";
 import type { SortMode } from "@/core/types";
-import type { DiaryRange } from "./diary-range";
+import type { DiaryRange, DiaryTarget } from "./diary-range";
 
 export type ViewMode = "year" | "month" | "week" | "day" | "task";
 
@@ -32,9 +32,14 @@ export interface PanelCtx {
    * 标准 `PluginSettingTab`，由入口注入「打开设置」的调用。
    */
   openSettings: () => void;
-  /** 把今日日程插入日记（由入口注入，依赖宿主的文件 API） */
-  /** 写入日记；不传范围时按「当日」处理（命令行调用与旧行为一致） */
-  insertTodayToDiary: (range?: DiaryRange) => Promise<string>;
+  /**
+   * 写入日记（由入口注入，依赖宿主的文件 API）。
+   * 不传参数时按「当日 + 今天的日记」处理（命令行调用与旧行为一致）。
+   *
+   * ⚠️ 必须收下 `range` / `target` 并透传 —— 无参版本会吞掉弹窗里选的范围，
+   * 永远走默认「当日 + 今天」（2026-10-07 雄哥实测踩过）。
+   */
+  insertTodayToDiary: (range?: DiaryRange, target?: DiaryTarget) => Promise<string>;
   /** 发送一条测试提醒（由入口注入，用于自检提醒投递通道） */
   testReminder?: () => Promise<string>;
   /** 提醒状态摘要（由入口注入，显示已排程条数与带提醒时间的条目数） */

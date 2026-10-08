@@ -140,7 +140,7 @@ const check = (name, cond, extra = "") => {
   check("本周不含上周日", !spanContains(s, midnightMs("2026-10-04")));
 }
 
-// 7. 写日记的目标文件：当日/本周/本月用区间起始日，all 用今天
+// 7. 区间起始日（作为「写到哪一篇日记」的可选项基础）
 {
   const d = diarySpanOf("day", "2026-10-07");
   const w = diarySpanOf("week", "2026-10-07");
@@ -148,6 +148,35 @@ const check = (name, cond, extra = "") => {
   check("当日 → 今天", d.from === "2026-10-07");
   check("本周 → 周一", w.from === "2026-10-05");
   check("本月 → 1 号", m.from === "2026-10-01");
+}
+
+// 7b. 目标（写到哪一篇日记）：默认今天；spanStart 只对 week/month 生效
+//     —— 否则「所有」会去建一篇 1900-01-01 的日记（2026-10-08 新增）
+{
+  const TODAY = "2026-10-07";
+  // 复刻 diaryTargetStamp
+  const targetStamp = (range, target, today = TODAY) => {
+    if (target !== "spanStart") return today;
+    if (range !== "week" && range !== "month") return today;
+    return diarySpanOf(range, today).from;
+  };
+  check("默认目标是今天", targetStamp("week", "today") === TODAY);
+  check("本周 + spanStart → 周一", targetStamp("week", "spanStart") === "2026-10-05");
+  check("本月 + spanStart → 1 号", targetStamp("month", "spanStart") === "2026-10-01");
+  // 关键钉子：这两个必须落回今天，不能被区间首日带偏
+  check("当日 + spanStart → 今天（首日就是今天）", targetStamp("day", "spanStart") === TODAY);
+  check("所有 + spanStart → 今天（首日是哨兵）", targetStamp("all", "spanStart") === TODAY);
+  check(
+    "所有 + spanStart 不得出现 1900",
+    !targetStamp("all", "spanStart").startsWith("1900"),
+    targetStamp("all", "spanStart")
+  );
+  // 可选项数量：只有 week/month 才有两个目标
+  const optCount = (r) => (r === "week" || r === "month" ? 2 : 1);
+  check("当日只有 1 个目标（不该问「今天/今天」）", optCount("day") === 1);
+  check("所有只有 1 个目标", optCount("all") === 1);
+  check("本周有 2 个目标", optCount("week") === 2);
+  check("本月有 2 个目标", optCount("month") === 2);
 }
 
 // 8. 关键钉子：小节标题必须随范围变，否则「重复点击替换」会失效
@@ -173,6 +202,28 @@ const check = (name, cond, extra = "") => {
   check("旧文案「把今日日程与待办插入日记」已不存在", !src.includes("把今日日程与待办插入日记"));
   // 点击必须弹范围选择，而不是直接调insertTodayToDiary()
   check("点击后先弹范围框", /askDiaryRange\(ctx\.app/.test(src));
+  // 2026-10-08：range 之外还要把 target 一起回传
+  check(
+    "面板把 range 与 target 一起透传",
+    /askDiaryRange\(ctx\.app,\s*\(range,\s*target\)\s*=>\s*void ctx\.insertTodayToDiary\(range,\s*target\)\)/.test(src),
+    "只传 range 会丢掉「写到哪一篇日记」的选择"
+  );
+}
+
+// 9b. 关键钉子：弹窗必须同时回传 range 与 target，且子选项只在多目标时出现
+{
+  const fs = require("fs");
+  const src = fs.readFileSync(require.resolve("./../src/ui/diary-range-modal.ts"), "utf8");
+  check("onPick 回传两个参数", /onPick\(range,\s*target\)/.test(src), "只回传 range 会丢掉目标选择");
+  check("回传的是 pickedTarget", /const target = pickedTarget/.test(src));
+  check(
+    "只有 1 个目标时收起子选项区",
+    /opts\.length < 2/.test(src),
+    "当日 / 所有 不该问「插入到今天的日记 / 插入到今天的日记」"
+  );
+  check("切范围时重建子选项（防残留上次的选择）", /renderSub\(\)/.test(src));
+  // 主开关切换后目标要回到默认，不能留着上一次选的 spanStart
+  check("重建后目标回到今天", /pickedTarget = "today"/.test(src));
 }
 
 // 10. 关键钉子：writeDiarySection 不得再用固定常量匹配
@@ -200,7 +251,8 @@ const check = (name, cond, extra = "") => {
   check("Modal 用 new Modal(app) 构造", /new Modal\(app\)/.test(fn));
   // 确认回调不得在 open() 之前被触发
   const openAt = fn.indexOf("modal.open()");
-  const pickAt = fn.indexOf("onPick(range)");
+  // 2026-10-08 起回调变成两参（range + target），查找串要跟着改
+  const pickAt = fn.indexOf("onPick(range, target)");
   check("onPick 在 open 之后才可能被调用", pickAt > 0 && pickAt < openAt, `pick=${pickAt} open=${openAt}`);
 }
 
@@ -212,8 +264,8 @@ const check = (name, cond, extra = "") => {
   const fs = require("fs");
   const src = fs.readFileSync(require.resolve("./../src/main.ts"), "utf8");
   check(
-    "ctx 注入处透传 range",
-    /insertTodayToDiary:\s*\(range\)\s*=>\s*this\.insertTodayToDiary\(range\)/.test(src),
+    "ctx 注入处透传 range 与 target",
+    /insertTodayToDiary:\s*\(range,\s*target\)\s*=>\s*this\.insertTodayToDiary\(range,\s*target\)/.test(src),
     "写成 () => this.insertTodayToDiary() 会吞掉范围"
   );
   check("不存在吞参数的旧写法", !/insertTodayToDiary:\s*\(\)\s*=>/.test(src));
@@ -228,6 +280,9 @@ const check = (name, cond, extra = "") => {
   const src = fs.readFileSync(require.resolve("./../src/ui/diary-range-modal.ts"), "utf8");
   check("弹窗内无 aria-label", !/aria-label/.test(src), "aria-label 会触发 tooltip");
   check("用 fieldset 承担分组语义", /<fieldset class="caldav-range-opts">/.test(src));
+  // 子选项区也走 fieldset（radiogroup 语义），且带 [hidden] 兜底样式
+  const subCss = fs.readFileSync(require.resolve("./../src/styles.css"), "utf8");
+  check("子选项区有 [hidden] 兜底", /\.caldav-range-sub\[hidden\] \{ display: none; \}/.test(subCss));
   const css = fs.readFileSync(require.resolve("./../src/styles.css"), "utf8");
   const sel = (css.match(/\.caldav-range-opts \{[\s\S]*?\n\}/) || [""])[0];
   check("fieldset 默认边框已归零", /border:\s*0/.test(sel) && /padding:\s*0/.test(sel));

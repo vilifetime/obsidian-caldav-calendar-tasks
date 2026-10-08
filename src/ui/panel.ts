@@ -692,7 +692,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     if (action === "insert-diary") {
       // 先问范围（当日 / 本周 / 本月 / 所有，默认当日），确认后才写入。
       // 反馈与「打开日记页签」都在 insertTodayToDiary 里完成（含失败提示）。
-      askDiaryRange(ctx.app, (range) => void ctx.insertTodayToDiary(range));
+      askDiaryRange(ctx.app, (range, target) => void ctx.insertTodayToDiary(range, target));
       return;
     }
     if (action === "new") {

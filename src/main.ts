@@ -21,7 +21,14 @@ import { SyncEngine, type SyncReport } from "@/core/sync";
 import type { CalItem, CalSettings } from "@/core/types";
 import { occurrencesInRange } from "@/core/ics";
 import { parseLocalStamp, todayStamp, fmtTime } from "@/core/date";
-import { diarySpanOf, spanContains, type DiaryRange } from "@/ui/diary-range";
+import {
+  diarySpanOf,
+  spanContains,
+  diaryTargetStamp,
+  targetOptionsOf,
+  type DiaryRange,
+  type DiaryTarget,
+} from "@/ui/diary-range";
 import { setTransport } from "@/core/http";
 import { ReminderEngine } from "@/core/reminder";
 import { obsidianTransport } from "@/obs/http-transport";
@@ -519,10 +526,10 @@ export default class CalDavPlugin extends Plugin {
       app: this.app,
       i18n: (k) => t(k),
       openSettings: () => this.openSetting(),
-      // ⚠️ 必须把 range 透传下去 —— 写成 `() => this.insertTodayToDiary()`
-      // 会**吞掉传入的范围**，永远走默认 "day"。症状：选「本周/本月/所有」
+      // ⚠️ 必须把 range / target 都透传下去 —— 写成 `() => this.insertTodayToDiary()`
+      // 会**吞掉传入的选择**，永远走默认 "day" + "today"。症状：选「本周/本月/所有」
       // 却提示「当日没有日程或待办」（2026-10-07 雄哥实测发现）。
-      insertTodayToDiary: (range) => this.insertTodayToDiary(range),
+      insertTodayToDiary: (range, target) => this.insertTodayToDiary(range, target),
       unsaved: new Set(),
       // 恢复上次使用的视图（2026-10-07 雄哥要求）；无记录时为月视图。
       // 纯 UI 偏好，存 localStorage 而非 data.json —— 理由见 ui/view-pref.ts。
@@ -716,15 +723,25 @@ export default class CalDavPlugin extends Plugin {
    * 2026-10-07 雄哥要求：原按钮直接插「今日」，改为**先问范围**
    * （当日 / 本周 / 本月 / 所有，默认当日）。故签名从无参改为收范围，
    * 默认值仍是 "day" —— 命令行调用（`insertTodayToDiary` 那条）与旧行为一致。
+   * 2026-10-08 再加一层**目标**：写到今天的日记还是区间首日的日记
+   * （本周=周一 / 本月=1 号），默认 "today"。
    *
    * 范围计算见 ui/diary-range.ts（纯函数，有契约测试）。
    */
-  async insertTodayToDiary(range: DiaryRange = "day"): Promise<string> {
+  // ⚠️ 第二个参数名叫 `diaryTarget` 而非 `target`：下面已有 `let target: TFile`
+  // （日记文件对象），同名会静默撞车 —— 类型检查都未必照得出来。
+  async insertTodayToDiary(
+    range: DiaryRange = "day",
+    diaryTarget: DiaryTarget = "today"
+  ): Promise<string> {
     try {
       const span = diarySpanOf(range);
       const startMs = parseLocalStamp(span.from + "T00:00:00").getTime();
       const endMs = parseLocalStamp(span.toExclusive + "T00:00:00").getTime();
       const today = todayStamp();
+      const targetLabel =
+        targetOptionsOf(range, today).find((o) => o.key === diaryTarget)?.short ??
+        t("diary.target.todayShort");
       const enabled = new Set(
         this.store.settings.calendars.filter((c) => c.enabled).map((c) => c.url)
       );
@@ -755,8 +772,10 @@ export default class CalDavPlugin extends Plugin {
 
       const md = `## ${span.sectionTitle}\n${rows.map((r) => r.line).join("\n")}\n`;
 
-      // 日记文件按「区间起始日」命名：当日=今天、本周=周一、本月=1 号、全部=今天
-      const targetStamp = range === "all" ? today : span.from;
+      // 日记文件：默认今天；选「本周/本月 + 区间首日」时换成周一 / 1 号。
+      // ⚠️ 走 diaryTargetStamp 收敛 —— 「所有」的区间首日是 1900-01-01 那个哨兵，
+      // 直接拿来命名会去建一篇 1900 年的日记。
+      const targetStamp = diaryTargetStamp(range, diaryTarget, today);
       const folder = this.getDailyNoteFolder();
       const path = normalizePath(folder ? `${folder}/${targetStamp}.md` : `${targetStamp}.md`);
       const existing = this.app.vault.getAbstractFileByPath(path);
@@ -781,6 +800,7 @@ export default class CalDavPlugin extends Plugin {
           verb: t(replaced ? "diary.verbUpdate" : "diary.verbWrite"),
           section: span.sectionTitle,
           count: rows.length,
+          target: targetLabel,
         })
       );
     } catch (e) {

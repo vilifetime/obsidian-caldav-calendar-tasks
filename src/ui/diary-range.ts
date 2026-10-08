@@ -14,6 +14,13 @@ import { t } from "@/i18n";
 /** 范围种类 */
 export type DiaryRange = "day" | "week" | "month" | "all";
 
+/**
+ * 写进哪一篇日记（2026-10-08 雄哥要求新增）：
+ *  - `today`     今天的日记（默认，旧行为就是它）
+ *  - `spanStart` 区间首日的日记 —— 本周=周一、本月=1 号
+ */
+export type DiaryTarget = "today" | "spanStart";
+
 export interface DiarySpan {
   /** 起始日期（含） */
   from: string;
@@ -111,4 +118,76 @@ export function diarySpanOf(range: DiaryRange, today: LocalStamp = todayStamp())
 /** 区间是否包含某个毫秒时间点（统一用「左闭右开」） */
 export function spanContains(span: DiarySpan, ms: number): boolean {
   return ms >= midnightMs(span.from) && ms < midnightMs(span.toExclusive);
+}
+
+export interface DiaryTargetOption {
+  key: DiaryTarget;
+  /** 弹窗里的选项文案（完整句式，见 t("diary.target.*")） */
+  label: string;
+  /** 结果提示里的短文案 */
+  short: string;
+  /** 选项下方的补充说明（一般写具体日期） */
+  hint: string;
+}
+
+/**
+ * 某个范围下可选的「写到哪一篇日记」。
+ *
+ * 只有**本周 / 本月**才真的存在两个选项：当日的首日就是今天，「所有」的首日是
+ * 1900-01-01 那个哨兵 —— 都不构成选择，故只回一项，调用方据此不渲染子选项区。
+ *
+ * 顺序即显示顺序，第一项（今天）是默认项 —— 与旧行为一致。
+ */
+export function targetOptionsOf(
+  range: DiaryRange,
+  today: LocalStamp = todayStamp()
+): DiaryTargetOption[] {
+  const todayOpt: DiaryTargetOption = {
+    key: "today",
+    label: t("diary.target.today"),
+    short: t("diary.target.todayShort"),
+    hint: t("diary.target.todayHint"),
+  };
+  if (range === "week") {
+    const mon = startOfWeek(today);
+    return [
+      todayOpt,
+      {
+        key: "spanStart",
+        label: t("diary.target.weekStart"),
+        short: t("diary.target.weekStartShort", { date: mon }),
+        hint: mon,
+      },
+    ];
+  }
+  if (range === "month") {
+    const first = today.slice(0, 8) + "01";
+    return [
+      todayOpt,
+      {
+        key: "spanStart",
+        label: t("diary.target.monthStart"),
+        short: t("diary.target.monthStartShort", { date: first }),
+        hint: first,
+      },
+    ];
+  }
+  // day：首日就是今天；all：首日是哨兵 —— 都只有「今天」有意义
+  return [todayOpt];
+}
+
+/**
+ * 实际要写进哪一天的日记。
+ *
+ * ⚠️ 这里对「区间首日」做了收敛：`spanStart` 只对 week / month 有意义，
+ * 其余一律落回今天 —— 否则「所有」会去建一篇 1900-01-01 的日记。
+ */
+export function diaryTargetStamp(
+  range: DiaryRange,
+  target: DiaryTarget = "today",
+  today: LocalStamp = todayStamp()
+): string {
+  if (target !== "spanStart") return today;
+  if (range !== "week" && range !== "month") return today;
+  return diarySpanOf(range, today).from;
 }
