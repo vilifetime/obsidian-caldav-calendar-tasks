@@ -42,7 +42,10 @@ export function keyOfItem(it: CalItem): string {
 export function monthChipHtml(it: CalItem, occ: string, calColor: string): string {
   const k = keyOfItem(it);
   const done = it.kind === "todo" && it.percent === 100;
-  const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">✓</button>` : "";
+  // ⚠️ 勾子必须**按 done 条件渲染**，不能无条件写 `✓` 再靠 CSS 颜色藏起来：
+  //    那样 hover 时那条 `:not(.is-done) :hover` 规则会把淡勾显出来，
+  //    症状就是「未完成的待办看着已经打过勾」（见 styles.css .cal-chip-check 处注释）。
+  const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">${done ? "✓" : ""}</button>` : "";
   const timeRow = it.allDay
     ? ""
     : `<div class="cal-chip-row cal-chip-row-time"><span class="cal-chip-time">${occ.slice(11, 16)}</span></div>`;

@@ -77,7 +77,7 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
         .map(({ it }) => {
           const k = keyOfItem(it);
           const done = it.kind === "todo" && it.percent === 100;
-          const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}">✓</button>` : "";
+          const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">${done ? "✓" : ""}</button>` : "";
           return `<div class="cal-chip cal-chip-allday ${done ? "is-done" : ""}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">${check}<span class="cal-chip-title">${it.rrule ? "↻" : ""}${escape(it.summary || t("chip.noTitle"))}</span></div>`;
         })
         .join("");
@@ -96,7 +96,7 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
           const startLabel = `${String(b.startMin / 60 | 0).padStart(2, "0")}:${String(b.startMin % 60).padStart(2, "0")}`;
           const done = b.it.kind === "todo" && b.it.percent === 100;
           const check = b.it.kind === "todo"
-            ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">✓</button>`
+            ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">${done ? "✓" : ""}</button>`
             : "";
           return `<div class="cal-wk-block ${b.it.kind === "todo" ? "cal-wk-block-todo" : ""} ${done ? "is-done" : ""}" data-open="${k}"
             style="--cal-color:${calColorOf(ctx, b.it)};top:${top}%;height:${height}%">

@@ -422,6 +422,8 @@
   border: 1.5px solid var(--cal-color, #64748b);
   border-radius: 50%;
   background: transparent;
+  /* 未完成时内容里没有 `✓`，这里仍写 transparent 兜底：
+     保证 hover 时勾子绝不显形（可见性由内容有无字符决定，见下方 hover 注）。 */
   color: transparent;
   font-size: 9px;
   line-height: 1;
@@ -448,10 +450,14 @@
   filter: brightness(0.88);
 }
 
+/* hover 只给一层淡底提示「可点」，**勾子不显现**。
+   ⚠️ 绝不能在 hover 里设 color —— 勾子是 `✓` 文本节点，一旦给任何非 transparent
+   的颜色，未完成的圆圈就会浮出淡勾，症状是「未完成看着已经打过勾」。
+   勾子的可见性由**内容里有没有 `✓` 字符**决定（见 view-common.ts /
+   view-week.ts 的 `${done ? "✓" : ""}`），CSS 只负责颜色，两边不要重复控制。 */
 .cal-chip:not(.is-done) .cal-chip-check:hover,
 .cal-wk-block:not(.is-done) .cal-chip-check:hover {
   background: color-mix(in srgb, var(--cal-color, #64748b) 20%, transparent);
-  color: color-mix(in srgb, var(--cal-color, #64748b) 45%, transparent);
   border-color: var(--cal-color, #64748b);
 }
 
