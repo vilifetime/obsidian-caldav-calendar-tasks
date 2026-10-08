@@ -286,3 +286,42 @@ if (violations.length) {
   for (const e of exempted) byWhy.set(e.why, (byWhy.get(e.why) ?? 0) + 1);
   for (const [why, cnt] of byWhy) console.log(`         豁免 ${cnt} 处 —— ${why}`);
 }
+
+/* ────────────────────────────────────────────────────────────
+ * README 检查（社区目录审核的 Warning 类问题）
+ *
+ * 2026-10-08 审核返回：
+ *   "README does not appear to contain English text - README.md -
+ *    The Obsidian plugin directory is primarily English-speaking."
+ * 本脚本此前**完全没有 README 检查项**，故没能提前发现。
+ *
+ * 深度断言在 test/readme-en.cjs（会跑 6 组，含逐字比对）；此处只做快速粗筛。
+ * 两者不要合并 —— 一个是发版前粗筛，一个是回归网。
+ * ──────────────────────────────────────────────────────────── */
+console.log("");
+console.log("  README：英文内容与一致性");
+{
+  const md = fs.readFileSync("README.md", "utf8");
+  const flat = md.replace(/\r\n/g, "\n").replace(/\s*\n\s*/g, " ");
+  // 英文区 = 「## 中文说明」之前。不能用 --- 切：导航行后紧跟一行 ---，
+  // 按它切只会取到 2 行简介（2026-10-08 实测，词数判据被误判为 52 词）。
+  const enPart = md.split("## 中文说明")[0];
+  const enWords = (enPart.replace(/```[\s\S]*?```/g, " ").match(/[A-Za-z][A-Za-z'-]+/g) || []).length;
+  const readmeFails = [];
+
+  if (enWords < 300) {
+    readmeFails.push(`英文内容仅 ${enWords} 词（阈值 300），审核会判「不含英文」`);
+  }
+  for (const seg of ["## English", "Features", "Installation", "Privacy and network use", "中文说明"]) {
+    if (!flat.includes(seg)) readmeFails.push(`缺少章节: ${seg}`);
+  }
+  const man = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+  if (!md.startsWith("# " + man.name)) {
+    readmeFails.push(`标题应与 manifest.name 一致: # ${man.name}`);
+  }
+  if (readmeFails.length) {
+    for (const f of readmeFails) console.log(`  [FAIL] README: ${f}`);
+  } else {
+    console.log(`  [PASS] README 含完整英文说明（${enWords} 词）且标题与 manifest 一致，中文说明区保留`);
+  }
+}
