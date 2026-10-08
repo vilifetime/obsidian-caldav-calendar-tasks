@@ -82,7 +82,29 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
   assert.ok(/border-radius\s*:\s*50%/.test(base[0]), "必须是圆形");
 }
 
+// ── 5. 就地更新必须同步 textContent（勾子的可见性由字符决定，class 管不了）──
+//
+// 补这条是因为真出现过：勾选走「就地更新」路径（updateTodoCheckDOM，只切
+// is-done class 而不重渲染 HTML），于是**填充色变了、小勾子没有** ——
+// 半修状态最难认，以为改完了其实只对了一半。
+{
+  const src = read("src/ui/panel.ts");
+  const fn = src.match(/function updateTodoCheckDOM[\s\S]*?\n  \}/);
+  assert.ok(fn, "没找到 updateTodoCheckDOM");
+  assert.ok(
+    /btn\.textContent\s*=\s*done \? "✓" : ""/.test(fn[0]),
+    "updateTodoCheckDOM 必须同步设 textContent —— 只切 class 会出现「有填充色无勾」"
+  );
+  // 且必须限定在勾圈类上：Dock 的 .caldav-dock-check 内含真 <input type=checkbox>，
+  // 塞文字节点会显示出一个多余的「✓」
+  assert.ok(
+    /cal-chip-check/.test(fn[0]) && /cal-task-check/.test(fn[0]),
+    "textContent 赋值必须限定在勾圈类（cal-chip-check / cal-task-check）上"
+  );
+}
+
 console.log("  [PASS] 日历视图三处勾选圈：勾子按 done 条件渲染，无条件写死的已清零");
 console.log("  [PASS] 未完成 hover 不设 color（勾子不会显形）");
 console.log("  [PASS] 完成态：填充 + 白勾；基底：透明 + 圆形");
+console.log("  [PASS] 就地更新同步 textContent（点击后有填充色也有勾）");
 console.log("✓ 勾选圈勾子可见性回归测试通过");

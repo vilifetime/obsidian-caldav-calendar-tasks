@@ -537,7 +537,21 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   function updateTodoCheckDOM(root: HTMLElement, key: string, done: boolean): void {
     root
       .querySelectorAll<HTMLElement>(`[data-toggle="${key}"]`)
-      .forEach((btn) => (btn.title = done ? t("dock.markUndone") : t("dock.markDone")));
+      .forEach((btn) => {
+        btn.title = done ? t("dock.markUndone") : t("dock.markDone");
+        // ⚠️ 必须同步 textContent，不能只切 is-done class。
+        // 勾子的可见性由**内容里有没有 `✓` 字符**决定（见 styles.css .cal-chip-check
+        // 处的注释），class 只管填充色与勾子颜色。所以切了 class 而不改字符，
+        // 症状就是「点击后填充色有了、小勾子没有」。
+        //   ⚠️ 只认这两个勾圈类，**不能一律赋 ✓**：
+        //   · `.cal-chip-check` 日历视图（view-common / view-week）
+        //   · `.cal-task-check` 任务视图（view-task）
+        //   Dock 的 `.caldav-dock-check` 是真 <input type=checkbox>，
+        //   且其 DOM 不在本函数的作用域（root 是主面板），不能被塞文字节点。
+        if (btn.classList.contains("cal-chip-check") || btn.classList.contains("cal-task-check")) {
+          btn.textContent = done ? "✓" : "";
+        }
+      });
     root
       .querySelectorAll<HTMLElement>(`[data-open="${key}"]`)
       .forEach((el) => el.classList.toggle("is-done", done));
