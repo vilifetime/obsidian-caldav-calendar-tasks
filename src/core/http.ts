@@ -26,6 +26,8 @@
  * 前者直接报给用户，后者应提示检查地址与网络。
  */
 
+import { t } from "../i18n";
+
 export interface HttpResult {
   status: number;
   headers: Record<string, string>;
@@ -79,10 +81,7 @@ export function isNetworkLevelError(e: unknown): boolean {
  */
 async function viaTransport(url: string, opts: HttpOptions): Promise<HttpResult> {
   if (!transport) {
-    throw new Error(
-      "HTTP 传输未初始化：宿主必须在 onload 时调用 setTransport()。" +
-        "（请勿在 core 层直接使用 fetch —— 移动端会被 CORS 拦截。）"
-    );
+    throw new Error(t("net.transportUninit"));
   }
   return transport(url, opts);
 }

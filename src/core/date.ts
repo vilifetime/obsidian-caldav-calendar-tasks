@@ -1,4 +1,5 @@
 import { pad2, type LocalStamp } from "./types";
+import { t } from "../i18n";
 
 /** 本地时区某个 UTC 毫秒的墙上时间字段 */
 interface WallFields {
@@ -106,12 +107,18 @@ export function diffDays(a: LocalStamp, b: LocalStamp): number {
 }
 
 export function fmtTime(stamp: LocalStamp): string {
-  if (isDateOnly(stamp)) return "全天";
+  if (isDateOnly(stamp)) return t("time.allDay");
   return stamp.slice(11, 16);
 }
 
+/**
+ * 短日期：中文「3月5日」／英文「3/5」。
+ *
+ * 函数名沿用了迁移前的 `fmtDateCn`，但实现已走 i18n —— 改名会牵动十余处调用，
+ * 而「Cn」只是历史痕迹，留着无害（真要改见 commit 说明）。
+ */
 export function fmtDateCn(stamp: LocalStamp): string {
-  return `${+stamp.slice(5, 7)}月${+stamp.slice(8, 10)}日`;
+  return t("cal.fmtMonthDay", { m: +stamp.slice(5, 7), d: +stamp.slice(8, 10) });
 }
 
 /**

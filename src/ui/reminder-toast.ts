@@ -16,6 +16,7 @@
 import { icons } from "./icons";
 import { setHtml } from "./dom";
 import type { TimerHandle } from "../constants";
+import { t } from "@/i18n";
 
 export interface ReminderToastOptions {
   title: string;
@@ -112,12 +113,12 @@ export function showReminderToast(opts: ReminderToastOptions): void {
   <div class="caldav-reminder-head">
     <span class="caldav-reminder-icon">${icons.bell}</span>
     <span class="caldav-reminder-title"></span>
-    <button class="caldav-reminder-x" type="button" data-act="close" title="关闭" aria-label="关闭">${icons.close}</button>
+    <button class="caldav-reminder-x" type="button" data-act="close" title="${t("reminder.close")}" aria-label="${t("reminder.close")}">${icons.close}</button>
   </div>
   <div class="caldav-reminder-body"></div>
   <div class="caldav-reminder-acts">
-    <button class="caldav-reminder-act is-primary" type="button" data-act="open">打开</button>
-    <button class="caldav-reminder-act" type="button" data-act="snooze">稍后 ${SNOOZE_MINUTES} 分钟</button>
+    <button class="caldav-reminder-act is-primary" type="button" data-act="open">${t("reminder.open")}</button>
+    <button class="caldav-reminder-act" type="button" data-act="snooze">${t("reminder.snooze", { count: SNOOZE_MINUTES })}</button>
   </div>`
   );
   // 条目标题可能含 < > &，必须用 textContent 回填，不能拼进 HTML 字符串

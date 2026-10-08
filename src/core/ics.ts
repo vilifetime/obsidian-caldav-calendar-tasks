@@ -9,6 +9,7 @@ import {
   dateStampOfMs, isDateOnly, parseLocalStamp, stampOfMs, zoneOffsetMs, weekdayIndexOfCode, padDate
 } from "./date";
 import { pad2 } from "./types";
+import { t } from "../i18n";
 
 export interface IcsProp {
   name: string;
@@ -360,7 +361,7 @@ function rebuildComponent(comp: IcsComponent, item: CalItem): IcsComponent {
   for (const a of item.alarms || []) {
     props.push({ name: "BEGIN", params: {}, value: "VALARM" });
     props.push({ name: "ACTION", params: {}, value: "DISPLAY" });
-    props.push({ name: "DESCRIPTION", params: {}, value: escapeText(item.summary || "提醒") });
+    props.push({ name: "DESCRIPTION", params: {}, value: escapeText(item.summary || t("net.defaultDesc")) });
     props.push({ name: "TRIGGER", params: {}, value: `-PT${a.minutesBefore}M` });
     props.push({ name: "END", params: {}, value: "VALARM" });
   }

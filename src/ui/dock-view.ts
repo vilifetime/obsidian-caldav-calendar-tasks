@@ -18,6 +18,7 @@ import type CalDavPlugin from "@/main";
 import { DOCK_VIEW_TYPE, ICON_ID } from "@/constants";
 import { renderDockPanel, toggleTodoDone } from "./panel";
 import { openEditor } from "./editor";
+import { t } from "@/i18n";
 
 export class CalDavDockView extends ItemView {
   private plugin: CalDavPlugin;
@@ -39,7 +40,7 @@ export class CalDavDockView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "日历任务管理";
+    return t("dock.title");
   }
 
   getIcon(): string {

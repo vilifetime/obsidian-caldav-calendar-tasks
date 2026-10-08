@@ -22,6 +22,7 @@ import { todoDueOccurrences } from "./view-common";
 import { saveViewMode } from "./view-pref";
 import { askDiaryRange } from "./diary-range-modal";
 import { setHtml } from "./dom";
+import { t } from "@/i18n";
 
 /**
  * `PanelCtx` 与 `ViewMode` 原本定义在本文件内，移植时抽到了 `./panel-ctx`。
@@ -46,17 +47,17 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   <main class="caldav-main">
     <header class="caldav-toolbar">
       <div class="caldav-toolbar-left">
-        <button class="caldav-icon-btn" data-action="prev" title="上一页">${icons.prev}</button>
-        <button class="caldav-btn" data-action="today">今天</button>
-        <button class="caldav-icon-btn" data-action="next" title="下一页">${icons.next}</button>
+        <button class="caldav-icon-btn" data-action="prev" title="${t("toolbar.prev")}">${icons.prev}</button>
+        <button class="caldav-btn" data-action="today">${t("toolbar.today")}</button>
+        <button class="caldav-icon-btn" data-action="next" title="${t("toolbar.next")}">${icons.next}</button>
         <span class="caldav-cursor-title"></span>
       </div>
       <div class="caldav-toolbar-center">
-        <div class="caldav-seg" role="tablist" aria-label="视图切换">
-          <button class="caldav-seg-btn" data-view="year">年</button>
-          <button class="caldav-seg-btn" data-view="month">月</button>
-          <button class="caldav-seg-btn" data-view="week">周</button>
-          <button class="caldav-seg-btn" data-view="day">日</button>
+        <div class="caldav-seg" role="tablist" aria-label="${t("toolbar.viewSwitch")}">
+          <button class="caldav-seg-btn" data-view="year">${t("toolbar.viewYear")}</button>
+          <button class="caldav-seg-btn" data-view="month">${t("toolbar.viewMonth")}</button>
+          <button class="caldav-seg-btn" data-view="week">${t("toolbar.viewWeek")}</button>
+          <button class="caldav-seg-btn" data-view="day">${t("toolbar.viewDay")}</button>
         </div>
       </div>
       <!--
@@ -67,21 +68,21 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       -->
       <div class="caldav-toolbar-stats" data-slot="task-stats"></div>
       <div class="caldav-toolbar-right">
-        <button class="caldav-btn caldav-btn-primary" data-action="new">${icons.plus} 新建</button>
+        <button class="caldav-btn caldav-btn-primary" data-action="new">${icons.plus} ${t("toolbar.new")}</button>
         <div class="caldav-calfilter-wrap">
-          <button class="caldav-icon-btn" data-action="calfilter" title="日历筛选">${icons.layers}</button>
+          <button class="caldav-icon-btn" data-action="calfilter" title="${t("toolbar.calFilter")}">${icons.layers}</button>
           <div class="caldav-calfilter-pop" data-pop="calfilter" hidden>
-            <div class="caldav-cal-head">日历筛选</div>
+            <div class="caldav-cal-head">${t("toolbar.calFilter")}</div>
             <div class="caldav-cal-list"></div>
             <label class="caldav-switch-line caldav-switch-line--inline caldav-calfilter-opt">
-              <span class="caldav-switch-label">日历视图中显示待办任务</span>
+              <span class="caldav-switch-label">${t("toolbar.showTodosInCalendar")}</span>
               <span class="caldav-switch">
                 <input type="checkbox" data-opt="showTodos"/>
                 <span class="caldav-switch-track"></span>
               </span>
             </label>
             <label class="caldav-switch-line caldav-switch-line--inline caldav-calfilter-opt">
-              <span class="caldav-switch-label">任务视图中显示日程事件</span>
+              <span class="caldav-switch-label">${t("toolbar.showEventsInTaskView")}</span>
               <span class="caldav-switch">
                 <input type="checkbox" data-opt="showEventsInTaskView"/>
                 <span class="caldav-switch-track"></span>
@@ -89,18 +90,18 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
             </label>
             <label class="caldav-switch-line caldav-switch-line--inline caldav-calfilter-opt caldav-switch-line--nested"
                    data-opt-row="showExpiredEvents" hidden>
-              <span class="caldav-switch-label">任务视图中显示过期日程</span>
+              <span class="caldav-switch-label">${t("toolbar.showExpiredEvents")}</span>
               <span class="caldav-switch">
                 <input type="checkbox" data-opt="showExpiredEventsInTaskView"/>
                 <span class="caldav-switch-track"></span>
               </span>
             </label>
             <div class="caldav-calfilter-foot">
-              <button class="caldav-link" data-action="insert-diary">把日程与待办插入日记</button>
+              <button class="caldav-link" data-action="insert-diary">${t("toolbar.insertDiary")}</button>
             </div>
           </div>
         </div>
-        <button class="caldav-icon-btn" data-action="toggle-view" title="切换到任务视图" aria-label="切换到任务视图"></button>
+        <button class="caldav-icon-btn" data-action="toggle-view" title="${t("toolbar.toTaskView")}" aria-label="${t("toolbar.toTaskView")}"></button>
       </div>
     </header>
     <div class="caldav-view"></div>
@@ -128,7 +129,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     if (!cals.length) {
       setHtml(
         calListEl,
-        `<div class="caldav-cal-empty">尚未配置服务器<br><button class="caldav-link" data-action="settings">去配置 →</button></div>`
+        `<div class="caldav-cal-empty">${t("empty.notConfigured")}<br><button class="caldav-link" data-action="settings">${t("empty.goConfigure")}</button></div>`
       );
       return;
     }
@@ -138,13 +139,13 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       .map(
         (c, i) => `
       <div class="caldav-cal-item ${c.enabled ? "" : "is-off"}" data-cal="${i}"
-           title="${c.enabled ? "点击在视图中隐藏此日历" : "点击在视图中显示此日历"}">
+           title="${c.enabled ? t("toolbar.clickHideCal") : t("toolbar.clickShowCal")}">
         <span class="caldav-cal-dot" style="background:${calEventColor(c)}"></span>
         <span class="caldav-cal-name" title="${escapeAttr(c.url)}">${escapeHtml(c.displayName)}</span>
         <button class="caldav-icon-btn caldav-cal-toggle" type="button"
                 aria-pressed="${c.enabled ? "true" : "false"}"
-                title="${c.enabled ? "隐藏此日历" : "显示此日历"}"
-                aria-label="${c.enabled ? "隐藏此日历" : "显示此日历"}">${c.enabled ? icons.eye : icons.eyeOff}</button>
+                title="${c.enabled ? t("toolbar.hideCal") : t("toolbar.showCal")}"
+                aria-label="${c.enabled ? t("toolbar.hideCal") : t("toolbar.showCal")}">${c.enabled ? icons.eye : icons.eyeOff}</button>
       </div>`
       )
       .join("")
@@ -191,15 +192,17 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
 
   function cursorTitle(): string {
     const c = ctx.cursor;
-    if (ctx.viewMode === "year") return `${+c.slice(0, 4)} 年`;
-    if (ctx.viewMode === "month") return `${+c.slice(0, 4)} 年 ${+c.slice(5, 7)} 月`;
+    if (ctx.viewMode === "year") return t("title.year", { y: +c.slice(0, 4) });
+    if (ctx.viewMode === "month") return t("title.month", { y: +c.slice(0, 4), m: +c.slice(5, 7) });
     if (ctx.viewMode === "week") {
       const ws = startOfWeek(c);
       const we = addDays(ws, 6);
       return `${fmtDateCn(ws)} – ${fmtDateCn(we)}`;
     }
-    if (ctx.viewMode === "day") return `${+c.slice(0, 4)} 年 ${+c.slice(5, 7)} 月 ${+c.slice(8, 10)} 日`;
-    return "待办任务";
+    if (ctx.viewMode === "day") {
+      return t("title.day", { y: +c.slice(0, 4), m: +c.slice(5, 7), d: +c.slice(8, 10) });
+    }
+    return t("title.todo");
   }
 
   function renderToolbarState(): void {
@@ -213,7 +216,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   function renderViewToggle(): void {
     const toTask = ctx.viewMode !== "task";
     setHtml(viewToggleBtn, toTask ? icons.taskList : icons.calCheck);
-    const label = toTask ? "切换到任务视图" : "切换到日历视图";
+    const label = toTask ? t("toolbar.toTaskView") : t("toolbar.toCalView");
     viewToggleBtn.title = label;
     viewToggleBtn.setAttribute("aria-label", label);
   }
@@ -534,7 +537,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   function updateTodoCheckDOM(root: HTMLElement, key: string, done: boolean): void {
     root
       .querySelectorAll<HTMLElement>(`[data-toggle="${key}"]`)
-      .forEach((btn) => (btn.title = done ? "标记未完成" : "标记完成"));
+      .forEach((btn) => (btn.title = done ? t("dock.markUndone") : t("dock.markDone")));
     root
       .querySelectorAll<HTMLElement>(`[data-open="${key}"]`)
       .forEach((el) => el.classList.toggle("is-done", done));
@@ -881,19 +884,25 @@ export type FocusScope = "day" | "month" | "week";
  * 下拉是**自定义**的而非原生 <select>：原生弹出列表由操作系统绘制，
  * 选中项永远是系统高亮色（蓝），CSS 无法让它跟随主题（option:hover / :checked 会被忽略）。
  */
+/**
+ * label 存的是 i18n key 而非字面文案。
+ *
+ * 模块级常量在 import 时就求值完，若把译文直接放进 label，用户中途改语言后
+ * 这个列表不会跟着变（它不在 render 调用链里）。故存 key、在渲染时再 t()。
+ */
 const DOCK_FILTERS: Array<{ key: DockFilter; label: string }> = [
-  { key: "next7", label: "未来七天" },
-  { key: "today", label: "今日任务" },
-  { key: "tomorrow", label: "明日任务" },
-  { key: "thisweek", label: "本周任务" },
-  { key: "future", label: "未来任务" },
-  { key: "overdue", label: "过期任务" },
-  { key: "past7", label: "过去七天" },
-  { key: "undone", label: "所有未完成" },
-  { key: "nodate", label: "无日期任务" },
-  { key: "doneToday", label: "今日已完成" },
-  { key: "doneYesterday", label: "昨日已完成" },
-  { key: "done", label: "已完成" }
+  { key: "next7", label: "dock.filter.next7" },
+  { key: "today", label: "dock.filter.today" },
+  { key: "tomorrow", label: "dock.filter.tomorrow" },
+  { key: "thisweek", label: "dock.filter.thisweek" },
+  { key: "future", label: "dock.filter.future" },
+  { key: "overdue", label: "dock.filter.overdue" },
+  { key: "past7", label: "dock.filter.past7" },
+  { key: "undone", label: "dock.filter.undone" },
+  { key: "nodate", label: "dock.filter.nodate" },
+  { key: "doneToday", label: "dock.filter.doneToday" },
+  { key: "doneYesterday", label: "dock.filter.doneYesterday" },
+  { key: "done", label: "dock.filter.done" }
 ];
 
 export interface DockPanelOpts {
@@ -936,23 +945,23 @@ export function renderDockPanel(
       <span class="caldav-dock-select-arrow">${icons.chevron}</span>
       <div class="caldav-dock-pop caldav-dock-filter-pop" data-pop="dock-filter" hidden>
         ${DOCK_FILTERS.map(
-          (f) => `<button class="caldav-dock-popitem" data-dock-filter="${f.key}" type="button">${f.label}</button>`
+          (f) => `<button class="caldav-dock-popitem" data-dock-filter="${f.key}" type="button">${t(f.label)}</button>`
         ).join("")}
       </div>
     </div>
-    <button class="caldav-dock-filter-btn" data-dock="category">分类筛选</button>
+    <button class="caldav-dock-filter-btn" data-dock="category">${t("dock.categoryFilter")}</button>
     <div class="caldav-dock-cat-pop" data-pop="category" hidden>
-      <div class="caldav-dock-cat-head">选择分类</div>
+      <div class="caldav-dock-cat-head">${t("dock.categoryPick")}</div>
       <div class="caldav-dock-cat-list" data-cat-list></div>
       <div class="caldav-dock-cat-foot">
-        <button class="caldav-foot-btn caldav-foot-btn--ghost" data-cat-action="cancel">取消</button>
-        <button class="caldav-foot-btn caldav-foot-btn--primary" data-cat-action="ok">确定</button>
+        <button class="caldav-foot-btn caldav-foot-btn--ghost" data-cat-action="cancel">${t("common.cancel")}</button>
+        <button class="caldav-foot-btn caldav-foot-btn--primary" data-cat-action="ok">${t("common.ok")}</button>
       </div>
     </div>
   </div>
   <div class="caldav-dock-search-wrap">
     <span class="caldav-dock-search-icon">${icons.search}</span>
-    <input class="caldav-dock-search" data-dock="search" placeholder="搜索任务..." />
+    <input class="caldav-dock-search" data-dock="search" placeholder="${t("dock.searchPlaceholder")}" />
   </div>
 </div>
 <div class="caldav-dock-list">
@@ -1007,7 +1016,7 @@ export function renderDockPanel(
   /** 聚焦状态在下拉里的文案：日→「10月9日」；月→「2026 年 10 月」；周→「10月5日 – 10月11日」 */
   function focusLabel(): string {
     if (!focusDate) return "";
-    if (focusScope === "month") return `${+focusDate.slice(0, 4)} 年 ${+focusDate.slice(5, 7)} 月`;
+    if (focusScope === "month") return t("title.month", { y: +focusDate.slice(0, 4), m: +focusDate.slice(5, 7) });
     if (focusScope === "week") {
       const ws = startOfWeek(focusDate);
       return `${fmtDateCn(ws)} – ${fmtDateCn(addDays(ws, 6))}`;
@@ -1018,9 +1027,8 @@ export function renderDockPanel(
   function syncDockFilterLabel(): void {
     // 聚焦时下拉文案显示当前聚焦范围 —— 用户一眼能看出列表为什么变了；
     // 此时不点亮任何预设筛选项，因为当前状态不是任何一个预设。
-    const label = focusDate
-      ? focusLabel()
-      : DOCK_FILTERS.find((f) => f.key === dockFilter)?.label || "";
+    const presetKey = DOCK_FILTERS.find((f) => f.key === dockFilter)?.label;
+    const label = focusDate ? focusLabel() : presetKey ? t(presetKey) : "";
     const textEl = root.querySelector<HTMLElement>(".caldav-dock-select-text");
     if (textEl) textEl.textContent = label;
     root.querySelectorAll<HTMLElement>("[data-dock-filter]").forEach((b) => {
@@ -1203,7 +1211,7 @@ export function renderDockPanel(
   }
 
   function formatDockTimeRange(it: CalItem): string {
-    if (it.allDay) return "全天";
+    if (it.allDay) return t("time.allDay");
     if (it.kind === "event" && it.end) return `${fmtTime(it.start)} - ${fmtTime(it.end)}`;
     // 待办以到期时间为准，不再展示开始时间
     if (it.kind === "todo" && it.end) return isDateOnly(it.end) ? "" : fmtTime(it.end);
@@ -1216,10 +1224,10 @@ export function renderDockPanel(
    * 覆盖 1~9 全部取值，不只认 1/3/5/9 这四个数字。
    */
   function prioMeta(p: number): { label: string; cls: string } {
-    if (p <= 2) return { label: "紧急", cls: "prio-urgent" };
-    if (p <= 4) return { label: "高", cls: "prio-high" };
-    if (p <= 6) return { label: "中", cls: "prio-mid" };
-    return { label: "低", cls: "prio-low" };
+    if (p <= 2) return { label: t("prio.urgent"), cls: "prio-urgent" };
+    if (p <= 4) return { label: t("prio.high"), cls: "prio-high" };
+    if (p <= 6) return { label: t("prio.mid"), cls: "prio-mid" };
+    return { label: t("prio.low"), cls: "prio-low" };
   }
 
   function buildDockTags(it: CalItem): string {
@@ -1236,25 +1244,25 @@ export function renderDockPanel(
     let timeLabel = "";
     let timeCls = "caldav-dock-tag--primary";
     if (overdueDays > 0) {
-      timeLabel = `逾期 ${overdueDays} 天`;
+      timeLabel = t("time.dueOverdue", { count: overdueDays });
       timeCls = "caldav-dock-tag--overdue";
-    } else if (isDoneTodo) timeLabel = "已完成";
-    else if (!date) timeLabel = "无日期";
-    else if (diff === 0) timeLabel = "今天";
-    else if (diff === 1) timeLabel = "明天";
-    else if (diff > 1) timeLabel = `${diff}天后开始`;
-    else if (diff === -1) timeLabel = "昨天";
-    else timeLabel = `${-diff}天前`;
+    } else if (isDoneTodo) timeLabel = t("time.done");
+    else if (!date) timeLabel = t("time.noDate");
+    else if (diff === 0) timeLabel = t("time.today");
+    else if (diff === 1) timeLabel = t("time.tomorrow");
+    else if (diff > 1) timeLabel = t("time.dueInDays", { count: diff });
+    else if (diff === -1) timeLabel = t("time.yesterday");
+    else timeLabel = t("time.daysAgo", { count: -diff });
     tags.push(`<span class="caldav-dock-tag ${timeCls}">${timeLabel}</span>`);
 
     // 类型 / 优先级
     if (it.kind === "event") {
-      tags.push(`<span class="caldav-dock-tag caldav-dock-tag--secondary">${icons.calendar}日程</span>`);
+      tags.push(`<span class="caldav-dock-tag caldav-dock-tag--secondary">${icons.calendar}${t("kindEvent")}</span>`);
     } else if (it.priority) {
       const pm = prioMeta(it.priority);
       tags.push(`<span class="caldav-dock-tag caldav-dock-tag--secondary ${pm.cls}">${icons.flag}${pm.label}</span>`);
     } else {
-      tags.push(`<span class="caldav-dock-tag caldav-dock-tag--secondary">${icons.tasks}任务</span>`);
+      tags.push(`<span class="caldav-dock-tag caldav-dock-tag--secondary">${icons.tasks}${t("kindTodo")}</span>`);
     }
 
     // 自定义分类
@@ -1277,8 +1285,8 @@ export function renderDockPanel(
     const isAll = filter.length === 0;
 
     const items = [
-      { key: "__all__", label: "所有分类", icon: "", color: "" },
-      { key: "__none__", label: "无分类", icon: "", color: "" },
+      { key: "__all__", label: t("catmgr.allLabel"), icon: "", color: "" },
+      { key: "__none__", label: t("catmgr.noneLabel"), icon: "", color: "" },
       ...cats.map((c) => ({ key: c.name, label: c.name, icon: c.icon, color: c.color }))
     ];
 
@@ -1385,31 +1393,38 @@ export function renderDockPanel(
   // ---- 条目详情（右击条目 → 右侧栏展示该条目的全部信息）----
 
   /** "YYYY-MM-DDTHH:mm" → 「10月9日 09:00」；只有日期时不带时刻 */
+  // 局部变量刻意不叫 t —— 会遮蔽模块级 import 的 i18n t()
   function fmtStampFull(s: string): string {
-    const t = s.slice(11, 16);
-    return t ? `${fmtDateCn(s.slice(0, 10))} ${t}` : fmtDateCn(s.slice(0, 10));
+    const hm = s.slice(11, 16);
+    return hm ? `${fmtDateCn(s.slice(0, 10))} ${hm}` : fmtDateCn(s.slice(0, 10));
   }
 
   function priorityLabel(p: number): string {
-    return p === 1 ? "紧急" : p === 3 ? "高" : p === 5 ? "中" : p === 9 ? "低" : `P${p}`;
+    if (p === 1) return t("prio.urgent");
+    if (p === 3) return t("prio.high");
+    if (p === 5) return t("prio.mid");
+    if (p === 9) return t("prio.low");
+    return `P${p}`;
   }
 
   function alarmText(mins: number): string {
-    if (mins <= 0) return "准时";
-    if (mins % 1440 === 0) return `${mins / 1440} 天前`;
-    if (mins % 60 === 0) return `${mins / 60} 小时前`;
-    return `${mins} 分钟前`;
+    if (mins <= 0) return t("time.onTime");
+    if (mins % 1440 === 0) return t("time.daysAgo", { count: mins / 1440 });
+    if (mins % 60 === 0) return t("time.hoursAgo", { count: mins / 60 });
+    return t("time.minutesAgo", { count: mins });
   }
 
   function rruleText(r: NonNullable<CalItem["rrule"]>): string {
-    const base =
-      r.freq === "DAILY" ? "每天" : r.freq === "WEEKLY" ? "每周" : r.freq === "MONTHLY" ? "每月" : "每年";
-    const unit = base.slice(1); // 天 / 周 / 月 / 年
-    const parts = [r.interval > 1 ? `每 ${r.interval} ${unit}` : base];
-    if (r.byDay?.length) parts.push(r.byDay.join("、"));
-    if (r.byMonthDay?.length) parts.push(`每月 ${r.byMonthDay.join("、")} 日`);
-    if (r.count) parts.push(`共 ${r.count} 次`);
-    else if (r.until) parts.push(`至 ${fmtDateCn(r.until.slice(0, 10))}`);
+    const freqKey =
+      r.freq === "DAILY" ? "repeat.daily" : r.freq === "WEEKLY" ? "repeat.weekly" : r.freq === "MONTHLY" ? "repeat.monthly" : "repeat.yearly";
+    const unitKey =
+      r.freq === "DAILY" ? "repeat.unitDay" : r.freq === "WEEKLY" ? "repeat.unitWeek" : r.freq === "MONTHLY" ? "repeat.unitMonth" : "repeat.unitYear";
+    const base = t(freqKey);
+    const parts = [r.interval > 1 ? t("repeat.every", { interval: r.interval, unit: t(unitKey) }) : base];
+    if (r.byDay?.length) parts.push(r.byDay.join(", "));
+    if (r.byMonthDay?.length) parts.push(t("repeat.byMonthDay", { days: r.byMonthDay.join(", ") }));
+    if (r.count) parts.push(t("repeat.totalCount", { count: r.count }));
+    else if (r.until) parts.push(t("repeat.until", { date: fmtDateCn(r.until.slice(0, 10)) }));
     return parts.join(" · ");
   }
 
@@ -1425,34 +1440,38 @@ export function renderDockPanel(
     const cal = opts.store.settings.calendars.find((c) => c.url === it.calendarUrl);
     const rows: Array<[string, string]> = [];
 
-    rows.push(["类型", isTodo ? "待办任务" : "日程"]);
-    rows.push(["日历", cal?.displayName || it.calendarUrl]);
+    rows.push([t("detail.type"), isTodo ? t("detail.todoTask") : t("kindEvent")]);
+    rows.push([t("detail.calendar"), cal?.displayName || it.calendarUrl]);
     if (isTodo) {
-      rows.push(["到期", it.end ? fmtStampFull(it.end) : "无"]);
+      rows.push([t("detail.due"), it.end ? fmtStampFull(it.end) : t("common.none")]);
       const done = it.percent === 100;
       rows.push([
-        "状态",
-        done ? `已完成${it.completedAt ? `（${fmtStampFull(it.completedAt)}）` : ""}` : "未完成",
+        t("detail.status"),
+        done
+          ? it.completedAt
+            ? t("detail.doneAt", { when: fmtStampFull(it.completedAt) })
+            : t("detail.done")
+          : t("detail.undone"),
       ]);
-      if (it.priority) rows.push(["优先级", priorityLabel(it.priority)]);
+      if (it.priority) rows.push([t("detail.priority"), priorityLabel(it.priority)]);
     } else {
-      rows.push(["开始", fmtStampFull(it.start)]);
-      rows.push(["结束", it.end ? fmtStampFull(it.end) : "—"]);
-      if (it.allDay) rows.push(["全天", "是"]);
+      rows.push([t("detail.start"), fmtStampFull(it.start)]);
+      rows.push([t("detail.end"), it.end ? fmtStampFull(it.end) : "—"]);
+      if (it.allDay) rows.push([t("detail.allDay"), t("common.yes")]);
     }
-    if (it.location) rows.push(["地点", it.location]);
-    if (it.categories?.length) rows.push(["分类", it.categories.join("、")]);
-    if (it.rrule) rows.push(["重复", rruleText(it.rrule)]);
-    if (it.alarms?.length) rows.push(["提醒", it.alarms.map((a) => alarmText(a.minutesBefore)).join("、")]);
-    if (it.description) rows.push(["描述", it.description]);
-    if (it.createdAt) rows.push(["创建于", fmtStampFull(it.createdAt)]);
+    if (it.location) rows.push([t("detail.location"), it.location]);
+    if (it.categories?.length) rows.push([t("detail.category"), it.categories.join(", ")]);
+    if (it.rrule) rows.push([t("detail.repeat"), rruleText(it.rrule)]);
+    if (it.alarms?.length) rows.push([t("detail.reminder"), it.alarms.map((a) => alarmText(a.minutesBefore)).join(", ")]);
+    if (it.description) rows.push([t("detail.description"), it.description]);
+    if (it.createdAt) rows.push([t("detail.createdAt"), fmtStampFull(it.createdAt)]);
 
     setHtml(
       listEl,
       `
       <div class="caldav-detail">
-        <button class="caldav-detail-back" data-dock-action="back-to-list" type="button">← 返回列表</button>
-        <div class="caldav-detail-title">${escapeHtml(it.summary || "(无标题)")}</div>
+        <button class="caldav-detail-back" data-dock-action="back-to-list" type="button">${t("dock.backToList")}</button>
+        <div class="caldav-detail-title">${escapeHtml(it.summary || t("chip.noTitle"))}</div>
         <div class="caldav-detail-rows">
           ${rows
             .map(
@@ -1484,11 +1503,11 @@ export function renderDockPanel(
 
     const nodateHidden = hiddenNodateCount();
     const nodateHint = nodateHidden
-      ? `<button class="caldav-dock-hint" data-dock-action="show-nodate">另有 ${nodateHidden} 条无日期待办未显示 · 点此查看</button>`
+      ? `<button class="caldav-dock-hint" data-dock-action="show-nodate">${t("dock.nodateHidden", { count: nodateHidden })}</button>`
       : "";
 
     if (!items.length) {
-      setHtml(listEl, `<div class="caldav-dock-empty">暂无匹配条目</div>${nodateHint}`);
+      setHtml(listEl, `<div class="caldav-dock-empty">${t("empty.dockNoMatch")}</div>${nodateHint}`);
       return;
     }
 
@@ -1498,7 +1517,7 @@ export function renderDockPanel(
         .map((it) => {
         const key = keyOf(it);
         const date = it.kind === "todo" ? it.end : it.start;
-        const dateStr = date ? fmtDateCn(date) : "无日期";
+        const dateStr = date ? fmtDateCn(date) : t("detail.noDate");
         const timeStr = formatDockTimeRange(it);
         const tags = buildDockTags(it);
         const isDoneTodo = it.kind === "todo" && it.percent === 100;

@@ -20,6 +20,7 @@ import { calEventColor } from "../core/types";
 import { occurrencesInRange } from "../core/ics";
 import { calColorOf, escape, keyOfItem, todoDueOccurrences, type ViewArgs } from "./view-common";
 import { setHtml } from "./dom";
+import { t } from "@/i18n";
 
 type FilterKey =
   | "today"
@@ -71,31 +72,31 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   const filters: TaskFilter[] = [
     // 「所有项目」= 不做任何过滤。此时列表内容与统计栏基数相同，数字必然一致。
     // 2026-10-07 雄哥要求：只有这个选项下两者要对得上。
-    { key: "allitems", label: "所有项目", match: () => true },
-    { key: "today", label: "今日", match: (r) => !isDone(r) && r.due === today },
-    { key: "tomorrow", label: "明日", match: (r) => !isDone(r) && r.due === tomorrow },
+    { key: "allitems", label: t("task.filter.allitems"), match: () => true },
+    { key: "today", label: t("task.filter.today"), match: (r) => !isDone(r) && r.due === today },
+    { key: "tomorrow", label: t("task.filter.tomorrow"), match: (r) => !isDone(r) && r.due === tomorrow },
     {
       key: "next7",
-      label: "未来七天",
+      label: t("task.filter.next7"),
       match: (r) => !isDone(r) && r.due > tomorrow && r.due <= in7
     },
     {
       key: "thisweek",
-      label: "本周",
+      label: t("task.filter.thisweek"),
       match: (r) => !isDone(r) && r.due >= weekStart && r.due <= weekEnd
     },
-    { key: "future", label: "未来", match: (r) => !isDone(r) && r.due > in7 },
-    { key: "overdue", label: "过期", match: (r) => !isDone(r) && !!r.due && r.due < today },
+    { key: "future", label: t("task.filter.future"), match: (r) => !isDone(r) && r.due > in7 },
+    { key: "overdue", label: t("task.filter.overdue"), match: (r) => !isDone(r) && !!r.due && r.due < today },
     {
       key: "past7",
-      label: "过去七天",
+      label: t("task.filter.past7"),
       match: (r) => !isDone(r) && !!r.due && r.due >= past7Start && r.due < today
     },
-    { key: "allincomplete", label: "所有未完成", match: (r) => !isDone(r) },
-    { key: "nodate", label: "无日期", match: (r) => !isDone(r) && !r.due },
-    { key: "todaydone", label: "今日已完成", match: ({ it }) => completedOn(it, today) },
-    { key: "yesterdaydone", label: "昨日已完成", match: ({ it }) => completedOn(it, yesterday) },
-    { key: "doneall", label: "已完成", match: (r) => isDone(r) }
+    { key: "allincomplete", label: t("task.filter.allincomplete"), match: (r) => !isDone(r) },
+    { key: "nodate", label: t("task.filter.nodate"), match: (r) => !isDone(r) && !r.due },
+    { key: "todaydone", label: t("task.filter.todaydone"), match: ({ it }) => completedOn(it, today) },
+    { key: "yesterdaydone", label: t("task.filter.yesterdaydone"), match: ({ it }) => completedOn(it, yesterday) },
+    { key: "doneall", label: t("task.filter.doneall"), match: (r) => isDone(r) }
   ];
 
   // 收集启用日历下的条目。默认只有待办（VTODO）；
@@ -162,10 +163,10 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   /** iCal PRIORITY（1 最高、9 最低）→ 文案与配色级别；覆盖 1~9 全部取值 */
   const priorityMeta = (p?: number): { label: string; cls: string } => {
     if (!p || p <= 0) return { label: "", cls: "" };
-    if (p <= 2) return { label: "紧急", cls: "prio-urgent" };
-    if (p <= 4) return { label: "高", cls: "prio-high" };
-    if (p <= 6) return { label: "中", cls: "prio-mid" };
-    return { label: "低", cls: "prio-low" };
+    if (p <= 2) return { label: t("prio.urgent"), cls: "prio-urgent" };
+    if (p <= 4) return { label: t("prio.high"), cls: "prio-high" };
+    if (p <= 6) return { label: t("prio.mid"), cls: "prio-mid" };
+    return { label: t("prio.low"), cls: "prio-low" };
   };
 
   /**
@@ -199,13 +200,13 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   }
 
   const GROUPS: { key: string; label: string; color: string; match: (r: Row) => boolean }[] = [
-    { key: "overdue", label: "逾期", color: "var(--caldav-danger)", match: (r) => !isDone(r) && r.due !== "" && r.due < today },
-    { key: "today", label: "今天", color: "#BA7517", match: (r) => !isDone(r) && r.due === today },
-    { key: "tomorrow", label: "明天", color: "#378ADD", match: (r) => !isDone(r) && r.due === tomorrow },
-    { key: "thisweek", label: "本周", color: "#1D9E75", match: (r) => !isDone(r) && r.due > tomorrow && r.due <= weekEnd },
-    { key: "later", label: "下周后", color: "#888780", match: (r) => !isDone(r) && r.due > weekEnd },
-    { key: "nodate", label: "无日期", color: "#B4B2A9", match: (r) => !isDone(r) && r.due === "" },
-    { key: "done", label: "已完成", color: "#1D9E75", match: (r) => isDone(r) }
+    { key: "overdue", label: t("task.group.overdue"), color: "var(--caldav-danger)", match: (r) => !isDone(r) && r.due !== "" && r.due < today },
+    { key: "today", label: t("task.group.today"), color: "#BA7517", match: (r) => !isDone(r) && r.due === today },
+    { key: "tomorrow", label: t("task.group.tomorrow"), color: "#378ADD", match: (r) => !isDone(r) && r.due === tomorrow },
+    { key: "thisweek", label: t("task.group.thisweek"), color: "#1D9E75", match: (r) => !isDone(r) && r.due > tomorrow && r.due <= weekEnd },
+    { key: "later", label: t("task.group.later"), color: "#888780", match: (r) => !isDone(r) && r.due > weekEnd },
+    { key: "nodate", label: t("task.group.nodate"), color: "#B4B2A9", match: (r) => !isDone(r) && r.due === "" },
+    { key: "done", label: t("task.group.done"), color: "#1D9E75", match: (r) => isDone(r) }
   ];
 
   /** 把筛选后的列表按组切分；每组内部按「日期升序 → 有优先级的在前」排 */
@@ -295,30 +296,30 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     const kindLabel = (): string => ctx.i18n(isEvent ? "kindEvent" : "kindTodo");
     const dueText = finished
       ? it.completedAt
-        ? "完成于 " + it.completedAt.slice(5, 10)
+        ? t("time.completedOn", { date: it.completedAt.slice(5, 10) })
         : expired
-        ? "已过期"
-        : "已完成"
+        ? t("time.expired")
+        : t("time.done")
       : !due
-      ? "无日期"
+      ? t("time.noDate")
       : due === today
-      ? "今天"
+      ? t("time.today")
       : due === tomorrow
-      ? "明天"
+      ? t("time.tomorrow")
       : overdue
-      ? `逾期 ${Math.abs(diffDays(due, today))} 天`
+      ? t("time.dueOverdue", { count: Math.abs(diffDays(due, today)) })
       : due.slice(5);
     // 日程没有「完成」语义：勾选框改为圆点标记，且不显示优先级（VEVENT 无 PRIORITY）。
     // 注意过期日程虽归入「已完成」组，但仍走圆点分支 —— 它并没有真的被勾选。
     const check = isEvent
       ? `<span class="cal-task-check cal-task-check--event" title="${kindLabel()}"></span>`
-      : `<button class="cal-task-check" data-toggle="${k}" title="${finished ? "标记未完成" : "标记完成"}">${finished ? "✓" : ""}</button>`;
+      : `<button class="cal-task-check" data-toggle="${k}" title="${finished ? t("dock.markUndone") : t("dock.markDone")}">${finished ? "✓" : ""}</button>`;
     const prio = !isEvent && pr.label ? `<span class="cal-task-priority ${pr.cls}">${pr.label}</span>` : "";
     return `
 <div class="cal-task ${finished ? "is-done" : ""} ${overdue ? "is-overdue" : ""} ${isEvent ? "is-event" : "is-todo"}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">
   ${check}
   <div class="cal-task-body">
-    <div class="cal-task-title"><span class="cal-task-kind ${isEvent ? "is-event" : "is-todo"}">${kindLabel()}</span>${it.rrule ? "↻ " : ""}${escape(it.summary || "(无标题)")}
+    <div class="cal-task-title"><span class="cal-task-kind ${isEvent ? "is-event" : "is-todo"}">${kindLabel()}</span>${it.rrule ? "↻ " : ""}${escape(it.summary || t("chip.noTitle"))}
       ${prio}</div>
     <div class="cal-task-meta">
       <span class="${overdue ? "cal-task-overdue" : ""}">${dueText}</span>
@@ -333,7 +334,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     const f = filters.find((x) => x.key === filterKey)!;
     const list = todos.filter(f.match);
     if (!list.length) {
-      return `<div class="cal-task-empty">该筛选下暂无任务</div>`;
+      return `<div class="cal-task-empty">${t("empty.taskNoResult")}</div>`;
     }
     /**
     * 只返回列表**内层**内容；外层 `.cal-task-list` 由模板提供。
@@ -353,7 +354,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
 <div class="cal-task-group" data-group="${g.key}">
   <div class="cal-task-group-head" data-toggle-group="${g.key}" role="button" tabindex="0"
        style="--group-color:${g.color}"
-       aria-expanded="${collapsed ? "false" : "true"}" title="点击${collapsed ? "展开" : "折叠"}此分组">
+       aria-expanded="${collapsed ? "false" : "true"}" title="${collapsed ? t("task.group.expand") : t("task.group.collapse")}">
     <span class="cal-task-group-caret" aria-hidden="true">${caret}</span>
     <span class="cal-task-group-dot" style="background:${g.color}"></span>
     <span class="cal-task-group-label">${g.label}</span>
@@ -382,13 +383,13 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     return g ? todos.filter(g.match).length : 0;
   };
   const statHtml = [
-    { cls: "cal-stat-total", label: "待办总数", n: undone.length },
-    { cls: "cal-stat-today", label: "今日", n: countBy("today") },
-    { cls: "cal-stat-overdue", label: "逾期", n: countBy("overdue") },
+    { cls: "cal-stat-total", label: t("stats.total"), n: undone.length },
+    { cls: "cal-stat-today", label: t("stats.today"), n: countBy("today") },
+    { cls: "cal-stat-overdue", label: t("stats.overdue"), n: countBy("overdue") },
     // 「未来」= 明天之后的全部未完成（明天 / 本周 / 下周后 三组合并）
-    { cls: "cal-stat-future", label: "未来", n: undone.filter((t) => t.due !== "" && t.due > today).length },
-    { cls: "cal-stat-nodate", label: "无日期", n: undone.filter((t) => t.due === "").length },
-    { cls: "cal-stat-done", label: "已完成", n: countBy("done") }
+    { cls: "cal-stat-future", label: t("stats.future"), n: undone.filter((t) => t.due !== "" && t.due > today).length },
+    { cls: "cal-stat-nodate", label: t("stats.nodate"), n: undone.filter((t) => t.due === "").length },
+    { cls: "cal-stat-done", label: t("stats.done"), n: countBy("done") }
   ]
     .map((s) => `<div class="cal-task-stat ${s.cls}"><b>${s.n}</b><span>${s.label}</span></div>`)
     .join("");
@@ -402,8 +403,8 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     `
 <div class="cal-task-view">
   <div class="cal-task-filterbar">
-    <select class="cal-task-filter" data-filter title="按条件筛选">${optsHtml}</select>
-    <input class="caldav-input cal-task-quick" placeholder="快速添加待办，回车保存（默认今天）…" data-quickadd/>
+    <select class="cal-task-filter" data-filter title="${t("task.filter.byCondition")}">${optsHtml}</select>
+    <input class="caldav-input cal-task-quick" placeholder="${t("task.quickAdd")}" data-quickadd/>
   </div>
   <div class="cal-task-list">${listHtml(current)}</div>
 </div>`

@@ -27,6 +27,7 @@ import type CalDavPlugin from "@/main";
 import type { HostSettings } from "@/main";
 import { describeNetworkError, discoverCalendars, testConnection } from "@/core/caldav";
 import { calEventColor, calTodoColor, type CalCalendar } from "@/core/types";
+import { t, currentLang, initLocale } from "@/i18n";
 
 /**
  * 按动态键读写设置对象的一个字段。
@@ -85,7 +86,7 @@ export class CalDavSettingTab extends PluginSettingTab {
       // 也不用 satisfies：它把数组收窄成字面量元组，includes 的参数类型跟着变窄，
       // 反而要求只能传那几个字面量。显式注解成 `readonly (keyof HostSettings)[]`：
       // 键的可拼写性由注解保证；新增字段忘了加进这个列表，会被下面的运行时守卫拦下。
-      const known: readonly (keyof HostSettings)[] = ["systemNotification", "dailyNoteFolder"];
+      const known: readonly (keyof HostSettings)[] = ["systemNotification", "dailyNoteFolder", "language"];
       if (!known.includes(field as keyof HostSettings)) return;
       await this.plugin.updateHostSettings({ [field]: value });
       return;
@@ -112,29 +113,53 @@ export class CalDavSettingTab extends PluginSettingTab {
       defaultValue: fallback,
       min: 0,
       step: 1,
-      validate: (n: number) => (Number.isFinite(n) && n >= 0 ? undefined : "请输入不小于 0 的数字"),
+      validate: (n: number) => (Number.isFinite(n) && n >= 0 ? undefined : t("settings.invalidNumber")),
     });
 
     const defs: Record<string, unknown>[] = [];
 
+    // ---- 语言 ----
+    // 放在最前面：改语言要立刻重渲染整页，排在后面用户会看不到变化。
+    defs.push({
+      type: "group",
+      heading: t("lang.name"),
+      items: [
+        {
+          name: t("lang.name"),
+          desc: t("lang.desc"),
+          control: {
+            type: "dropdown" as const,
+            key: "host.language",
+            defaultValue: "auto",
+            options: {
+              auto: t("lang.auto", { lang: t(currentLang() === "zh" ? "lang.zh" : "lang.en") }),
+              zh: t("lang.zh"),
+              en: t("lang.en"),
+            },
+          },
+          aliases: ["language", "语言", "lang", "locale", "i18n"],
+        },
+      ],
+    });
+
     // ---- 服务器 ----
-    defs.push({ type: "group", heading: "服务器", items: [] });
-    const serverGroup = defs[0] as { items: Record<string, unknown>[] };
+    defs.push({ type: "group", heading: t("settings.groupServer"), items: [] });
+    const serverGroup = defs[1] as { items: Record<string, unknown>[] };
     serverGroup.items = [
       {
-        name: "服务器地址",
-        desc: "CalDAV 根地址或日历集合地址，例如 http://192.168.1.10:5232/",
+        name: t("settings.serverUrl"),
+        desc: t("settings.serverUrlDesc"),
         control: { type: "text", key: "serverUrl", placeholder: "http://…" },
-        aliases: ["server", "url", "地址", "caldav", "服务器"],
+        aliases: ["server", "url", "地址", "caldav", "服务器", "address", "host"],
       },
       {
-        name: "用户名",
+        name: t("settings.username"),
         control: { type: "text", key: "username" },
-        aliases: ["username", "账号", "用户名"],
+        aliases: ["username", "账号", "用户名", "account", "user"],
       },
       {
-        name: "密码",
-        desc: "落盘时以 AES-GCM 加密存储；主密钥随插件数据一起保存，多设备可共用。",
+        name: t("settings.password"),
+        desc: t("settings.passwordDesc"),
         // 声明式的 text 控件没有 `password` 选项（无原生密码输入），
         // 故用 render 自绘。**签名必须是 (setting, group)** ——
         // Obsidian 已建好 Setting 并设好 name/desc，我们只往它身上加控件。
@@ -144,23 +169,23 @@ export class CalDavSettingTab extends PluginSettingTab {
         aliases: ["password", "密码"],
       },
       ...(this.plugin.store.credentialsIssue()
-        ? [{ name: "凭据状态", desc: this.plugin.store.credentialsIssue() }]
+        ? [{ name: t("settings.credentialsIssue"), desc: this.plugin.store.credentialsIssue() }]
         : []),
       {
-        name: "日历集合路径（可选）",
-        desc: "留空自动发现；已知确切路径时填写可跳过发现步骤。",
-        control: { type: "text", key: "calendarPath", placeholder: "留空自动发现" },
-        aliases: ["calendar", "path", "路径", "集合"],
+        name: t("settings.calendarPath"),
+        desc: t("settings.calendarPathDesc"),
+        control: { type: "text", key: "calendarPath", placeholder: t("settings.calendarPathPlaceholder") },
+        aliases: ["calendar", "path", "路径", "集合", "collection"],
       },
       {
-        name: "连接与发现",
-        desc: "先测试连接，再发现服务器上的日历。",
+        name: t("settings.connection"),
+        desc: t("settings.connectionDesc"),
         // 用 render 而非 action：action 的 el 已是 Obsidian 分配好的容器，
         // 在里面再 `new Setting(el)` 会套出错误的嵌套结构 ——
         // 表现为标题文字被挤成竖排、整行重复多次（实测踩到，2026-10-06）。
         // render 收到的是已建好的 Setting，直接 addButton 即可。
         render: (setting: Setting) => this.renderConnectionButtons(setting),
-        aliases: ["测试", "连接", "发现", "test", "discover"],
+        aliases: ["测试", "连接", "发现", "test", "discover", "connect"],
       },
     ];
 
@@ -169,13 +194,13 @@ export class CalDavSettingTab extends PluginSettingTab {
       ? s.calendars.map((cal) => this.calendarDefinition(cal))
       : [
           {
-            name: "尚未发现日历",
-            desc: "填写服务器与账号后点击「发现日历」。",
+            name: t("settings.noCalendar"),
+            desc: t("settings.noCalendarDesc"),
           },
         ];
     defs.push({
       type: "list",
-      heading: "日历",
+      heading: t("settings.groupCalendar"),
       items: calItems,
       cls: "caldav-cal-list",
     });
@@ -183,28 +208,28 @@ export class CalDavSettingTab extends PluginSettingTab {
     // ---- 同步 ----
     defs.push({
       type: "group",
-      heading: "同步",
+      heading: t("settings.groupSync"),
       items: [
         {
-          name: "自动同步间隔（分钟）",
-          desc: "0 表示关闭自动同步，仅手动触发。",
+          name: t("settings.syncInterval"),
+          desc: t("settings.syncIntervalDesc"),
           control: num("syncIntervalMin", 0),
-          aliases: ["同步", "间隔", "interval", "自动"],
+          aliases: ["同步", "间隔", "interval", "自动", "sync", "auto"],
         },
         {
-          name: "冲突处理",
-          desc: "本地与服务端同时改动同一条目时的取舍。",
+          name: t("settings.conflict"),
+          desc: t("settings.conflictDesc"),
           control: {
             type: "dropdown" as const,
             key: "conflict",
             defaultValue: "server",
-            options: { server: "服务端优先", local: "本地优先" },
+            options: { server: t("settings.conflictServer"), local: t("settings.conflictLocal") },
           },
           aliases: ["冲突", "conflict", "优先级"],
         },
         {
-          name: "显示范围",
-          desc: `过去 ${s.pastDays} 天 / 未来 ${s.futureDays} 天（影响拉取与视图范围）`,
+          name: t("settings.range"),
+          desc: t("settings.rangeDesc", { past: s.pastDays, future: s.futureDays }),
           // 一个 Setting 需要两个数字输入，声明式里用 render 表达
           render: (setting: Setting) => this.renderRangeRow(setting),
           aliases: ["范围", "过去", "未来", "range"],
@@ -215,22 +240,22 @@ export class CalDavSettingTab extends PluginSettingTab {
     // ---- 提醒 ----
     defs.push({
       type: "group",
-      heading: "提醒",
+      heading: t("settings.groupReminder"),
       items: [
         {
-          name: "启用提醒",
-          desc: "对设置了提醒时间的日程与待办，到点弹出提示。移动端仅应用内提示。",
+          name: t("settings.enableReminders"),
+          desc: t("settings.enableRemindersDesc"),
           control: { type: "toggle" as const, key: "enableReminders", defaultValue: false },
-          aliases: ["提醒", "reminder", "闹钟"],
+          aliases: ["提醒", "reminder", "闹钟", "alarm"],
         },
         {
-          name: "同时发送系统通知",
-          desc: "桌面端在应用内提示之外再发一条系统通知，点击可跳到面板。",
+          name: t("settings.systemNotification"),
+          desc: t("settings.systemNotificationDesc"),
           control: { type: "toggle" as const, key: "host.systemNotification", defaultValue: false },
           aliases: ["系统通知", "通知", "notification"],
         },
         {
-          name: "提醒状态",
+          name: t("settings.reminderStatus"),
           desc: this.plugin.mainCtx.reminderStatus?.() ?? "-",
           // 同上：用 render 拿 Setting，不要在 action 的容器里再 new Setting
           render: (setting: Setting) => this.renderReminderTestButton(setting),
@@ -242,13 +267,13 @@ export class CalDavSettingTab extends PluginSettingTab {
     // ---- 日记 ----
     defs.push({
       type: "group",
-      heading: "日记",
+      heading: t("settings.groupDiary"),
       items: [
         {
-          name: "日记目录",
-          desc: "「插入今日日程」写入的位置。留空则库根目录；文件名固定为 YYYY-MM-DD.md。",
-          control: { type: "text" as const, key: "host.dailyNoteFolder", placeholder: "例如 DailyNotes" },
-          aliases: ["日记", "daily", "note", "目录"],
+          name: t("settings.dailyNoteFolder"),
+          desc: t("settings.dailyNoteFolderDesc"),
+          control: { type: "text" as const, key: "host.dailyNoteFolder", placeholder: t("settings.dailyNoteFolderPlaceholder") },
+          aliases: ["日记", "daily", "note", "目录", "folder"],
         },
       ],
     });
@@ -256,11 +281,11 @@ export class CalDavSettingTab extends PluginSettingTab {
     // ---- 视图 ----
     defs.push({
       type: "group",
-      heading: "视图",
+      heading: t("settings.groupView"),
       items: [
         {
-          name: "日历视图中显示待办",
-          desc: "关闭后日历视图只显示日程，待办仍可在任务视图与列表中看到。",
+          name: t("settings.showTodosInCalendar"),
+          desc: t("settings.showTodosInCalendarDesc"),
           control: { type: "toggle" as const, key: "showTodosInCalendar", defaultValue: true },
           aliases: ["视图", "待办", "todo", "view"],
         },
@@ -272,15 +297,19 @@ export class CalDavSettingTab extends PluginSettingTab {
 
   /** 单个日历的声明式定义：启用勾选 + 日程色 / 待办色 */
   private calendarDefinition(cal: CalCalendar): Record<string, unknown> {
-    const caps = [cal.supportsEvent ? "日程" : "", cal.supportsTodo ? "待办" : ""]
-      .filter(Boolean)
-      .join(" / ");
     return {
       name: cal.displayName || cal.url,
-      desc: caps ? `支持：${caps}` : cal.url,
+      desc: this.calendarCaps(cal) ? t("settings.capDesc", { caps: this.calendarCaps(cal) }) : cal.url,
       render: (setting: Setting) => this.renderCalendarRow(setting, cal),
       aliases: ["日历", "calendar", cal.displayName || cal.url],
     };
+  }
+
+  /** 「日程 / 待办」能力标签，如「事件 / 任务」 */
+  private calendarCaps(cal: CalCalendar): string {
+    return [cal.supportsEvent ? t("kindEvent") : "", cal.supportsTodo ? t("kindTodo") : ""]
+      .filter(Boolean)
+      .join(" / ");
   }
 
   /** 声明式下需要自绘的少数几处（多控件行/ 按钮组 / 密码框） */
@@ -292,9 +321,10 @@ export class CalDavSettingTab extends PluginSettingTab {
    * 直接往它身上 addText 即可 —— 不要再 `new Setting(...)`。
    */
   private renderPasswordRow(setting: Setting): void {
-    setting.addText((t) => {
-      t.inputEl.type = "password";
-      t.setValue(this.s.password).onChange((v) => {
+    // 参数名用 tc 而不是 t —— t 是本模块从 @/i18n 导入的 t()，同名会遮蔽它
+    setting.addText((tc) => {
+      tc.inputEl.type = "password";
+      tc.setValue(this.s.password).onChange((v) => {
         this.s.password = v;
         void this.save();
       });
@@ -312,18 +342,21 @@ export class CalDavSettingTab extends PluginSettingTab {
   private renderConnectionButtons(setting: Setting): void {
     setting
       .addButton((b) =>
-        b.setButtonText("测试连接").onClick(async () => {
+        b.setButtonText(t("settings.testConnection")).onClick(async () => {
           const auth = { username: this.s.username, password: this.s.password };
           try {
             const r = await testConnection(this.s.serverUrl, this.s.channel, auth);
-            new Notice(r.ok ? `连接成功：${r.message || "OK"}` : `连接失败：${r.message}`, r.ok ? 3000 : 6000);
+            new Notice(
+              r.ok ? t("settings.connectOk", { msg: r.message || t("settings.connectOkBare") }) : t("settings.connectFail", { msg: r.message }),
+              r.ok ? 3000 : 6000,
+            );
           } catch (e) {
-            new Notice(`连接失败：${describeNetworkError(e, this.s.channel)}`, 6000);
+            new Notice(t("settings.connectFail", { msg: describeNetworkError(e, this.s.channel) }), 6000);
           }
         })
       )
       .addButton((b) =>
-        b.setButtonText("发现日历").onClick(async () => {
+        b.setButtonText(t("settings.discover")).onClick(async () => {
           await this.discover();
         })
       );
@@ -333,7 +366,7 @@ export class CalDavSettingTab extends PluginSettingTab {
   private renderReminderTestButton(setting: Setting): void {
     setting
       .addButton((b) =>
-        b.setButtonText("发送测试提醒").onClick(async () => {
+        b.setButtonText(t("settings.sendTestReminder")).onClick(async () => {
           await this.plugin.mainCtx.testReminder?.();
           // 提醒状态已变，重渲染让描述里的排程数刷新
           this.update();
@@ -355,17 +388,17 @@ export class CalDavSettingTab extends PluginSettingTab {
       this.s[key] = Math.floor(n);
       void this.save();
     };
-    setting.setDesc(`过去 ${this.s.pastDays} 天 / 未来 ${this.s.futureDays} 天（影响拉取与视图范围）`);
+    setting.setDesc(t("settings.rangeDesc", { past: this.s.pastDays, future: this.s.futureDays }));
     setting
-      .addText((t) => {
-        t.inputEl.type = "number";
-        t.setPlaceholder("过去天数");
-        t.setValue(String(this.s.pastDays)).onChange(apply("pastDays"));
+      .addText((t2) => {
+        t2.inputEl.type = "number";
+        t2.setPlaceholder(t("settings.pastDaysPlaceholder"));
+        t2.setValue(String(this.s.pastDays)).onChange(apply("pastDays"));
       })
-      .addText((t) => {
-        t.inputEl.type = "number";
-        t.setPlaceholder("未来天数");
-        t.setValue(String(this.s.futureDays)).onChange(apply("futureDays"));
+      .addText((t2) => {
+        t2.inputEl.type = "number";
+        t2.setPlaceholder(t("settings.futureDaysPlaceholder"));
+        t2.setValue(String(this.s.futureDays)).onChange(apply("futureDays"));
       });
   }
 
@@ -376,11 +409,9 @@ export class CalDavSettingTab extends PluginSettingTab {
 
   /** 单个日历：启用勾选 + 名称 + 日程色 / 待办色 */
   private renderCalendarRow(setting: Setting, cal: CalCalendar): void {
-    const caps = [cal.supportsEvent ? "日程" : "", cal.supportsTodo ? "待办" : ""]
-      .filter(Boolean)
-      .join(" / ");
+    const caps = this.calendarCaps(cal);
     // name / desc 因日历而异，故在这里覆盖（defs 里只能给静态值）
-    setting.setName(cal.displayName || cal.url).setDesc(caps ? `支持：${caps}` : cal.url);
+    setting.setName(cal.displayName || cal.url).setDesc(caps ? t("settings.capDesc", { caps }) : cal.url);
     setting
       .addToggle((tg) =>
         tg.setValue(cal.enabled).onChange((v) => {
@@ -410,12 +441,12 @@ export class CalDavSettingTab extends PluginSettingTab {
   private async discover(): Promise<void> {
     const s = this.s;
     if (!s.serverUrl) {
-      new Notice("请先填写服务器地址", 4000);
+      new Notice(t("settings.noServerFirst"), 4000);
       return;
     }
     const auth = { username: s.username, password: s.password };
     try {
-      new Notice("正在发现日历…", 2000);
+      new Notice(t("settings.discovering"), 2000);
       const r = await discoverCalendars(s.serverUrl, s.channel, auth, s.calendarPath);
       const existing = new Map(s.calendars.map((c) => [c.url, c]));
       s.calendars = r.calendars.map((c) => {
@@ -428,14 +459,17 @@ export class CalDavSettingTab extends PluginSettingTab {
       await this.save();
       // 日历列表已变（新增/移除），让声明式设置重新拉取
       this.update();
-      new Notice(`发现 ${s.calendars.length} 个日历`);
+      new Notice(t("settings.discoverDone", { count: s.calendars.length }));
     } catch (e) {
-      new Notice(`发现日历失败：${describeNetworkError(e, s.channel)}`, 6000);
+      new Notice(t("settings.discoverFailed", { msg: describeNetworkError(e, s.channel) }), 6000);
     }
   }
 
   /** 修改设置 → 持久化并通知订阅者（面板会随之重渲染） */
   private async save(): Promise<void> {
+    // 语言是插件级 UI 状态而非数据：立刻切换并重渲染整页，
+    // 存盘只是让下次启动能保持该选择。
+    this.plugin.applyLanguage();
     this.plugin.store.saveSettings();
     await this.plugin.store.persist();
   }

@@ -2,8 +2,19 @@
 import { addDays, dateStampOfMs, todayStamp } from "../core/date";
 import { monthChipHtml, calColorOf, type ViewArgs } from "./view-common";
 import { setHtml } from "./dom";
+import { t } from "@/i18n";
 
-const WEEK_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+/** 星期表头。存 i18n key 而非译文 —— 模块级常量在 import 时求值完，
+ * 用户中途改语言不会重新求值，故在使用处 t()。 */
+const WEEK_LABEL_KEYS = [
+  "cal.weekdayMon",
+  "cal.weekdayTue",
+  "cal.weekdayWed",
+  "cal.weekdayThu",
+  "cal.weekdayFri",
+  "cal.weekdaySat",
+  "cal.weekdaySun"
+];
 
 export function renderMonthView({ ctx, viewEl, occurrences }: ViewArgs): void {
   const cursor = ctx.cursor;
@@ -51,7 +62,7 @@ export function renderMonthView({ ctx, viewEl, occurrences }: ViewArgs): void {
 
   const MAX_CHIPS = 3;
   const html: string[] = [];
-  html.push(`<div class="cal-month"><div class="cal-month-weeks">${WEEK_LABELS.map((w) => `<div class="cal-month-weeklabel">${w}</div>`).join("")}</div><div class="cal-month-grid" ${rowTemplate ? `style="${rowTemplate}"` : ""}>`);
+  html.push(`<div class="cal-month"><div class="cal-month-weeks">${WEEK_LABEL_KEYS.map((k) => `<div class="cal-month-weeklabel">${t(k)}</div>`).join("")}</div><div class="cal-month-grid" ${rowTemplate ? `style="${rowTemplate}"` : ""}>`);
   for (let i = 0; i < totalCells; i++) {
     const day = addDays(dateStampOfMs(startMs), i);
     const inMonth = +day.slice(5, 7) === m;
@@ -71,7 +82,7 @@ export function renderMonthView({ ctx, viewEl, occurrences }: ViewArgs): void {
     const more = fullList.length - shown.length;
     html.push(`<div class="cal-month-cell ${inMonth ? "" : "is-out"} ${isToday ? "is-today" : ""}" data-day="${day}">
       <div class="cal-month-daynum">${isToday ? `<span class="cal-today-badge">${+day.slice(8, 10)}</span>` : +day.slice(8, 10)}</div>
-      <div class="cal-month-chips">${chips}${more > 0 ? `<div class="cal-chip-more">还有 ${more} 项…</div>` : ""}</div>
+      <div class="cal-month-chips">${chips}${more > 0 ? `<div class="cal-chip-more">${t("cal.moreItems", { count: more })}</div>` : ""}</div>
     </div>`);
   }
   html.push(`</div></div>`);

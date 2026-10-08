@@ -4,6 +4,7 @@
 import type { CalCalendar, CalItem } from "./types";
 import { httpRequest, HttpError, isNetworkLevelError, type HttpResult, type Channel } from "./http";
 import { itemsFromICS } from "./ics";
+import { t } from "../i18n";
 
 export interface DavAuth {
   username: string;
@@ -95,8 +96,8 @@ export async function discoverCalendars(
       channel,
       auth
     );
-    if (res.status === 401) throw new HttpError(401, "认证失败（401），请检查用户名密码");
-    if (res.status >= 400) throw new HttpError(res.status, `发现 principal 失败: HTTP ${res.status}`);
+    if (res.status === 401) throw new HttpError(401, t("net.authFailed401Short"));
+    if (res.status >= 400) throw new HttpError(res.status, t("net.discoverPrincipalFailed", { status: res.status }));
     const hrefs = pickHrefXml(res.body);
     const cur = /<(?:[A-Za-z0-9_-]+:)?current-user-principal[^>]*>([\s\S]*?)<\/(?:[A-Za-z0-9_-]+:)?current-user-principal>/.exec(res.body);
     if (cur) {
@@ -105,7 +106,7 @@ export async function discoverCalendars(
     } else if (hrefs.length) {
       principal = hrefs[0];
     }
-    if (!principal) throw new HttpError(res.status, "无法定位 principal（服务器不标准），请手动填写日历路径");
+    if (!principal) throw new HttpError(res.status, t("net.principalNotFound"));
     home = toAbsolute(base, principal);
   }
 
@@ -132,7 +133,7 @@ export async function discoverCalendars(
     auth,
     "1"
   );
-  if (listRes.status >= 400) throw new HttpError(listRes.status, `枚举日历失败: HTTP ${listRes.status}`);
+  if (listRes.status >= 400) throw new HttpError(listRes.status, t("net.listCalendarsFailed", { status: listRes.status }));
 
   const calendars: CalCalendar[] = [];
   // 按 <response> 分块
@@ -163,7 +164,7 @@ export async function discoverCalendars(
     const desc = pickTextXml(chunk, "description")[0] || "";
     calendars.push({
       url,
-      displayName: name || "日历",
+      displayName: name || t("net.defaultCalName"),
       eventColor: color,
       todoColor: color,
       enabled: true,
@@ -199,7 +200,7 @@ export async function fetchCalendarItems(
   <c:filter><c:comp-filter name="VCALENDAR">${compFilter}</c:comp-filter></c:filter>
 </c:calendar-query>`;
     const res = await dav(cal.url, "REPORT", body, channel, auth, "1");
-    if (res.status >= 400) throw new HttpError(res.status, `拉取日历失败: HTTP ${res.status}`);
+    if (res.status >= 400) throw new HttpError(res.status, t("net.queryFailed", { status: res.status }));
     items.push(...parseMultistatus(res.body, cal));
   }
   return { items, syncToken: undefined };
@@ -219,7 +220,7 @@ export async function syncCollection(
   <D:prop><D:getetag/></D:prop>
 </D:sync-collection>`;
   const res = await dav(cal.url, "REPORT", body, channel, auth, "1");
-  if (res.status >= 400) throw new HttpError(res.status, `增量同步失败: HTTP ${res.status}`);
+  if (res.status >= 400) throw new HttpError(res.status, t("net.incrementalFailed", { status: res.status }));
   const tokenM = /<(?:[A-Za-z0-9_-]+:)?sync-token[^>]*>([^<]*)</.exec(res.body);
   const deletedHrefs: string[] = [];
   const chunks = res.body.split(/<(?:[A-Za-z0-9_-]+:)?response>/i).slice(1);
@@ -250,7 +251,7 @@ async function multiget(cal: CalCalendar, channel: Channel, auth: DavAuth, hrefs
   ${batch.map((h) => `<D:href>${escapeXml(h)}</D:href>`).join("\n  ")}
 </c:calendar-multiget>`;
     const res = await dav(base, "REPORT", body, channel, auth, "1");
-    if (res.status >= 400) throw new HttpError(res.status, `multiget 失败: HTTP ${res.status}`);
+    if (res.status >= 400) throw new HttpError(res.status, t("net.multigetFailed", { status: res.status }));
     items.push(...parseMultistatus(res.body, cal));
   }
   return items;
@@ -290,8 +291,8 @@ export async function putItem(item: CalItem, ics: string, channel: Channel, auth
     channel,
     auth
   );
-  if (res.status === 412) throw new HttpError(412, "服务端已变更（412 冲突）");
-  if (res.status >= 400) throw new HttpError(res.status, `上传失败: HTTP ${res.status}`);
+  if (res.status === 412) throw new HttpError(412, t("net.serverChanged412"));
+  if (res.status >= 400) throw new HttpError(res.status, t("net.putFailed", { status: res.status }));
   const etag = (res.headers["etag"] || res.headers["etag".toLowerCase()] || "").replace(/^"|"$/g, "");
   return { etag: etag || undefined };
 }
@@ -302,7 +303,7 @@ export async function deleteItem(item: CalItem, channel: Channel, auth: DavAuth)
   if (item.etag) headers["If-Match"] = `"${item.etag}"`;
   const res = await httpRequest(item.href, { method: "DELETE", headers, timeoutMs: 30000 }, channel, auth);
   if (res.status >= 400 && res.status !== 404) {
-    throw new HttpError(res.status, `删除失败: HTTP ${res.status}`);
+    throw new HttpError(res.status, t("net.deleteFailed", { status: res.status }));
   }
 }
 
@@ -317,9 +318,9 @@ export function describeNetworkError(e: unknown, channel: Channel): string {
   if (channel === "direct") {
     // Obsidian 的 requestUrl 走原生 HTTP，理论上不受 CORS 限制；走到这里通常是
     // 移动端 WebView 拦了明文 HTTP，或地址在移动端网络上不可达。
-    return `请求未能到达服务器（${raw}）——请确认服务器地址在当前设备网络上可达；若为明文 HTTP（http://），移动端可能需要https`;
+    return t("net.unreachableHttpHint", { raw });
   }
-  return `请求未能到达服务器（${raw}）——请检查服务器地址、端口与网络连通性`;
+  return t("net.unreachablePlain", { raw });
 }
 
 /** 测试连接：PROPFIND 根集合 */
@@ -333,11 +334,17 @@ export async function testConnection(serverUrl: string, channel: Channel, auth: 
       channel,
       auth
     );
-    if (res.status === 401) return { ok: false, message: "认证失败（401）：用户名或密码错误" };
-    if (res.status >= 400) return { ok: false, message: `服务器返回 HTTP ${res.status}` };
-    return { ok: true, message: `连接成功（${res.via === "proxy" ? "内核代理" : "直连"}，${res.elapsedMs}ms）` };
+    if (res.status === 401) return { ok: false, message: t("net.authFailedTest") };
+    if (res.status >= 400) return { ok: false, message: t("net.httpStatus", { status: res.status }) };
+    return {
+      ok: true,
+      message:
+        res.via === "proxy"
+          ? t("net.connectOkProxy", { ms: res.elapsedMs })
+          : t("net.connectOkDirect", { ms: res.elapsedMs }),
+    };
   } catch (e: unknown) {
-    return { ok: false, message: "连接失败: " + describeNetworkError(e, channel) };
+    return { ok: false, message: t("settings.connectFail", { msg: describeNetworkError(e, channel) }) };
   }
 }
 

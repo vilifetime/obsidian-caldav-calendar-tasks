@@ -117,7 +117,12 @@ const checks = {
   ": any / as any": [/:\s*any\b|\bas\s+any\b/],
   "裸 fetch(": [/[^.\w]fetch\s*\(/],
   "console.log": [/console\.log/],
-  "globalThis": [/globalThis/],
+  // ⚠️ 这条不是「禁用 globalThis」—— 社区规范要求**访问宿主对象**用 `window`，
+  //    但 `globalThis` 本身在跨环境代码（core 层、Node 测试）里是更稳的写法。
+  //    2026-10-06 i18n 改造时被误伤：src/i18n/index.ts 用 globalThis.moment /
+  //    globalThis.localStorage 做语言探测，是刻意为之。故改为**精确匹配**
+  //    「用 globalThis 取 window 上的宿主对象」才报警。
+  "globalThis 取宿主对象（应用 window）": [/globalThis\.(?!moment\b|localStorage\b)/],
   "裸定时器": [/(?<!\.)\b(setTimeout|clearTimeout|setInterval|clearInterval)\s*\(/],
   // 以下为 2026-10-06 第四轮报告新增
   "unescape（已弃用）": [/\bunescape\s*\(/],
@@ -172,4 +177,112 @@ for (const fn of ["errText", "errMessage", "errStatus"]) {
       `  [${ok ? "PASS" : "FAIL"}] ${fn} 在 ${imp.f.padEnd(22)} 使用 ${uses} 次`
     );
   }
+}
+
+/* ---- i18n：源码里不该再有硬编码的中文用户可见文案 ----
+   2026-10-06 起接入 i18n，目标是「Obsidian 界面语言是英语时插件也显示英语」。
+   这条检查防的是回退：新增 UI 文案时顺手写了中文，英文界面就露出汉字，
+   而 tsc / eslint / 社区扫描**全都抓不到**。
+
+   ⚠️ 上面的 strip() 不够用 —— 它只去块注释和**独占一行的**行注释，
+   而中文残留大量藏在行尾注释里（`const wd = 1; // 周一=0`）。
+   故这里另写 stripComments() 处理，详见该函数注释里的坑。 */
+/**
+ * 剥掉块注释与行注释，**保留所有换行**（行号不能错位，后续还要按行统计）。
+ *
+ * ⚠️ 这里**故意不用「逐字符状态机」**—— 试过，漏了正则字面量：
+ * `/[年月日号]/` 里的内容不含引号还好，但 `/(?:上午|下午)/` 之类一旦与
+ * 前后字符串混排，状态就会错乱，表现为**注释没被剥掉、中文行号全部偏位**，
+ * 结果是凭空冒出一堆「残留中文」假警报，还容易让人误判成真问题。
+ *
+ * 改用两条可靠规则：
+ *   ① 块注释：先把成对的块注释分隔符整段替换成等长空白（保留换行）。
+ *   ② 行注释：逐行找双斜杠，**但要先确认它不在引号内**；确认不了就整行豁免。
+ *      宁可漏剥（进白名单人工看），不可错剥（把真代码当注释放过）。
+ *
+ * ⚠️ 本段注释自身不得出现「块注释起止符」的字面样例 —— 那会提前闭合。
+ */
+function stripComments(src) {
+  let out = src
+    // ① HTML 注释：模板字符串里大量使用 `<!-- ... -->`（panel.ts 的工具栏等）。
+    //    它不是 JS 注释，但同样是「给人看的说明」，不该被当成待翻译文案。
+    .replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, " "))
+    // ② JS 块注释
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+  return out
+    .split("\n")
+    .map((line) => {
+      const i = line.indexOf("//");
+      if (i < 0) return line;
+      const head = line.slice(0, i);
+      const q = countUnquotes(head);
+      // 引号数为奇数说明双斜杠落在字符串里（如 "http://x"）→ 不能剥
+      return q % 2 === 0 ? line.slice(0, i) : line;
+    })
+    .join("\n");
+}
+
+/** 数 head 里引号的个数；只作奇偶判断，不作精确解析。 */
+function countUnquotes(head) {
+  let n = 0;
+  for (let i = 0; i < head.length; i += 1) {
+    const c = head[i];
+    if (c === "\\") { i += 1; continue; }
+    if (c === '"' || c === "'" || c === "`") n += 1;
+  }
+  return n;
+}
+
+const CJK_RE = /[一-鿿]/;
+
+/**
+ * 允许残留中文的位置。**刻意列出具体行特征，不按文件整体豁免** ——
+ * 同一个文件里往往既有该保留的中文（输入解析规则）也有必须改的（UI 文案），
+ * 按文件豁免等于把整个文件变成盲区。
+ *
+ * ⚠️ 白名单自身的正则里也含中文（要匹配中文才行），故它们写在这里而**不放进
+ * CJK_RE 的排除逻辑** —— 否则检查会自己豁免自己，白名单形同虚设。
+ */
+const CJK_ALLOWED = [
+  // ① 设置搜索关键词 aliases：Obsidian 的设置搜索框靠它匹配，
+  //    刻意中英双语并存（英文界面下用户会搜 "server" / "calendar"），
+  //    不走 i18n —— 译成当前语言反而搜不到另一种语言的词。
+  { re: /aliases:\s*\[/, why: "设置搜索 aliases（刻意双语）" },
+  // ② 中文日期/时间输入解析：识别「下周三」「3月5日」「元旦」「上午9点」这类写法。
+  //    这是**输入识别规则**不是 UI 文案 —— 英文界面下粘贴中文标题仍须能识别，
+  //    译了就等于功能失效。逐条列出特征码，不做整文件豁免。
+  { re: /WEEKDAY_NUM/, why: "中文日期时间输入解析（功能规则，非文案）" },
+  { re: /\[\s*"[^"]*",\s*-?\d+\]/, why: "中文日期时间输入解析：相对日词表" },
+  { re: /"[^"]*",\s*\d{1,2},\s*\d{1,2}\]/, why: "中文日期时间输入解析：节日表" },
+  { re: /[年月日号]/, why: "中文日期时间输入解析：年月日正则" },
+  { re: /"(?:每|下|本|这|上|周|星期|礼拜|半)"/, why: "中文日期时间输入解析：星期与时段词" },
+  { re: /(?:上午|下午|早上|晚上|中午|傍晚|早晨|凌晨|夜里|半夜)/, why: "中文日期时间输入解析：时段词" },
+  // ③ 默认分类名：是**用户数据**不是 UI 文案。
+  //    用户库里已存在的中文分类不该因切语言被改写，且这属于用户可自行编辑的内容。
+  { re: /\{\s*id:\s*"(?:work|study|life)"/, why: "DEFAULT_CATEGORIES 数据值" },
+  // ④ console 输出：只在开发者控制台出现，不属于界面文案。
+  { re: /console\.(?:warn|log|error|debug)\(/, why: "console 调试输出" },
+];
+
+console.log("");
+console.log("  i18n：源码残留中文审计（已剥注释）");
+const cjkHits = [];
+for (const f of files) {
+  const cleaned = stripComments(fs.readFileSync(f, "utf8"));
+  cleaned.split("\n").forEach((line, idx) => {
+    if (!CJK_RE.test(line)) return;
+    const allowed = CJK_ALLOWED.find((a) => a.re.test(line));
+    cjkHits.push({ f, n: idx + 1, line: line.trim(), why: allowed?.why ?? null });
+  });
+}
+const violations = cjkHits.filter((h) => !h.why);
+const exempted = cjkHits.filter((h) => h.why);
+if (violations.length) {
+  console.log(`  [FAIL] 源码残留未国际化的中文 ${violations.length} 处：`);
+  for (const v of violations) console.log(`         ${v.f}:${v.n}  ${v.line}`);
+} else {
+  console.log(`  [PASS] 源码无未国际化的中文（另有 ${exempted.length} 处按白名单豁免）`);
+  const byWhy = new Map();
+  for (const e of exempted) byWhy.set(e.why, (byWhy.get(e.why) ?? 0) + 1);
+  for (const [why, cnt] of byWhy) console.log(`         豁免 ${cnt} 处 —— ${why}`);
 }

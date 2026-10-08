@@ -163,6 +163,12 @@ export interface HostSettings {
   viewPlacedInMain?: boolean;
   /** Dock 是否已自动打开过一次（只自动开一次，之后尊重用户的手动关闭） */
   dockAutoOpened?: boolean;
+  /**
+   * 界面语言：`"zh"` / `"en"` / `undefined`（跟随 Obsidian）。
+   *
+   * 不设默认值 —— 用户没选过就跟随 Obsidian 界面语言，这是绝大多数人的预期。
+   */
+  language?: "zh" | "en";
 }
 
 export default class CalDavPlugin extends Plugin {
@@ -178,7 +184,6 @@ export default class CalDavPlugin extends Plugin {
   async onload(): Promise<void> {
     // ① 注入宿主传输实现 —— 必须最先做，core/http.ts 依赖它发请求
     setTransport(obsidianTransport);
-    initLocale();
 
     // ② 数据层：Obsidian 的 loadData/saveData 与思源语义一致（后者多一个文件名参数）
     this.store = new CalStore({
@@ -186,6 +191,9 @@ export default class CalDavPlugin extends Plugin {
       saveData: (d) => this.saveData(d),
     });
     await this.store.load();
+
+    // 语言要在数据加载后初始化 —— 用户可能手动指定过语言，值存在插件数据里。
+    initLocale(this.hostSettings().language);
 
     this.sync = new SyncEngine(this.store, () => this.store.settings.channel);
     this.mainCtx = this.createCtx();
@@ -545,16 +553,21 @@ export default class CalDavPlugin extends Plugin {
       this.reminder?.reschedule();
 
       if (report.errors.length > 0) {
-        this.notify(`同步完成，但有 ${report.errors.length} 个错误：${report.errors[0]}`, "error");
+        this.notify(t("sync.doneWithErrors", { count: report.errors.length, first: report.errors[0] ?? "" }), "error");
       } else if (manual) {
         this.notify(
-          `同步完成：拉取 ${report.fetched} · 上传 ${report.uploaded} · 删除 ${report.deleted}（${report.elapsedMs}ms）`
+          t("sync.done", {
+            fetched: report.fetched,
+            uploaded: report.uploaded,
+            deleted: report.deleted,
+            ms: report.elapsedMs,
+          })
         );
       }
       return report;
     } catch (e) {
       this.updateStatusBar();
-      this.notify(`同步失败：${(e as Error)?.message || e}`, "error");
+      this.notify(t("sync.failed", { msg: String((e as Error)?.message || e) }), "error");
       return undefined;
     }
   }
@@ -566,7 +579,7 @@ export default class CalDavPlugin extends Plugin {
       this.statusBarEl.setText(`${t("statusBarError")}：${err.slice(0, 24)}`);
       return;
     }
-    const when = this.store.lastSync ? this.store.lastSync.slice(5, 16).replace("T", " ") : "未同步";
+    const when = this.store.lastSync ? this.store.lastSync.slice(5, 16).replace("T", " ") : t("sync.never");
     this.statusBarEl.setText(`${t("statusBarIdle")} · ${when}`);
   }
 
@@ -588,19 +601,19 @@ export default class CalDavPlugin extends Plugin {
   }
 
   private reminderStatus(): string {
-    if (isMobile()) return "移动端不启用系统通知";
-    if (!this.store.settings.enableReminders) return "未开启提醒";
-    if (!this.reminder) return "提醒引擎未运行（重新勾选保存可重启）";
-    return `已排程 ${this.reminder.count()} 条 · 带提醒时间的条目 ${this.reminder.armedCount()} 个`;
+    if (isMobile()) return t("reminder.mobileUnsupported");
+    if (!this.store.settings.enableReminders) return t("reminder.notEnabled");
+    if (!this.reminder) return t("reminder.engineDown");
+    return t("reminder.scheduled", { count: this.reminder.count(), armed: this.reminder.armedCount() });
   }
 
   private reminderText(item: CalItem, anchorISO: string, alarmMin: number): { title: string; body: string } {
-    const kind = item.kind === "todo" ? "待办" : "日程";
-    const when = item.allDay ? "全天" : fmtTime(anchorISO);
-    const ahead = alarmMin > 0 ? ` · ${alarmMin} 分钟前提醒` : "";
-    const title = `【${kind}】${item.summary || "(无标题)"}`;
-    const lines = [`时间：${when}${ahead}`];
-    if (item.location) lines.push(`地点：${item.location}`);
+    const kind = item.kind === "todo" ? t("kindTodo") : t("kindEvent");
+    const when = item.allDay ? t("time.allDay") : fmtTime(anchorISO);
+    const ahead = alarmMin > 0 ? t("reminder.noticeAhead", { count: alarmMin }) : "";
+    const title = `${kind} · ${item.summary || t("chip.noTitle")}`;
+    const lines = [t("reminder.noticeTimeLine", { when: `${when}${ahead}` })];
+    if (item.location) lines.push(t("reminder.noticeLocationLine", { loc: item.location }));
     return { title, body: lines.join("\n") };
   }
 
@@ -677,8 +690,8 @@ export default class CalDavPlugin extends Plugin {
   }
 
   async testReminder(): Promise<string> {
-    if (isMobile()) return this.notify("移动端不启用系统通知，仅应用内提示可用");
-    if (!this.store.settings.enableReminders) return this.notify("请先在设置中开启提醒", "error");
+    if (isMobile()) return this.notify(t("reminder.mobileNotice"));
+    if (!this.store.settings.enableReminders) return this.notify(t("reminder.enableFirst"), "error");
     this.reconcileReminders();
     return this.notify(this.reminderStatus());
   }
@@ -733,12 +746,12 @@ export default class CalDavPlugin extends Plugin {
           const mark = it.kind === "todo" ? "☑️" : "📅";
           rows.push({
             ms,
-            line: `- ${mark} ${timed ? occ.slice(11, 16) : "全天"} ${it.summary || "(无标题)"}`,
+            line: `- ${mark} ${timed ? occ.slice(11, 16) : t("time.allDay")} ${it.summary || t("chip.noTitle")}`,
           });
         }
       }
       rows.sort((a, b) => a.ms - b.ms);
-      if (!rows.length) return this.notify(`${span.label}没有日程或待办`);
+      if (!rows.length) return this.notify(t("diary.noItems", { label: span.label }));
 
       const md = `## ${span.sectionTitle}\n${rows.map((r) => r.line).join("\n")}\n`;
 
@@ -764,11 +777,15 @@ export default class CalDavPlugin extends Plugin {
       await this.app.workspace.getLeaf(false).openFile(target);
 
       return this.notify(
-        `已${replaced ? "更新" : "写入"}日记「${span.sectionTitle}」${rows.length} 条`
+        t("diary.written", {
+          verb: t(replaced ? "diary.verbUpdate" : "diary.verbWrite"),
+          section: span.sectionTitle,
+          count: rows.length,
+        })
       );
     } catch (e) {
       // 静默失败会让用户以为没执行而重复点击，异常必须有反馈
-      return this.notify(`插入日记失败：${(e as Error)?.message || e}`, "error");
+      return this.notify(t("diary.insertFailed", { msg: String((e as Error)?.message || e) }), "error");
     }
   }
 
@@ -843,7 +860,22 @@ export default class CalDavPlugin extends Plugin {
   /** 修改宿主侧设置并落盘 */
   async updateHostSettings(patch: Partial<HostSettings>): Promise<void> {
     Object.assign(this.store.settings as CalSettings & HostSettings, patch);
+    if (patch.language !== undefined) this.applyLanguage();
     await this.store.persist();
     this.reconcileReminders();
+  }
+
+  /**
+   * 按当前语言设置切换界面语言，并让已打开的面板/侧栏立即重渲染。
+   *
+   * 语言是**插件级 UI 状态**而非数据，所以这里只换字典 + 重渲染，
+   * 不碰 store —— 数据层与语言无关，切语言不该触发重新同步。
+   */
+  applyLanguage(): void {
+    initLocale(this.hostSettings().language);
+    // 面板与 Dock 订阅 store 的变化，但语言切换不产生 store 变化，
+    // 故需手动触发一次重渲染，否则用户改完语言要等到下次打开面板才生效。
+    this.store.notify();
+    this.updateStatusBar();
   }
 }

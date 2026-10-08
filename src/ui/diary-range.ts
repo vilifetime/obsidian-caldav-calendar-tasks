@@ -9,6 +9,7 @@
  */
 import { addDays, dateStampOfMs, parseLocalStamp, startOfWeek, todayStamp } from "@/core/date";
 import type { LocalStamp } from "@/core/types";
+import { t } from "@/i18n";
 
 /** 范围种类 */
 export type DiaryRange = "day" | "week" | "month" | "all";
@@ -18,13 +19,25 @@ export interface DiarySpan {
   from: string;
   /** 结束日期（不含）—— 统一用「次日零点」表示，便于与毫秒区间比较 */
   toExclusive: string;
-  /** 展示用的中文标签，供弹窗与通知复用 */
+  /** 展示用的标签（已按当前界面语言翻译），供弹窗与通知复用 */
   label: string;
   /** 写入日记时的小节标题。跨日范围要带上区间，否则读者不知道这段是哪天的 */
   sectionTitle: string;
 }
 
-const SECTION_BASE = "日程与待办";
+/**
+ * 写入日记时的小节标题（跟随界面语言）。
+ *
+ * 用函数而非模块级常量：模块级 `const` 在 import 时就求值完，
+ * 用户中途改语言不会重新求值。
+ *
+ * ⚠️ 副作用：切换语言后再次插入同一天，会因为小节标题变了而**新增一节**
+ * 而不是替换旧的那节（writeDiarySection 按标题匹配）。这是刻意接受的 ——
+ * 日记是用户数据，用当前界面语言写标题比混入另一种语言更自然。
+ */
+function sectionBase(): string {
+  return t("diary.sectionBase");
+}
 
 /** 把日期字符串当成「当日零点」的毫秒值 */
 function midnightMs(stamp: string): number {
@@ -54,8 +67,8 @@ export function diarySpanOf(range: DiaryRange, today: LocalStamp = todayStamp())
       return {
         from: today,
         toExclusive: nextDay(today),
-        label: "当日",
-        sectionTitle: SECTION_BASE,
+        label: t("diary.range.day"),
+        sectionTitle: sectionBase(),
       };
 
     case "week": {
@@ -65,9 +78,9 @@ export function diarySpanOf(range: DiaryRange, today: LocalStamp = todayStamp())
       return {
         from,
         toExclusive: to,
-        label: "本周",
+        label: t("diary.range.week"),
         // 跨日的范围必须标出区间，否则读者不知道这段覆盖哪天
-        sectionTitle: `${SECTION_BASE}（${from} ~ ${addDays(to, -1)}）`,
+        sectionTitle: `${sectionBase()}（${from} ~ ${addDays(to, -1)}）`,
       };
     }
 
@@ -77,8 +90,8 @@ export function diarySpanOf(range: DiaryRange, today: LocalStamp = todayStamp())
       return {
         from,
         toExclusive: to,
-        label: "本月",
-        sectionTitle: `${SECTION_BASE}（${from.slice(0, 7)}）`,
+        label: t("diary.range.month"),
+        sectionTitle: `${sectionBase()}（${from.slice(0, 7)}）`,
       };
     }
 
@@ -88,8 +101,8 @@ export function diarySpanOf(range: DiaryRange, today: LocalStamp = todayStamp())
       return {
         from,
         toExclusive: to,
-        label: "所有",
-        sectionTitle: SECTION_BASE,
+        label: t("diary.range.all"),
+        sectionTitle: sectionBase(),
       };
     }
   }

@@ -24,6 +24,7 @@ import { ItemView, type WorkspaceLeaf } from "obsidian";
 import type CalDavPlugin from "@/main";
 import { ICON_ID, VIEW_TYPE_CALDAV } from "@/constants";
 import { renderPanel } from "./panel";
+import { t } from "@/i18n";
 
 export class CalDavView extends ItemView {
   private plugin: CalDavPlugin;
@@ -79,7 +80,7 @@ export class CalDavView extends ItemView {
     const msg = issue
       ? issue
       : store.lastError
-        ? "同步错误：" + store.lastError
+        ? t("view.syncError", { msg: store.lastError })
         : "";
     if (!msg) return;
     const bar = el.createDiv({ cls: "caldav-status is-error", text: msg });

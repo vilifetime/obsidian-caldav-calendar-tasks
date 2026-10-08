@@ -4,6 +4,7 @@ import { DEFAULT_CATEGORIES, calEventColor, calTodoColor } from "../core/types";
 import type { PanelCtx } from "./panel-ctx";
 import { occurrencesInRange } from "../core/ics";
 import { parseLocalStamp, stampOfMs } from "../core/date";
+import { t } from "@/i18n";
 
 export interface ViewArgs {
   ctx: PanelCtx;
@@ -41,18 +42,18 @@ export function keyOfItem(it: CalItem): string {
 export function monthChipHtml(it: CalItem, occ: string, calColor: string): string {
   const k = keyOfItem(it);
   const done = it.kind === "todo" && it.percent === 100;
-  const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? "标记未完成" : "标记完成"}">✓</button>` : "";
+  const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">✓</button>` : "";
   const timeRow = it.allDay
     ? ""
     : `<div class="cal-chip-row cal-chip-row-time"><span class="cal-chip-time">${occ.slice(11, 16)}</span></div>`;
   return `<div class="cal-chip cal-chip-month ${done ? "is-done" : ""}" data-open="${k}" style="--cal-color:${calColor}">
-    <div class="cal-chip-row">${check}<span class="cal-chip-title">${repeatMark(it)}${escape(it.summary || "(无标题)")}</span></div>
+    <div class="cal-chip-row">${check}<span class="cal-chip-title">${repeatMark(it)}${escape(it.summary || t("chip.noTitle"))}</span></div>
     ${timeRow}
   </div>`;
 }
 
 export function repeatMark(it: CalItem): string {
-  return it.rrule ? '<span class="cal-chip-repeat" title="重复">↻</span>' : "";
+  return it.rrule ? `<span class="cal-chip-repeat" title="${t("chip.repeat")}">↻</span>` : "";
 }
 
 export function escape(s: string): string {

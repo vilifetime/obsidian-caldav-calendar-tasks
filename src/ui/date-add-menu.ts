@@ -10,6 +10,7 @@ import type { PanelCtx } from "./panel-ctx";
 import { openEditor } from "./editor";
 import { icons } from "./icons";
 import { setHtml } from "./dom";
+import { t } from "@/i18n";
 
 /** 在 (x, y) 处弹出新增浮层；day 形如 YYYY-MM-DD；startEvent 为双击时间轴时算出的默认开始时间 */
 export function openDateAddMenu(ctx: PanelCtx, x: number, y: number, day: string, startEvent?: string): void {
@@ -20,8 +21,8 @@ export function openDateAddMenu(ctx: PanelCtx, x: number, y: number, day: string
   setHtml(
     menu,
     `
-    <button class="caldav-add-menu-item" data-kind="event">${icons.plus}<span>日程</span></button>
-    <button class="caldav-add-menu-item" data-kind="todo">${icons.plus}<span>待办</span></button>
+    <button class="caldav-add-menu-item" data-kind="event">${icons.plus}<span>${t("addmenu.event")}</span></button>
+    <button class="caldav-add-menu-item" data-kind="todo">${icons.plus}<span>${t("addmenu.todo")}</span></button>
   `
   );
   document.body.appendChild(menu);

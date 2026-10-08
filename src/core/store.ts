@@ -13,6 +13,7 @@ import {
   isEncrypted,
   isLegacyEncrypted
 } from "./secret";
+import { t } from "../i18n";
 
 /**
  * 宿主提供的持久化接口。
@@ -100,7 +101,7 @@ export class CalStore {
       return;
     }
     // 写进 lastError，让 Dock 状态栏能直接显示出来（否则只在控制台，用户看不到）
-    this.lastError = "密码密文与本地密钥不匹配（可能由另一台设备写入），请重新输入密码";
+    this.lastError = t("sync.storeSecretBroken");
     console.warn("[caldav] 密码解密失败（密钥不匹配），请在设置中重新输入密码");
   }
 
@@ -114,9 +115,9 @@ export class CalStore {
 
   /** 凭据是否可用（用于同步前检查与界面提示） */
   credentialsIssue(): string | undefined {
-    if (this.pendingUnlock) return "密码待解密（密钥未就绪），稍后会自动重试";
-    if (this.secretBroken) return "密码解不开（密文来自另一台设备或已换设备），请在设置中重新输入密码";
-    if (this.settings.serverUrl && !this.settings.password) return "未填写密码，请在设置中填写";
+    if (this.pendingUnlock) return t("sync.storePendingUnlock");
+    if (this.secretBroken) return t("sync.storeSecretBrokenShort");
+    if (this.settings.serverUrl && !this.settings.password) return t("sync.storeNoPassword");
     return undefined;
   }
 

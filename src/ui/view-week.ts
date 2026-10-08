@@ -4,6 +4,7 @@
 import { addDays, dateStampOfMs, isDateOnly, parseLocalStamp, startOfWeek, todayStamp } from "../core/date";
 import { calColorOf, escape, keyOfItem, occComparator, repeatMark, type ViewArgs } from "./view-common";
 import { setHtml } from "./dom";
+import { t } from "@/i18n";
 
 const HOUR_H = 44; // 每小时像素
 
@@ -49,7 +50,11 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
 
   const dayHead = dayList
     .map((d) => {
-      const wd = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][(parseLocalStamp(d).getDay() + 6) % 7];
+      const wd = t(
+        ["", "cal.weekdayMon", "cal.weekdayTue", "cal.weekdayWed", "cal.weekdayThu", "cal.weekdayFri", "cal.weekdaySat", "cal.weekdaySun"][
+          (parseLocalStamp(d).getDay() + 6) % 7
+        ]
+      );
       return `<div class="cal-wk-dayhead ${d === today ? "is-today" : ""}" data-day="${d}">
         <span class="cal-wk-wd">${wd}</span><span class="cal-wk-num">${+d.slice(8, 10)}</span></div>`;
     })
@@ -73,7 +78,7 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
           const k = keyOfItem(it);
           const done = it.kind === "todo" && it.percent === 100;
           const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}">✓</button>` : "";
-          return `<div class="cal-chip cal-chip-allday ${done ? "is-done" : ""}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">${check}<span class="cal-chip-title">${it.rrule ? "↻" : ""}${escape(it.summary || "(无标题)")}</span></div>`;
+          return `<div class="cal-chip cal-chip-allday ${done ? "is-done" : ""}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">${check}<span class="cal-chip-title">${it.rrule ? "↻" : ""}${escape(it.summary || t("chip.noTitle"))}</span></div>`;
         })
         .join("");
       return `<div class="cal-wk-allday-cell" data-day="${d}">${chips}</div>`;
@@ -91,11 +96,11 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
           const startLabel = `${String(b.startMin / 60 | 0).padStart(2, "0")}:${String(b.startMin % 60).padStart(2, "0")}`;
           const done = b.it.kind === "todo" && b.it.percent === 100;
           const check = b.it.kind === "todo"
-            ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? "标记未完成" : "标记完成"}">✓</button>`
+            ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">✓</button>`
             : "";
           return `<div class="cal-wk-block ${b.it.kind === "todo" ? "cal-wk-block-todo" : ""} ${done ? "is-done" : ""}" data-open="${k}"
             style="--cal-color:${calColorOf(ctx, b.it)};top:${top}%;height:${height}%">
-            <div class="cal-wk-block-head">${check}<div class="cal-wk-block-title">${repeatMark(b.it)}${escape(b.it.summary || "(无标题)")}${b.it.location ? `<span class="cal-wk-block-loc-inline">📍 ${escape(b.it.location)}</span>` : ""}</div></div>
+            <div class="cal-wk-block-head">${check}<div class="cal-wk-block-title">${repeatMark(b.it)}${escape(b.it.summary || t("chip.noTitle"))}${b.it.location ? `<span class="cal-wk-block-loc-inline">📍 ${escape(b.it.location)}</span>` : ""}</div></div>
             <div class="cal-wk-block-time">${startLabel}</div>
             ${b.it.location ? `<div class="cal-wk-block-loc">📍 ${escape(b.it.location)}</div>` : ""}
           </div>`;
@@ -107,7 +112,7 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
 
   const hasAllDay = allDay.length > 0;
   const alldayHtml = hasAllDay
-    ? `<div class="cal-wk-allday-label">全天</div>
+    ? `<div class="cal-wk-allday-label">${t("time.allDay")}</div>
        <div class="cal-wk-allday-cells">${allDayRow}</div>`
     : "";
 

@@ -14,6 +14,7 @@ import { openCategoryManager } from "./category-manager";
 import { appendHtml, restoreNodes, setHtml, snapshot } from "./dom";
 import type { TimerHandle } from "../constants";
 import { errMessage } from "../core/errors";
+import { t } from "@/i18n";
 
 export interface EditorPreset {
   item?: CalItem; // 编辑现有条目
@@ -29,7 +30,7 @@ export function openEditor(ctx: PanelCtx, preset: EditorPreset): void {
   if (!cals.length) {
     // 用 Obsidian 的 Notice 而非原生 alert（官方规则）：原生弹窗在移动端
     // 体验割裂，且阻塞 JS 事件循环。
-    new Notice("请先在设置中配置并发现 CalDAV 日历", 5000);
+    new Notice(t("editor.needConfig"), 5000);
     return;
   }
   const defaultCal =
@@ -127,7 +128,13 @@ class EditorModal extends Modal {
 
     const isTodo = this.it.kind === "todo";
     this.titleEl.setText(
-      this.isNew ? (isTodo ? "新建待办" : "新建日程") : "编辑" + (isTodo ? "待办" : "日程")
+      this.isNew
+        ? isTodo
+          ? t("editor.newTodo")
+          : t("editor.newEvent")
+        : isTodo
+          ? t("editor.editTodo")
+          : t("editor.editEvent")
     );
     this.modalEl.addClass("caldav-dialog");
     if (isTodo) this.modalEl.addClass("caldav-dialog--todo");
@@ -178,31 +185,34 @@ function calColorOf(cals: CalCalendar[], selected: string): string {
 }
 
 function computeDurationLabel(start: string, end: string | undefined, allDay: boolean): string {
-  if (!end) return allDay ? "1 天" : "60 分钟";
+  if (!end) return allDay ? t("editor.durOneDay") : t("editor.durDefaultEvent");
   const s = parseLocalStamp(start).getTime();
   const e = parseLocalStamp(end).getTime();
   if (Number.isNaN(s) || Number.isNaN(e)) return "—";
   if (allDay) {
     const days = Math.round((e - s) / 86400000);
-    return `${Math.max(1, days)} 天`;
+    return t("editor.durDays", { count: Math.max(1, days) });
   }
   const mins = Math.max(0, Math.round((e - s) / 60000));
   if (mins >= 60) {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
-    return m ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
+    return m ? t("editor.durHoursMinutes", { h, m }) : t("editor.durHours", { h });
   }
-  return `${mins} 分钟`;
+  return t("editor.durMinutes", { count: mins });
 }
 
 function repeatSummary(r: Recurrence | undefined): string {
-  if (!r) return "不重复";
-  const freqText: Record<string, string> = { DAILY: "每天", WEEKLY: "每周", MONTHLY: "每月", YEARLY: "每年" };
-  const base = freqText[r.freq] || r.freq;
-  const interval = r.interval && r.interval > 1 ? `每 ${r.interval} ${r.freq === "DAILY" ? "天" : r.freq === "WEEKLY" ? "周" : r.freq === "MONTHLY" ? "月" : "年"}` : base;
+  if (!r) return t("repeat.none");
+  const freqKey =
+    r.freq === "DAILY" ? "repeat.daily" : r.freq === "WEEKLY" ? "repeat.weekly" : r.freq === "MONTHLY" ? "repeat.monthly" : "repeat.yearly";
+  const unitKey =
+    r.freq === "DAILY" ? "repeat.unitDay" : r.freq === "WEEKLY" ? "repeat.unitWeek" : r.freq === "MONTHLY" ? "repeat.unitMonth" : "repeat.unitYear";
+  const base = t(freqKey);
+  const interval = r.interval && r.interval > 1 ? t("repeat.every", { interval: r.interval, unit: t(unitKey) }) : base;
   let end = "";
-  if (r.count) end = `，共 ${r.count} 次`;
-  if (r.until) end = `，至 ${r.until.slice(0, 10)}`;
+  if (r.count) end = t("repeat.totalCount", { count: r.count });
+  if (r.until) end = t("repeat.until", { date: r.until.slice(0, 10) });
   return interval + end;
 }
 
@@ -212,10 +222,10 @@ const ALARM_CHOICES = [0, 5, 10, 15, 30, 60, 1440];
 const MAX_ALARMS = 8;
 
 function alarmLabel(m: number): string {
-  if (m === 0) return "到点时";
-  if (m === 1440) return "提前 1 天";
-  if (m === 60) return "提前 1 小时";
-  return `提前 ${m} 分钟`;
+  if (m === 0) return t("alarm.atTime");
+  if (m === 1440) return t("alarm.oneDayBefore");
+  if (m === 60) return t("alarm.oneHourBefore");
+  return t("alarm.minutesBefore", { count: m });
 }
 
 /** 单个提醒行：下拉（沿用输入框包裹层，外观与其它字段一致）+ 行尾删除 */
@@ -231,15 +241,20 @@ function alarmRowHtml(m: number): string {
           <span class="caldav-input-suffix">${icons.chevron}</span>
         </div>
       </div>
-      <button type="button" class="caldav-alarm-del" data-action="del-alarm" title="删除这个提醒">${icons.trash}</button>
+      <button type="button" class="caldav-alarm-del" data-action="del-alarm" title="${t("alarm.deleteOne")}">${icons.trash}</button>
     </div>`;
 }
 
-/** 常用组合：点一下整组加入（已存在的自动跳过） */
+/**
+ * 常用组合：点一下整组加入（已存在的自动跳过）
+ *
+ * label 存 i18n key 而非字面文案 —— 模块级常量在 import 时求值完，
+ * 用户中途改语言不会触发重新求值，故在渲染处再 t()。
+ */
 const ALARM_PRESETS: { label: string; values: number[] }[] = [
-  { label: "提前 1 天 + 提前 1 小时 + 到点时", values: [1440, 60, 0] },
-  { label: "提前 15 分钟 + 到点时", values: [15, 0] },
-  { label: "提前 1 天 + 提前 30 分钟", values: [1440, 30] }
+  { label: "editor.preset1", values: [1440, 60, 0] },
+  { label: "editor.preset2", values: [15, 0] },
+  { label: "editor.preset3", values: [1440, 30] }
 ];
 
 /**
@@ -274,7 +289,7 @@ function wireAlarms(el: HTMLElement, errEl: HTMLElement): void {
   };
   const appendRow = (m: number): boolean => {
     if (list.children.length >= MAX_ALARMS) {
-      flashError(`最多添加 ${MAX_ALARMS} 个提醒`);
+      flashError(t("editor.maxAlarms", { count: MAX_ALARMS }));
       return false;
     }
     appendHtml(list, alarmRowHtml(m));
@@ -338,8 +353,8 @@ function editorHtml(
   return `
 <div class="caldav-editor-head">
   <div class="caldav-tabs">
-    <button class="caldav-tab is-active" data-tab="basic">${isTodo ? "任务设置" : "日程设置"}</button>
-    <button class="caldav-tab" data-tab="note">${isTodo ? "任务备注" : "日程备注"}</button>
+    <button class="caldav-tab is-active" data-tab="basic">${isTodo ? t("editor.tabTodoSettings") : t("editor.tabEventSettings")}</button>
+    <button class="caldav-tab" data-tab="note">${isTodo ? t("editor.tabTodoNote") : t("editor.tabEventNote")}</button>
   </div>
 </div>
 
@@ -347,9 +362,9 @@ function editorHtml(
   <div class="caldav-tab-panel" data-panel="basic">
     <div class="caldav-section">
       <div class="caldav-title-head">
-        <label class="caldav-field-label caldav-title-label">${isTodo ? "待办标题" : "事件标题"}</label>
+        <label class="caldav-field-label caldav-title-label">${isTodo ? t("editor.todoTitle") : t("editor.eventTitle")}</label>
         <label class="caldav-switch-line caldav-title-aiparse">
-          <span class="caldav-switch-label">粘贴自动识别日期</span>
+          <span class="caldav-switch-label">${t("editor.parsePaste")}</span>
           <span class="caldav-switch">
             <input type="checkbox" data-f="aiParse"/>
             <span class="caldav-switch-track"></span>
@@ -358,14 +373,14 @@ function editorHtml(
       </div>
       <div class="caldav-title-row">
         <div class="caldav-input-wrap caldav-title-wrap">
-          <input class="caldav-input caldav-title-input" data-f="summary" placeholder="${isTodo ? "请输入待办标题" : "请输入事件标题"}" value="${escape(it.summary)}"/>
-          <button type="button" class="caldav-input-suffix caldav-title-action" data-action="ai-parse" title="自动识别标题中的日期时间">${icons.sparkle}</button>
+          <input class="caldav-input caldav-title-input" data-f="summary" placeholder="${isTodo ? t("editor.summaryPlaceholderTodo") : t("editor.summaryPlaceholderEvent")}" value="${escape(it.summary)}"/>
+          <button type="button" class="caldav-input-suffix caldav-title-action" data-action="ai-parse" title="${t("editor.aiParse")}">${icons.sparkle}</button>
         </div>
       </div>
     </div>
 
     <div class="caldav-section caldav-section--card">
-      <div class="caldav-section-title caldav-cal-head"><span class="caldav-section-icon">${icons.calendar}</span>日历选择</div>
+      <div class="caldav-section-title caldav-cal-head"><span class="caldav-section-icon">${icons.calendar}</span>${t("editor.sectionCalendar")}</div>
       <div class="caldav-input-wrap" style="--cal-color:${escape(calColorOf(cals, it.calendarUrl))}">
         <span class="caldav-input-icon caldav-input-icon--static caldav-cal-icon">${icons.calendar}</span>
         <input type="hidden" data-f="calendar" value="${escape(it.calendarUrl)}"/>
@@ -385,9 +400,9 @@ function editorHtml(
     </div>
 
     <div class="caldav-section caldav-section--card">
-      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.clock}</span>日期时间</div>
+      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.clock}</span>${t("editor.sectionDateTime")}</div>
       <label class="caldav-switch-line">
-        <span class="caldav-switch-label">全天</span>
+        <span class="caldav-switch-label">${t("editor.allDay")}</span>
         <span class="caldav-switch">
           <input type="checkbox" data-f="allDay" ${it.allDay ? "checked" : ""}/>
           <span class="caldav-switch-track"></span>
@@ -395,13 +410,13 @@ function editorHtml(
       </label>
 
       <div class="caldav-datetime-row">
-        <span class="caldav-datetime-label">开始</span>
+        <span class="caldav-datetime-label">${t("editor.start")}</span>
         <div class="caldav-datetime-inputs">
           <div class="caldav-input-wrap caldav-input-wrap--date">
             <span class="caldav-input-icon">${icons.calendar}</span>
             <input class="caldav-input caldav-date-input" data-f="startDate" type="date" value="${startDate}"/>
           </div>
-          <button type="button" class="caldav-input-clear" data-clear="startDate" title="清除日期">${icons.trash}</button>
+          <button type="button" class="caldav-input-clear" data-clear="startDate" title="${t("common.clearDate")}">${icons.trash}</button>
           <div class="caldav-input-wrap caldav-input-wrap--time" ${it.allDay ? 'style="display:none"' : ""}>
             <input type="hidden" data-f="startTime" value="${startTime}"/>
             <button type="button" class="caldav-input caldav-time-trigger" data-time="startTime">
@@ -410,23 +425,23 @@ function editorHtml(
             </button>
             <div class="caldav-time-pop" data-time-pop="startTime" hidden></div>
           </div>
-          <button class="caldav-input-clear caldav-input-clear--time" data-clear="startTime" title="清除时间" ${it.allDay ? 'style="display:none"' : ""}>${icons.trash}</button>
+          <button class="caldav-input-clear caldav-input-clear--time" data-clear="startTime" title="${t("common.clearTime")}" ${it.allDay ? 'style="display:none"' : ""}>${icons.trash}</button>
         </div>
       </div>
 
       <div class="caldav-duration-row" ${isTodo || it.allDay ? 'style="display:none"' : ""}>
-        <span class="caldav-datetime-label">持续</span>
+        <span class="caldav-datetime-label">${t("editor.duration")}</span>
         <span class="caldav-duration-val" data-duration>${initialDuration}</span>
       </div>
 
       <div class="caldav-datetime-row">
-        <span class="caldav-datetime-label">结束</span>
+        <span class="caldav-datetime-label">${t("editor.end")}</span>
         <div class="caldav-datetime-inputs">
           <div class="caldav-input-wrap caldav-input-wrap--date">
             <span class="caldav-input-icon">${icons.calendar}</span>
             <input class="caldav-input caldav-date-input" data-f="endDate" type="date" value="${endDate}"/>
           </div>
-          <button type="button" class="caldav-input-clear" data-clear="endDate" title="清除日期">${icons.trash}</button>
+          <button type="button" class="caldav-input-clear" data-clear="endDate" title="${t("common.clearDate")}">${icons.trash}</button>
           <div class="caldav-input-wrap caldav-input-wrap--time" ${it.allDay ? 'style="display:none"' : ""}>
             <input type="hidden" data-f="endTime" value="${endTime}"/>
             <button type="button" class="caldav-input caldav-time-trigger" data-time="endTime">
@@ -435,20 +450,20 @@ function editorHtml(
             </button>
             <div class="caldav-time-pop" data-time-pop="endTime" hidden></div>
           </div>
-          <button class="caldav-input-clear caldav-input-clear--time" data-clear="endTime" title="清除时间" ${it.allDay ? 'style="display:none"' : ""}>${icons.trash}</button>
+          <button class="caldav-input-clear caldav-input-clear--time" data-clear="endTime" title="${t("common.clearTime")}" ${it.allDay ? 'style="display:none"' : ""}>${icons.trash}</button>
         </div>
       </div>
     </div>
 
     <div class="caldav-section caldav-section--card">
-      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.repeat}</span>重复设置</div>
+      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.repeat}</span>${t("editor.sectionRepeat")}</div>
       <button type="button" class="caldav-row-btn" data-action="toggle-repeat-detail">
         <span class="caldav-row-btn-text">${repeatSummary(r)}</span>
         <span class="caldav-row-btn-arrow">${icons.chevron}</span>
       </button>
       <div class="caldav-row-detail" data-detail="repeat" style="display:${r ? "block" : "none"}">
         <label class="caldav-switch-line caldav-switch-line--inline">
-          <span class="caldav-switch-label">启用重复</span>
+          <span class="caldav-switch-label">${t("editor.enableRepeat")}</span>
           <span class="caldav-switch">
             <input type="checkbox" data-f="repeatOn" ${r ? "checked" : ""}/>
             <span class="caldav-switch-track"></span>
@@ -456,22 +471,22 @@ function editorHtml(
         </label>
         <div class="caldav-repeat-fields" style="display:${r ? "flex" : "none"}">
           <select class="caldav-input" data-f="freq">
-            <option value="DAILY" ${r?.freq === "DAILY" ? "selected" : ""}>每天</option>
-            <option value="WEEKLY" ${r?.freq === "WEEKLY" || !r ? "selected" : ""}>每周</option>
-            <option value="MONTHLY" ${r?.freq === "MONTHLY" ? "selected" : ""}>每月</option>
-            <option value="YEARLY" ${r?.freq === "YEARLY" ? "selected" : ""}>每年</option>
+            <option value="DAILY" ${r?.freq === "DAILY" ? "selected" : ""}>${t("repeat.daily")}</option>
+            <option value="WEEKLY" ${r?.freq === "WEEKLY" || !r ? "selected" : ""}>${t("repeat.weekly")}</option>
+            <option value="MONTHLY" ${r?.freq === "MONTHLY" ? "selected" : ""}>${t("repeat.monthly")}</option>
+            <option value="YEARLY" ${r?.freq === "YEARLY" ? "selected" : ""}>${t("repeat.yearly")}</option>
           </select>
-          <input class="caldav-input caldav-num" data-f="interval" type="number" min="1" value="${r?.interval || 1}" title="间隔"/>
-          <div class="caldav-weekdays">${["一", "二", "三", "四", "五", "六", "日"]
-            .map((l, i) => {
+          <input class="caldav-input caldav-num" data-f="interval" type="number" min="1" value="${r?.interval || 1}" title="${t("editor.intervalTitle")}"/>
+          <div class="caldav-weekdays">${["cal.weekdayShortMon", "cal.weekdayShortTue", "cal.weekdayShortWed", "cal.weekdayShortThu", "cal.weekdayShortFri", "cal.weekdayShortSat", "cal.weekdayShortSun"]
+            .map((key, i) => {
               const code = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"][i];
-              return `<label class="caldav-wd ${r?.byDay?.includes(code) ? "is-on" : ""}" data-wd="${code}">${l}</label>`;
+              return `<label class="caldav-wd ${r?.byDay?.includes(code) ? "is-on" : ""}" data-wd="${code}">${t(key)}</label>`;
             })
             .join("")}</div>
           <select class="caldav-input" data-f="endMode">
-            <option value="never" ${!r?.count && !r?.until ? "selected" : ""}>永不结束</option>
-            <option value="count" ${r?.count ? "selected" : ""}>次数</option>
-            <option value="until" ${r?.until ? "selected" : ""}>日期</option>
+            <option value="never" ${!r?.count && !r?.until ? "selected" : ""}>${t("editor.endNever")}</option>
+            <option value="count" ${r?.count ? "selected" : ""}>${t("editor.endCount")}</option>
+            <option value="until" ${r?.until ? "selected" : ""}>${t("editor.endUntil")}</option>
           </select>
           <input class="caldav-input caldav-num" data-f="count" type="number" min="1" value="${r?.count || 10}" style="display:${r?.count ? "" : "none"}"/>
           <input class="caldav-input" data-f="until" type="date" value="${r?.until ? r.until.slice(0, 10) : ""}" style="display:${r?.until ? "" : "none"}"/>
@@ -480,50 +495,50 @@ function editorHtml(
     </div>
 
     <div class="caldav-section caldav-section--card">
-      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.bell}</span>自定义提醒时间</div>
+      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.bell}</span>${t("editor.sectionAlarms")}</div>
       <div class="caldav-alarm-list" data-alarm-list>${alarmRows}</div>
-      <div class="caldav-alarm-empty" data-alarm-empty ${alarmRows ? "hidden" : ""}>未设置提醒时间（到点时不会提醒）</div>
+      <div class="caldav-alarm-empty" data-alarm-empty ${alarmRows ? "hidden" : ""}>${t("editor.alarmEmpty")}</div>
       <div class="caldav-alarm-actions">
-        <button type="button" class="caldav-add-btn" data-action="add-alarm">${icons.plus} 添加提醒时间</button>
-        <button type="button" class="caldav-add-btn" data-action="add-preset">${icons.layers} 添加预设</button>
+        <button type="button" class="caldav-add-btn" data-action="add-alarm">${icons.plus} ${t("editor.addAlarm")}</button>
+        <button type="button" class="caldav-add-btn" data-action="add-preset">${icons.layers} ${t("editor.addPreset")}</button>
         <div class="caldav-alarm-presets" data-alarm-presets hidden>
-          <div class="caldav-alarm-presets-hint">常用组合，点一下整组加入</div>
+          <div class="caldav-alarm-presets-hint">${t("editor.presetHint")}</div>
           ${ALARM_PRESETS.map(
             (p, i) =>
-              `<button type="button" class="caldav-alarm-preset" data-preset="${i}">${escape(p.label)}<span>加 ${p.values.length} 个</span></button>`
+              `<button type="button" class="caldav-alarm-preset" data-preset="${i}">${escape(t(p.label))}<span>${t("editor.presetAddCount", { count: p.values.length })}</span></button>`
           ).join("")}
         </div>
       </div>
     </div>
 
     <div class="caldav-section caldav-section--card">
-      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.layers}</span>更多信息</div>
+      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.layers}</span>${t("editor.sectionMore")}</div>
       <div class="caldav-field caldav-field-icon">
-        <label class="caldav-field-label">${icons.pin} 地点</label>
+        <label class="caldav-field-label">${icons.pin} ${t("editor.location")}</label>
         <div class="caldav-input-wrap">
           <span class="caldav-input-icon">${icons.pin}</span>
-          <input class="caldav-input" data-f="location" value="${escape(it.location || "")}" placeholder="可选"/>
+          <input class="caldav-input" data-f="location" value="${escape(it.location || "")}" placeholder="${t("common.optional")}"/>
         </div>
       </div>
       ${
         isTodo
           ? `<div class="caldav-field-row">
         <div class="caldav-field caldav-field-icon">
-          <label class="caldav-field-label">${icons.flag} 优先级</label>
+          <label class="caldav-field-label">${icons.flag} ${t("editor.priority")}</label>
           <div class="caldav-input-wrap">
             <span class="caldav-input-icon">${icons.flag}</span>
             <select class="caldav-input" data-f="priority">
-              <option value="0" ${!it.priority ? "selected" : ""}>无</option>
-              <option value="9" ${it.priority === 9 ? "selected" : ""}>低</option>
-              <option value="5" ${it.priority === 5 ? "selected" : ""}>中</option>
-              <option value="3" ${it.priority === 3 ? "selected" : ""}>高</option>
-              <option value="1" ${it.priority === 1 ? "selected" : ""}>紧急</option>
+              <option value="0" ${!it.priority ? "selected" : ""}>${t("common.none")}</option>
+              <option value="9" ${it.priority === 9 ? "selected" : ""}>${t("prio.low")}</option>
+              <option value="5" ${it.priority === 5 ? "selected" : ""}>${t("prio.mid")}</option>
+              <option value="3" ${it.priority === 3 ? "selected" : ""}>${t("prio.high")}</option>
+              <option value="1" ${it.priority === 1 ? "selected" : ""}>${t("prio.urgent")}</option>
             </select>
             <span class="caldav-input-suffix">${icons.chevron}</span>
           </div>
         </div>
         <div class="caldav-field">
-          <label class="caldav-field-label">进度</label>
+          <label class="caldav-field-label">${t("editor.progress")}</label>
           <div class="caldav-progress-row">
             <input type="range" data-f="percent" min="0" max="100" step="10" value="${it.percent ?? 0}"/>
             <span class="caldav-progress-val">${it.percent ?? 0}%</span>
@@ -534,20 +549,20 @@ function editorHtml(
       }
       <div class="caldav-field">
         <div class="caldav-cat-head">
-          <label class="caldav-field-label">${icons.tag} 任务分类</label>
-          <button type="button" class="caldav-cat-manage" data-action="cat-manage" title="管理分类">${icons.gear}</button>
-          <label class="caldav-cat-multi" title="允许多选">
+          <label class="caldav-field-label">${icons.tag} ${t("editor.taskCategory")}</label>
+          <button type="button" class="caldav-cat-manage" data-action="cat-manage" title="${t("editor.manageCategory")}">${icons.gear}</button>
+          <label class="caldav-cat-multi" title="${t("editor.allowMulti")}">
             <span class="caldav-switch">
               <input type="checkbox" data-f="catMulti" ${catMulti ? "checked" : ""}/>
               <span class="caldav-switch-track"></span>
             </span>
-            多选
+            ${t("editor.multi")}
           </label>
         </div>
         <input type="hidden" data-f="categories" value="${escape((it.categories || []).join(","))}"/>
         <div class="caldav-cat-pills" data-cat-pills>
           <button type="button" class="caldav-cat-pill caldav-cat-pill--none" data-cat="">
-            <span class="caldav-cat-check">${icons.check}</span>无分类
+            <span class="caldav-cat-check">${icons.check}</span>${t("editor.noCategory")}
           </button>
           ${cats
             .map(
@@ -562,17 +577,17 @@ function editorHtml(
 
   <div class="caldav-tab-panel" data-panel="note" style="display:none">
     <div class="caldav-section caldav-section--card">
-      <textarea class="caldav-input caldav-textarea" data-f="description" rows="8" placeholder="添加备注...">${escape(it.description || "")}</textarea>
+      <textarea class="caldav-input caldav-textarea" data-f="description" rows="8" placeholder="${t("editor.notePlaceholder")}">${escape(it.description || "")}</textarea>
     </div>
   </div>
 </div>
 
 <div class="caldav-editor-foot">
   <div class="caldav-editor-error" data-error></div>
-  ${!isNew ? `<button type="button" class="caldav-foot-btn caldav-foot-btn--danger" data-action="delete">${icons.trash} 删除</button>` : ""}
+  ${!isNew ? `<button type="button" class="caldav-foot-btn caldav-foot-btn--danger" data-action="delete">${icons.trash} ${t("common.delete")}</button>` : ""}
   <span class="caldav-flex"></span>
-  <button type="button" class="caldav-foot-btn caldav-foot-btn--ghost" data-action="cancel">${icons.close} 取消</button>
-  <button type="button" class="caldav-foot-btn caldav-foot-btn--primary" data-action="save">${icons.check} 保存</button>
+  <button type="button" class="caldav-foot-btn caldav-foot-btn--ghost" data-action="cancel">${icons.close} ${t("common.cancel")}</button>
+  <button type="button" class="caldav-foot-btn caldav-foot-btn--primary" data-action="save">${icons.check} ${t("common.save")}</button>
 </div>
 </div>`;
 }
@@ -832,7 +847,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
   f("repeatOn").addEventListener("change", () => {
     const on = f("repeatOn").checked;
     repeatFields.style.display = on ? "flex" : "none";
-    repeatBtnText.textContent = on ? repeatSummary(collectRepeat(el)) : "不重复";
+    repeatBtnText.textContent = on ? repeatSummary(collectRepeat(el)) : t("repeat.none");
   });
 
   // 星期选择
@@ -880,7 +895,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
   el.querySelector('[data-action="ai-parse"]')?.addEventListener("click", () => {
     const p = parseDateTimeFromText(f("summary").value);
     if (!p) {
-      errEl.textContent = "未在标题中识别到日期时间。";
+      errEl.textContent = t("editor.noDateInTitle");
       window.setTimeout(() => (errEl.textContent = ""), 2500);
       return;
     }
@@ -914,20 +929,20 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
     const doDelete = async (): Promise<void> => {
       disarm();
       delBtn.disabled = true;
-      delBtn.textContent = "删除中…";
+      delBtn.textContent = t("editor.deleting");
       const key = keyOf(it);
       try {
         await ctx.sync.removeItem(it);
         if (ctx.store.get(key)) {
           // 仍留在本地 = 服务端删除未成功，会留待下次同步重试
-          errEl.textContent = "服务器删除未成功，已记录，将在下次同步重试";
+          errEl.textContent = t("editor.deleteServerFailed");
           delBtn.disabled = false;
           restoreNodes(delBtn, idleNodes);
           return;
         }
         host.close();
       } catch (e: unknown) {
-        errEl.textContent = "删除失败：" + errMessage(e);
+        errEl.textContent = t("editor.deleteFailed", { msg: errMessage(e) });
         delBtn.disabled = false;
         restoreNodes(delBtn, idleNodes);
       }
@@ -935,7 +950,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
     delBtn.addEventListener("click", () => {
       if (!armed) {
         armed = true;
-        setHtml(delBtn, `${icons.trash} 再点一次确认删除`);
+        setHtml(delBtn, `${icons.trash} ${t("editor.clickAgainConfirm")}`);
         delBtn.classList.add("is-armed");
         armTimer = window.setTimeout(disarm, 4000);
         return;
@@ -975,7 +990,7 @@ function collect(ctx: PanelCtx, el: HTMLElement, it: CalItem): CalItem {
   const v = (name: string) => f(name).value.trim();
 
   it.summary = v("summary");
-  if (!it.summary) throw new Error("标题不能为空");
+  if (!it.summary) throw new Error(t("editor.errTitleEmpty"));
   it.calendarUrl = v("calendar");
   const cal = ctx.store.settings.calendars.find((c) => c.url === it.calendarUrl);
   // 更换日历 = 移动资源
@@ -994,19 +1009,21 @@ function collect(ctx: PanelCtx, el: HTMLElement, it: CalItem): CalItem {
     it.start = stampOf(startDate, startTime);
     it.end = stampOf(endDate, endTime);
     if (it.start && it.end && parseLocalStamp(it.end).getTime() < parseLocalStamp(it.start).getTime()) {
-      throw new Error("结束时间不能早于开始时间");
+      throw new Error(t("editor.errEndBeforeStart"));
     }
   } else if (it.allDay) {
-    if (!startDate) throw new Error("请填写开始日期");
+    if (!startDate) throw new Error(t("editor.errNeedStartDate"));
     it.start = startDate;
     it.end = endDate || addDays(startDate, 1);
   } else {
-    if (!startDate) throw new Error("请填写开始日期");
-    if (!startTime) throw new Error("请填写开始时间");
+    if (!startDate) throw new Error(t("editor.errNeedStartDate"));
+    if (!startTime) throw new Error(t("editor.errNeedStartTime"));
     it.start = `${startDate}T${startTime}:00`;
-    if (!endDate || !endTime) throw new Error("请填写结束日期和时间");
+    if (!endDate || !endTime) throw new Error(t("editor.errNeedEndDateTime"));
     it.end = `${endDate}T${endTime}:00`;
-    if (parseLocalStamp(it.end).getTime() <= parseLocalStamp(it.start).getTime()) throw new Error("结束时间需晚于开始时间");
+    if (parseLocalStamp(it.end).getTime() <= parseLocalStamp(it.start).getTime()) {
+      throw new Error(t("editor.errEndAfterStart"));
+    }
   }
   // 重复
   if (f("repeatOn").checked) {

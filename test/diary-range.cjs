@@ -161,7 +161,15 @@ const check = (name, cond, extra = "") => {
 {
   const fs = require("fs");
   const src = fs.readFileSync(require.resolve("./../src/ui/panel.ts"), "utf8");
-  check("按钮文案是「把日程与待办插入日记」", src.includes(">把日程与待办插入日记</button>"));
+  // 2026-10-06 i18n 改造后按钮文案搬进了字典，故改成两段断言：
+  // ① 字典里的中文译文仍是原句（没被顺手改掉）② 按钮确实引用这个 key。
+  // 查中文字面量会随 i18n 改造失效 —— 这正是它要防的那类回退。
+  const zh = JSON.parse(fs.readFileSync(require.resolve("./../src/i18n/zh_CN.json"), "utf8"));
+  check(
+    "按钮文案是「把日程与待办插入日记」",
+    zh["toolbar.insertDiary"] === "把日程与待办插入日记",
+  );
+  check("按钮引用了 toolbar.insertDiary key", src.includes('t("toolbar.insertDiary")'));
   check("旧文案「把今日日程与待办插入日记」已不存在", !src.includes("把今日日程与待办插入日记"));
   // 点击必须弹范围选择，而不是直接调insertTodayToDiary()
   check("点击后先弹范围框", /askDiaryRange\(ctx\.app/.test(src));

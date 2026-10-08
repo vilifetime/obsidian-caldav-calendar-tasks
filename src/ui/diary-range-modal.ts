@@ -11,6 +11,7 @@
 import { Modal, type App } from "obsidian";
 import { setHtml } from "./dom";
 import type { DiaryRange } from "./diary-range";
+import { t } from "@/i18n";
 
 interface Option {
   key: DiaryRange;
@@ -18,12 +19,17 @@ interface Option {
   hint: string;
 }
 
-/** 顺序即显示顺序；第一项同时是默认项 */
+/**
+ * 顺序即显示顺序；第一项同时是默认项。
+ *
+ * label / hint 存 i18n key —— 模块级常量在 import 时求值完，
+ * 用户中途改语言不会重新求值，故在渲染处 t()。
+ */
 const OPTIONS: Option[] = [
-  { key: "day", label: "当日", hint: "今天的日程与待办" },
-  { key: "week", label: "本周", hint: "本周一至今天（自然周，周一起算）" },
-  { key: "month", label: "本月", hint: "本月 1 日至今天" },
-  { key: "all", label: "所有", hint: "全部历史与未来的条目，写入今日日记" },
+  { key: "day", label: "diary.range.day", hint: "diary.range.dayHint" },
+  { key: "week", label: "diary.range.week", hint: "diary.range.weekHint" },
+  { key: "month", label: "diary.range.month", hint: "diary.range.monthHint" },
+  { key: "all", label: "diary.range.all", hint: "diary.range.allHint" },
 ];
 
 /**
@@ -36,23 +42,23 @@ export function askDiaryRange(app: App, onPick: (range: DiaryRange) => void): vo
   let picked: DiaryRange = "day";
 
   const modal = new Modal(app);
-  modal.setTitle("插入日记");
+  modal.setTitle(t("diary.title"));
   modal.modalEl.addClass("caldav-diary-range-modal");
 
   setHtml(
     modal.contentEl,
     `
 <div class="caldav-range">
-  <div class="caldav-range-lead">要把哪个范围的日程与待办写入日记？</div>
+  <div class="caldav-range-lead">${t("diary.lead")}</div>
   <fieldset class="caldav-range-opts">
-    <legend class="sr-only">插入范围</legend>
+    <legend class="sr-only">${t("diary.legend")}</legend>
     ${OPTIONS.map(
       (o) => `
     <label class="caldav-range-opt">
       <input type="radio" name="caldav-range" value="${o.key}"${o.key === "day" ? " checked" : ""}/>
       <span class="caldav-range-opt-body">
-        <span class="caldav-range-opt-label">${o.label}</span>
-        <span class="caldav-range-opt-hint">${o.hint}</span>
+        <span class="caldav-range-opt-label">${t(o.label)}</span>
+        <span class="caldav-range-opt-hint">${t(o.hint)}</span>
       </span>
     </label>`
     ).join("")}
@@ -82,12 +88,12 @@ export function askDiaryRange(app: App, onPick: (range: DiaryRange) => void): vo
   firstLabel?.classList.add("is-checked");
 
   const actions = modal.contentEl.createDiv({ cls: "caldav-range-actions" });
-  const cancel = actions.createEl("button", { text: "取消" });
+  const cancel = actions.createEl("button", { text: t("common.cancel") });
   cancel.addEventListener("click", () => modal.close());
 
   const ok = actions.createEl("button", {
     cls: "mod-cta",
-    text: "确认插入",
+    text: t("diary.confirm"),
   });
   ok.addEventListener("click", () => {
     const range = picked;

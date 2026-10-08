@@ -13,6 +13,7 @@ import { dateStampOfMs, stampOfMs } from "./date";
 import type { Channel } from "./http";
 import type { TimerHandle } from "../constants";
 import { errMessage, errStatus } from "./errors";
+import { t } from "../i18n";
 
 export interface SyncReport {
   ok: boolean;
@@ -52,11 +53,11 @@ export function staleCalendarNames(
 function explainError(e: unknown): string {
   const msg = errMessage(e) || String(e);
   if (/Failed to fetch|NetworkError|Load failed|ERR_/i.test(msg)) {
-    return "网络请求失败（服务不可达，或直连被跨域拦截，建议把请求通道改为「内核代理」）";
+    return t("net.unreachableProxyHint");
   }
-  if (/timeout|aborted|abort/i.test(msg)) return "请求超时";
-  if (/401/.test(msg)) return "认证失败（401）：用户名或密码错误";
-  if (/403/.test(msg)) return "无权限（403）";
+  if (/timeout|aborted|abort/i.test(msg)) return t("net.timeout");
+  if (/401/.test(msg)) return t("net.auth401");
+  if (/403/.test(msg)) return t("net.forbidden");
   return msg;
 }
 
@@ -95,7 +96,7 @@ export class SyncEngine {
   }
 
   async syncAll(): Promise<SyncReport> {
-    if (this.syncing) return { ok: false, fetched: 0, uploaded: 0, deleted: 0, errors: ["正在同步中"], elapsedMs: 0 };
+    if (this.syncing) return { ok: false, fetched: 0, uploaded: 0, deleted: 0, errors: [t("sync.inProgress")], elapsedMs: 0 };
     this.syncing = true;
     const t0 = Date.now();
     const report: SyncReport = { ok: true, fetched: 0, uploaded: 0, deleted: 0, errors: [], elapsedMs: 0 };
@@ -111,15 +112,15 @@ export class SyncEngine {
       const enabledCals = this.store.settings.calendars.filter((c) => c.enabled);
       if (!enabledCals.length) {
         report.ok = false;
-        report.errors.push("没有启用的日历");
-        this.store.lastError = "没有启用的日历";
+        report.errors.push(t("sync.noCalendarEnabled"));
+        this.store.lastError = t("sync.noCalendarEnabled");
         return report;
       }
       // 服务器地址改过、但日历地址没跟着更新 → 明确报错。
       // 否则会静默地去连旧服务器并「同步成功」，让用户以为新地址是可用的。
       const stale = staleCalendarNames(this.store.settings.serverUrl, enabledCals);
       if (stale.length) {
-        const msg = `服务器地址已变更，以下日历仍指向旧地址，请到设置里重新「发现日历」：${stale.join("、")}`;
+        const msg = t("sync.serverChanged", { list: stale.join("、") });
         report.ok = false;
         report.errors.push(msg);
         this.store.lastError = msg;
@@ -196,11 +197,11 @@ export class SyncEngine {
   /** 凭据不可用时的统一提示（密码为空/解密失败），避免静默 401 */
   private credentialError(): string | undefined {
     const s = this.store.settings;
-    if (!s.serverUrl) return "未配置服务器地址";
-    if (!s.username) return "未填写用户名";
-    if (this.store.pendingUnlock) return "密码待解密（密钥尚未就绪），稍后会自动重试";
-    if (this.store.secretBroken) return "密码解不开（密文可能来自另一台设备），请在设置中重新输入密码";
-    if (!s.password) return "未填写密码，请在设置中填写";
+    if (!s.serverUrl) return t("sync.noServerUrl");
+    if (!s.username) return t("sync.noUsername");
+    if (this.store.pendingUnlock) return t("sync.pendingUnlock");
+    if (this.store.secretBroken) return t("sync.secretBroken");
+    if (!s.password) return t("sync.noPassword");
     return undefined;
   }
 
@@ -259,16 +260,16 @@ export class SyncEngine {
               report.uploaded++;
               continue;
             } catch (e2: unknown) {
-              report.errors.push(`覆盖 ${item.summary}: ${explainError(e2)}`);
+              report.errors.push(t("sync.overwriteItem", { title: item.summary, msg: explainError(e2) }));
             }
           } else {
             // 服务端优先：丢弃本地改动
             item.dirty = false;
-            report.errors.push(`「${item.summary}」服务端已变更，本地改动已按策略丢弃`);
+            report.errors.push(t("sync.discardLocal", { title: item.summary }));
           }
         } else {
           report.ok = false;
-          report.errors.push(`上传 ${item.summary}: ${explainError(e)}`);
+          report.errors.push(t("sync.uploadItem", { title: item.summary, msg: explainError(e) }));
         }
       }
     }
@@ -281,7 +282,7 @@ export class SyncEngine {
         this.store.remove(keyOf(item));
       } catch (e: unknown) {
         report.ok = false;
-        report.errors.push(`删除 ${item.summary}: ${explainError(e)}`);
+        report.errors.push(t("sync.deleteItem", { title: item.summary, msg: explainError(e) }));
       }
     }
   }

@@ -5,8 +5,17 @@
 import { addDays, dateStampOfMs, todayStamp } from "../core/date";
 import { calColorOf, type ViewArgs } from "./view-common";
 import { setHtml } from "./dom";
+import { t } from "@/i18n";
 
-const WEEK_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
+const WEEK_LABEL_KEYS = [
+  "cal.weekdayShortMon",
+  "cal.weekdayShortTue",
+  "cal.weekdayShortWed",
+  "cal.weekdayShortThu",
+  "cal.weekdayShortFri",
+  "cal.weekdayShortSat",
+  "cal.weekdayShortSun"
+];
 
 function pad2(n: number): string {
   return n < 10 ? "0" + n : String(n);
@@ -51,14 +60,14 @@ export function renderYearView({ ctx, viewEl, occurrences }: ViewArgs): void {
       </div>`);
     }
     months.push(`<div class="cal-year-month">
-      <div class="cal-year-month-head" data-month="${y}-${pad2(m + 1)}" title="跳转到 ${m + 1} 月">${m + 1} 月</div>
-      <div class="cal-year-weeks">${WEEK_LABELS.map((w) => `<span>${w}</span>`).join("")}</div>
+      <div class="cal-year-month-head" data-month="${y}-${pad2(m + 1)}" title="${t("cal.yearMonthHead", { m: m + 1 })}">${t("cal.yearMonthLabel", { m: m + 1 })}</div>
+      <div class="cal-year-weeks">${WEEK_LABEL_KEYS.map((k) => `<span>${t(k)}</span>`).join("")}</div>
       <div class="cal-year-grid">${cells.join("")}</div>
     </div>`);
   }
 
   setHtml(viewEl, `<div class="cal-year">
-    <div class="cal-year-head">${y} 年 · 共 ${total} 项日程 / 任务</div>
+    <div class="cal-year-head">${t("cal.yearHead", { y, total })}</div>
     <div class="cal-year-months">${months.join("")}</div>
   </div>`);
 
