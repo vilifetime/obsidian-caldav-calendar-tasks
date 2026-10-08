@@ -951,7 +951,9 @@ export function renderDockPanel(
     </div>
     <button class="caldav-dock-filter-btn" data-dock="category">${t("dock.categoryFilter")}</button>
     <div class="caldav-dock-cat-pop" data-pop="category" hidden>
-      <div class="caldav-dock-cat-head">${t("dock.categoryPick")}</div>
+      <div class="caldav-dock-cat-head">${t("dock.prioPick")}</div>
+      <div class="caldav-dock-prio-list" data-prio-list></div>
+      <div class="caldav-dock-cat-head caldav-dock-cat-head--second">${t("dock.categoryPick")}</div>
       <div class="caldav-dock-cat-list" data-cat-list></div>
       <div class="caldav-dock-cat-foot">
         <button class="caldav-foot-btn caldav-foot-btn--ghost" data-cat-action="cancel">${t("common.cancel")}</button>
@@ -983,17 +985,16 @@ export function renderDockPanel(
 
   function openCategoryPop(): void {
     pendingCategoryFilter = [...dockCategoryFilter];
+    pendingPriorityFilter = [...dockPriorityFilter];
     renderCategoryPop();
+    renderPriorityPop();
+    // 定位全交给 CSS：`.caldav-dock-cat-pop` 用 absolute + 父级 relative。
+    // 早先这里用 fixed 并在 JS 里算视口坐标（left = r.right + 8），
+    // 而 `.caldav-dock-host` 带 overflow: hidden，fixed 后代会被裁掉 ——
+    // 弹层已打开但整块在可视区外，表现为「点分类筛选没反应」。
+    // 故这里**只翻 hidden，不设任何坐标**，与同类弹层保持一致。
     const catPop = root.querySelector<HTMLElement>("[data-pop='category']");
-    const btn = root.querySelector<HTMLElement>("[data-dock='category']");
-    if (catPop) {
-      catPop.hidden = false;
-      if (btn) {
-        const r = btn.getBoundingClientRect();
-        catPop.style.top = `${r.top}px`;
-        catPop.style.left = `${r.right + 8}px`;
-      }
-    }
+    if (catPop) catPop.hidden = false;
   }
 
   function togglePop(name: string): void {
@@ -1276,6 +1277,67 @@ export function renderDockPanel(
   }
 
   let pendingCategoryFilter: string[] = [];
+  /** 优先级筛选：空 = 不按优先级筛；否则是 1/3/5/9 四档之一（与 prioMeta 的分档一致） */
+  let dockPriorityFilter: number[] = [];
+  let pendingPriorityFilter: number[] = [];
+
+  /**
+   * 优先级筛选的档位定义。
+   *
+   * ⚠️ 分档必须与 `prioMeta()` 完全一致（p<=2 紧急 / p<=4 高 / p<=6 中 / 其余低），
+   * 否则同一条目在「筛选」里归到某档、在标签上却显示另一档。为此这里不再
+   * 硬编码 2/4/6，而是复用 prioMeta 的判定：给定每档的代表值（2/4/6/9），
+   * 由 prioMeta 反推出文案与 class —— 一处定义，两处使用，改档不会漏改。
+   */
+  const PRIO_TIERS: Array<{ value: number }> = [{ value: 2 }, { value: 4 }, { value: 6 }, { value: 9 }];
+
+  function renderPriorityPop(): void {
+    const pop = root.querySelector("[data-pop='category']") as HTMLElement | null;
+    if (!pop) return;
+    const listEl = pop.querySelector("[data-prio-list]") as HTMLElement | null;
+    if (!listEl) return;
+    const filter = pendingPriorityFilter;
+    const isAll = filter.length === 0;
+
+    const items = [
+      { value: 0, label: t("dock.prioAll"), cls: "" },
+      ...PRIO_TIERS.map((tier) => {
+        const m = prioMeta(tier.value);
+        return { value: tier.value, label: m.label, cls: m.cls };
+      })
+    ];
+
+    setHtml(
+      listEl,
+      items
+        .map((item) => {
+          const checked = item.value === 0 ? isAll : filter.includes(item.value);
+          return `<label class="caldav-dock-prio-item ${checked ? "is-active" : ""}" data-prio-key="${item.value}">
+      <input type="checkbox" ${checked ? "checked" : ""}/>
+      ${item.cls ? `<span class="caldav-dock-prio-dot ${item.cls}"></span>` : ""}<span>${escapeHtml(item.label)}</span>
+    </label>`;
+        })
+        .join("")
+    );
+  }
+
+  /**
+   * 优先级筛选判定：与 matchesDockCategoryFilter 同一个过滤链上（AND 关系）。
+   *
+   * ⚠️ 必须**按档位判定**，不能拿 priority 值直接 `filter.includes(p)`：
+   * priority 是 1~9 的连续取值，筛选则是 4 档（1~2 紧急 / 3~4 高 / 5~6 中 / 7~9 低）。
+   * 用 includes 时 p=1 的条目在选「紧急」会被漏掉（1 ≠ 代表值 2）——
+   * test/dock-filter-prio.cjs 首跑就揪出这个错。
+   * 档位判定复用 prioMeta 的分档，两处不会漂移。
+   */
+  function matchesDockPriorityFilter(it: CalItem, filter: number[]): boolean {
+    if (!filter.length) return true;
+    // 未设优先级视为最低档（与排序 dockSort 的 `it.priority > 0 ? it.priority : 9` 一致），
+    // 故低档能选到未设优先级的条目 —— 这是最容易被忽略的一种命中。
+    const p = it.priority && it.priority > 0 ? it.priority : 9;
+    const tier = prioMeta(p).cls;
+    return filter.some((rep) => prioMeta(rep).cls === tier);
+  }
 
   function renderCategoryPop(): void {
     const pop = root.querySelector("[data-pop='category']") as HTMLElement;
@@ -1352,6 +1414,7 @@ export function renderDockPanel(
       .filter((it) => isEnabledCalendar(it))
       .filter((it) => !dateKeyOf(it))
       .filter((it) => matchesDockCategoryFilter(it, dockCategoryFilter))
+      .filter((it) => matchesDockPriorityFilter(it, dockPriorityFilter))
       .filter((it) => matchesDockSearch(it, q)).length;
   }
 
@@ -1497,6 +1560,7 @@ export function renderDockPanel(
       // 聚焦（日 / 月 / 周）优先：它来自主面板的单击或双击，比预设筛选更具体
       .filter((it) => (focusDate ? matchesFocus(it) : matchesDockFilter(it, dockFilter)))
       .filter((it) => matchesDockCategoryFilter(it, dockCategoryFilter))
+      .filter((it) => matchesDockPriorityFilter(it, dockPriorityFilter))
       .filter((it) => matchesDockSearch(it, q))
       .sort(dockSort)
       .slice(0, 50);
@@ -1628,17 +1692,30 @@ export function renderDockPanel(
       if (a === "task-view") return opts.onNav("task");
     }
 
-    // 分类筛选弹层
+    // 筛选弹层：优先级 + 分类两段（雄哥 2026-10-08 要求）
+    // 判定顺序有讲究：**先判优先级项**，因为它与分类项分属两个选择器，
+    // 顺序反了虽然也不冲突（元素互不嵌套），但语义上「先紧跟弹层打开的判据」在前更易读。
     const catPopEl = root.querySelector<HTMLElement>("[data-pop='category']");
     const catItem = t.closest<HTMLElement>(".caldav-dock-cat-item");
+    const prioItem = t.closest<HTMLElement>(".caldav-dock-prio-item");
     const catAction = t.closest<HTMLElement>("[data-cat-action]");
-    if (catPopEl && !catPopEl.hidden && (catItem || catAction)) {
+    if (catPopEl && !catPopEl.hidden && (catItem || prioItem || catAction)) {
       if (catAction) {
         if (catAction.dataset.catAction === "ok") {
+          // 两段一起提交：确认按钮的含义是「应用我在这个弹层里改的全部条件」
           dockCategoryFilter = pendingCategoryFilter;
+          dockPriorityFilter = pendingPriorityFilter;
           renderDockList();
         }
         closePops();
+        return;
+      }
+      if (prioItem) {
+        // 优先级是**单选**：四档之间互斥，多选没有语义
+        //（一条待办只有一个优先级）。「全部」档= 清空。
+        const v = Number(prioItem.dataset.prioKey);
+        pendingPriorityFilter = v === 0 ? [] : [v];
+        renderPriorityPop();
         return;
       }
       if (catItem) {

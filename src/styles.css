@@ -2667,13 +2667,22 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   top: 34px;
   right: 0;
   z-index: 20;
-  width: 248px;
+  /* 248px 只够放中文。英文句子长一倍多（最长的那条
+     「Insert events and tasks into daily note」有 39 字符），
+     硬撑的结果是按钮折成两行、看起来很挤。
+     改用 `em` 随根字号等比放大，英文自然放得下，中文也不浪费空间。 */
+  width: 21em;
+  max-width: calc(100vw - 24px);
   background: var(--caldav-bg);
   border: 1px solid var(--caldav-border);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
   padding: 8px 10px 10px;
 }
+/* 英文环境再放宽一档。Obsidian 的 <html> 一定带 lang 属性，
+   故 `:lang()` 是可靠的现成钩子 —— 不必在 JS 里同步语言类
+   （面板 HTML 是一次性渲染的，refresh() 走 renderAll() 不会重跑类名切换）。 */
+:lang(en) .caldav-calfilter-pop { width: 30em; }
 .caldav-calfilter-pop[hidden] { display: none; }
 .caldav-calfilter-foot {
   border-top: 1px solid var(--caldav-border);
@@ -2682,14 +2691,24 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* 子项 min-width 默认 auto，遇到长单词（英文按钮）不缩，会把整列撑破 248px
+     的固定宽。显式 stretch + 子项 min-width: 0 才能正常收缩换行。 */
+  align-items: stretch;
+  min-width: 0;
 }
 /* 菜单项：字号与主面板其它菜单/正文同档（13px），并补足可点区域与悬停反馈 ——
-   原来 12px 的纯文字链接，形态更像脚注而不像菜单项 */
+   原来 12px 的纯文字链接，形态更像脚注而不像菜单项。
+
+   ⚠️ 这里不写死换行策略（`white-space: nowrap` 之类）：浮层宽度已用 `em`
+   按语言调过（见 .caldav-calfilter-pop），英文最长那条也能一行放下。
+   反倒是设了 `white-space: normal` + `overflow-wrap` 后主动折行，视觉上很难看。 */
 .caldav-calfilter-foot .caldav-link {
   font-size: 13px;
   text-align: left;
   padding: 7px 8px;
   border-radius: 6px;
+  min-width: 0;
+  line-height: 1.45;
 }
 .caldav-calfilter-foot .caldav-link:hover { background: var(--caldav-bg-3); }
 
@@ -2768,13 +2787,29 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 }
 .caldav-dock-pop[hidden] { display: none; }
 
-/* 分类筛选弹层：fixed 定位，弹出到 Dock 右侧外部，避免被左侧栏裁剪 */
+/* 分类筛选弹层。
+ *
+ * ⚠️ 原来这里是 `position: fixed` + JS 算视口坐标（注释写「避免被左侧栏裁剪」）
+ * —— 这个假设从未成立：`.caldav-dock-host`（= Obsidian 的 view-content 根）
+ *   带 `overflow: hidden`，而本弹层是它的后代，**fixed 定位一样被裁掉**。
+ *   症状是「点分类筛选毫无反应」，但其实 hidden 已翻转、弹层已在 DOM 里，
+ *   只是整块裁在可视区外 —— 静态读代码完全看不出问题（逻辑分支是对的）。
+ *
+ * 改为与 `.caldav-dock-pop` / `.caldav-calfilter-pop` 一致的 `absolute`，
+ * 靠 `.caldav-dock-list-head` 的 `position: relative` 定位。 */
 .caldav-dock-cat-pop {
-  position: fixed;
-  top: 0;
+  position: absolute;
+  top: calc(100% + 6px);
   left: 0;
   z-index: 1000;
   width: 260px;
+  /* 侧栏可被拖到很窄，固定 260px 会横向溢出 —— 上限钳到容器宽度 */
+  max-width: calc(100vw - 32px);
+  /* 两段（优先级 + 分类）内容变多。max-height 设在弹层本身而非各 list，
+     才能保证底部「取消 / 确定」始终可见（把滚动条压在列表里的话，
+     分类多时那两颗按钮会被推出视口）。 */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: var(--d-card);
   border: 1px solid var(--d-border);
   border-radius: 12px;
@@ -2799,6 +2834,46 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   max-height: 220px;
   overflow-y: auto;
 }
+/* 优先级段：与分类项同一套形态，单选（一行只会有一个 is-active）。
+   第一条 head 已有 border-bottom；第二段（分类）的 head 兼作两段之间的分隔线，
+   靠 padding-top 拉开间距。 */
+.caldav-dock-cat-head--second { margin-top: 2px; }
+.caldav-dock-prio-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.caldav-dock-prio-item {
+  /* 复用分类项的全部形态，这里只多一个优先级色点 */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--d-border);
+  border-radius: 8px;
+  background: var(--d-input);
+  color: var(--d-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.caldav-dock-prio-item:hover { background: var(--d-input-hover); border-color: color-mix(in srgb, var(--d-accent) 45%, var(--d-border)); }
+.caldav-dock-prio-item.is-active { border-color: var(--d-accent); background: color-mix(in srgb, var(--d-accent) 10%, var(--d-card)); color: var(--d-accent); }
+/* 优先级色点：与条目上的 prio-urgent/high/mid/low **用同一组变量**
+   （那几条在 3262 行附近定义，颜色随主题走）。
+   硬编码色值会让深浅主题下筛选点与列表标签对不上色。 */
+.caldav-dock-prio-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--caldav-text-2);
+}
+.caldav-dock-prio-dot.prio-urgent { background: var(--caldav-danger); }
+.caldav-dock-prio-dot.prio-high   { background: color-mix(in srgb, var(--caldav-danger) 70%, #f5c542); }
+.caldav-dock-prio-dot.prio-mid    { background: var(--caldav-accent); }
+.caldav-dock-prio-dot.prio-low    { background: var(--caldav-text-2); }
 .caldav-dock-cat-item {
   display: inline-flex;
   align-items: center;
