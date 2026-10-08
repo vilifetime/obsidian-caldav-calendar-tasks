@@ -278,19 +278,16 @@ export class CalDavSettingTab extends PluginSettingTab {
       ],
     });
 
-    // ---- 视图 ----
-    defs.push({
-      type: "group",
-      heading: t("settings.groupView"),
-      items: [
-        {
-          name: t("settings.showTodosInCalendar"),
-          desc: t("settings.showTodosInCalendarDesc"),
-          control: { type: "toggle" as const, key: "showTodosInCalendar", defaultValue: true },
-          aliases: ["视图", "待办", "todo", "view"],
-        },
-      ],
-    });
+    // 2026-10-09 雄哥要求删掉设置页里的「日历视图中显示待办」——
+    // 它跟面板工具栏「日历筛选」浮层里的同名开关是同一个 setting.showTodosInCalendar，
+    // 两处都能改就会让人怀疑到底听谁的，而且设置页那个改完不重绘面板（要等下次同步），
+    // 看起来像「没生效」。现在统一只在工具栏里改。
+    // 任务视图的两个混入开关（showEventsInTaskView / showExpiredEventsInTaskView）
+    // 同样只在工具栏里，本来就没在设置页重复过。
+    //
+    // ⚠️ settings.showTodosInCalendar 这个字段本身**必须保留**在 types.ts / DEFAULT_SETTINGS 里：
+    //    老数据（data.json）里已经存了这个键，删掉定义会让读取端拿不到默认值而走偏，
+    //    并且 toolbar 的读写路径依赖它。删的只是设置页这一处 UI。
 
     return defs as unknown as SettingDefinitionItem[];
   }
