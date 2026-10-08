@@ -1306,9 +1306,9 @@ export function renderDockPanel(
   const PRIO_TIERS: Array<{ value: number }> = [{ value: 2 }, { value: 4 }, { value: 6 }, { value: 9 }];
 
   function renderPriorityPop(): void {
-    const pop = root.querySelector("[data-pop='category']") as HTMLElement | null;
+    const pop = root.querySelector<HTMLElement>("[data-pop='category']");
     if (!pop) return;
-    const listEl = pop.querySelector("[data-prio-list]") as HTMLElement | null;
+    const listEl = pop.querySelector<HTMLElement>("[data-prio-list]");
     if (!listEl) return;
     const filter = pendingPriorityFilter;
     const isAll = filter.length === 0;
@@ -1354,8 +1354,10 @@ export function renderDockPanel(
   }
 
   function renderCategoryPop(): void {
-    const pop = root.querySelector("[data-pop='category']") as HTMLElement;
-    const listEl = pop.querySelector("[data-cat-list]") as HTMLElement;
+    const pop = root.querySelector<HTMLElement>("[data-pop='category']");
+    if (!pop) return;
+    const listEl = pop.querySelector<HTMLElement>("[data-cat-list]");
+    if (!listEl) return;
     const cats = opts.store.settings.categories?.length ? opts.store.settings.categories : DEFAULT_CATEGORIES;
     const filter = pendingCategoryFilter;
     const isAll = filter.length === 0;

@@ -325,3 +325,91 @@ console.log("  README：英文内容与一致性");
     console.log(`  [PASS] README 含完整英文说明（${enWords} 词）且标题与 manifest 一致，中文说明区保留`);
   }
 }
+
+/* ────────────────────────────────────────────────────────────
+ * 审核静态扫描类检查（社区目录审核会逐版重复返回的条目）
+ *
+ * 2026-10-08 审核返回：
+ *   Warning: This assertion is unnecessary since it does not change the type
+ *            of the expression. — panel.ts:1309/1311
+ *   Recommendation: 'initLocale' is defined but never used. — settings-tab.ts:30
+ *
+ * 两条 tsc 与 eslint 都抓不到（冗余断言是合法 TS；孤儿 import 因
+ * tsconfig 的 noUnusedLocals=false 而永远不报）→ 只能靠自查。
+ *
+ * 深度断言（含判据自测）在 test/review-scan.cjs；此处只做粗筛。
+ * ──────────────────────────────────────────────────────────── */
+console.log("");
+console.log("  审核静态扫描：冗余类型断言 / 孤儿 import");
+{
+  const tsFiles = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (p.endsWith(".ts")) tsFiles.push(p);
+    }
+  })("src");
+
+  const scanFails = [];
+
+  // ① 冗余断言：querySelector 本就返回 Element | null，
+  //    故 `as HTMLElement | null` 不改变类型 → 冗余。
+  //    ⚠️ 不带 `| null` 的 `as HTMLElement` 不在此管辖内（那是刻意的去 null 写法）。
+  const redundantRe =
+    /querySelector(?:<[^>]*>)?\([^)]*\)\s+as\s+[A-Za-z_$][\w$.]*(?:\s*\|\s*null)+\s*[;,)]/g;
+  const redundantHits = [];
+  for (const f of tsFiles) {
+    const code = fs.readFileSync(f, "utf8");
+    code.split("\n").forEach((line, i) => {
+      if (redundantRe.test(line)) redundantHits.push(`${f}:${i + 1}`);
+    });
+  }
+  if (redundantHits.length) {
+    scanFails.push(`冗余类型断言 ${redundantHits.length} 处: ${redundantHits.slice(0, 5).join(", ")}`);
+  }
+
+  // ② 孤儿 import。三个坑见 test/review-scan.cjs 顶部注释：
+  //    剥 type 前缀（且clause 首段也要剥）、按 from 精确切单条、
+  //    计数边界不排除前导 `.`（展开运算符写法）。
+  const orphanHits = [];
+  const stmtRe = /^import\s+([\s\S]*?)\s+from\s+"[^"]+";?/gm;
+  for (const f of tsFiles) {
+    const code = fs.readFileSync(f, "utf8");
+    let m;
+    while ((m = stmtRe.exec(code)) !== null) {
+      const clause = m[1];
+      const names = [];
+      const bs = clause.indexOf("{");
+      if (bs >= 0) {
+        const def = clause.slice(0, bs).replace(/,\s*$/, "").replace(/^type\s+/, "").trim();
+        if (def && !def.startsWith("*")) names.push(def);
+        for (const part of clause.slice(bs + 1, clause.lastIndexOf("}")).split(",")) {
+          let n = part.trim();
+          if (!n) continue;
+          n = n.replace(/^type\s+/, "").split(/\s+as\s+/).pop().trim();
+          if (n) names.push(n);
+        }
+      } else {
+        const def = clause.replace(/^type\s+/, "").trim();
+        if (def && !def.startsWith("*")) names.push(def);
+      }
+      const body = code.slice(0, m.index) + code.slice(m.index + m[0].length);
+      for (const n of names) {
+        if (!/^[A-Za-z_$][\w$]*$/.test(n)) continue;
+        if ((body.match(new RegExp("(?<![\\w$])" + n + "(?![\\w$])", "g")) || []).length === 0) {
+          orphanHits.push(`${f} → ${n}`);
+        }
+      }
+    }
+  }
+  if (orphanHits.length) {
+    scanFails.push(`孤儿 import ${orphanHits.length} 处: ${orphanHits.slice(0, 5).join(", ")}`);
+  }
+
+  if (scanFails.length) {
+    for (const s of scanFails) console.log(`  [FAIL] ${s}`);
+  } else {
+    console.log(`  [PASS] 无冗余类型断言、无孤儿 import（已扫描 ${tsFiles.length} 个源文件）`);
+  }
+}

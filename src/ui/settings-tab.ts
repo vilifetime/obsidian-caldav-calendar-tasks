@@ -27,7 +27,7 @@ import type CalDavPlugin from "@/main";
 import type { HostSettings } from "@/main";
 import { describeNetworkError, discoverCalendars, testConnection } from "@/core/caldav";
 import { calEventColor, calTodoColor, type CalCalendar } from "@/core/types";
-import { t, currentLang, initLocale } from "@/i18n";
+import { t, currentLang } from "@/i18n";
 
 /**
  * 按动态键读写设置对象的一个字段。

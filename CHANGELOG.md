@@ -12,11 +12,13 @@
 
 - **README 补充完整英文说明**（社区目录审核反馈：「README does not appear to contain English text」）。原 README 只有中文。现为英文在前、中文在后的双语结构，顶部可跳转；隐私与网络使用披露同步补了英文版。
   - 顺带修正三处与实际 UI 不一致的地方：补上漏列的「在右侧栏打开日历与任务」命令（原 README 只列了两个面板命令，实际有三个）、设置项标签改为与设置页逐字一致（含首字母大写与括号内的单位说明）、补上漏列的「发送测试提醒」命令。
+- **去掉两处冗余类型断言**（社区目录审核反馈：「This assertion is unnecessary since it does not change the type of the expression」）。`querySelector` 的返回值本就含 `null`，再断言成 `HTMLElement | null` 不改变类型，改用泛型形式 `querySelector<HTMLElement>(...)` 并保留空值检查。顺带统一了同一筛选弹层里另一种写法的两处。
+- **删掉一处孤儿 import**（社区目录审核反馈：「'initLocale' is defined but never used」）。设置页import 了 `initLocale` 却从未调用，实际调用在插件主入口的两处。是接入国际化时留下的残留。
 
 ### 变更
 
-- 自查脚本新增 README 检查项（英文内容体量、必要章节、与 manifest.name 一致性），自检项 29 → 30。
-- 新增回归测试 README 英文内容与 UI 一致性：命令名与设置项标签必须与英文字典逐字相符，测试总数 119 → 125 项。
+- 自查脚本新增两类检查：README（英文内容体量、必要章节、与manifest.name 一致性）与审核静态扫描项（冗余类型断言、孤儿 import），自检项 30 → 32。
+- 新增回归测试两项：README 英文内容与 UI 一致性、审核静态扫描类问题（后者内含判据自测，防止检查器本身失效）。测试总数 125 → 130 项。
 
 ## [0.4.3] - 2026-10-08
 
