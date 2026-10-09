@@ -66,7 +66,14 @@ export function staleCalendarNames(
 function explainError(e: unknown): string {
   const msg = errMessage(e) || String(e);
   if (/Failed to fetch|NetworkError|Load failed|ERR_/i.test(msg)) {
-    return t("net.unreachableProxyHint");
+    // 用 net.unreachableHttpHint，**不要**用 net.unreachableProxyHint ——
+    // 后者是从思源版原样搬来的，劝用户「把请求通道改为内核代理」。
+    // 但 Obsidian 根本没有第二条通道：http.ts 的单传输实现基于 requestUrl
+    // （桌面 Electron / 移动 Capacitor 原生 HTTP），内核代理那套在 0.4.x
+    // 就已删除、channel 字段只剩兼容占位（httpRequest 里 void channel）。
+    // 照原文案提示，用户会去设置里找一个根本不存在的选项。
+    // unreachableHttpHint 才是对应真因的：明文 HTTP 在移动端被拦 / 地址不可达。
+    return t("net.unreachableHttpHint", { raw: msg });
   }
   if (/timeout|aborted|abort/i.test(msg)) return t("net.timeout");
   if (/401/.test(msg)) return t("net.auth401");
@@ -170,6 +177,22 @@ export class SyncEngine {
         try {
           let items: CalItem[] = [];
           let deletedHrefs: string[] = [];
+          // ⚠️ sync-token 的语义是「服务端截至该 token 时刻的全量，我本地已经全都有了」。
+          // 本地若是空的，这个前提就不成立 ⇒ 增量拉取会「正确地」返回 0 条，
+          // 于是界面一片空白、日志无报错，而且**不会自愈**（只要服务端没再变动，
+          // 那个 token 就一直有效、一直返回 0 条）。reconcile 也兜不住 ——
+          // 它只清理「本地有 href 而服务端没有」的幽灵条目，本地空时无事可做。
+          //
+          // 触发场景（不止恢复配置一种）：
+          //   · 从备份恢复（备份含 token 但不含 items）
+          //   · 手动删了 data.json / 换了库
+          //   · 云同步把 data.json 覆盖成了旧版本
+          //   · 多端并用同一台服务器时，另一端的进度本端无从知晓
+          // 所以这里做成**通用护栏**而非只在恢复路径清token：以服务端为准全量拉一次，
+          // 拿到条目后 token 会重新写回（tryGetSyncToken），下一轮就恢复增量了。
+          if (cal.syncToken && this.store.isCalendarLocallyEmpty(cal.url)) {
+            cal.syncToken = undefined;
+          }
           if (cal.syncToken) {
             try {
               const r = await syncCollection(cal, this.channel(), this.auth(), cal.syncToken);

@@ -380,13 +380,10 @@ export async function testConnection(serverUrl: string, channel: Channel, auth: 
     );
     if (res.status === 401) return { ok: false, message: t("net.authFailedTest") };
     if (res.status >= 400) return { ok: false, message: t("net.httpStatus", { status: res.status }) };
-    return {
-      ok: true,
-      message:
-        res.via === "proxy"
-          ? t("net.connectOkProxy", { ms: res.elapsedMs })
-          : t("net.connectOkDirect", { ms: res.elapsedMs }),
-    };
+    // 只走 connectOkDirect：Obsidian 下 via 恒为 "direct"（http.ts 的单传输实现），
+    // 「内核代理」分支是从思源版搬过来的死代码 —— 留着会让 connectOkProxy
+    // 这条带「内核代理」字样的文案永远无人使用，却仍在暗示存在第二条通道。
+    return { ok: true, message: t("net.connectOkDirect", { ms: res.elapsedMs }) };
   } catch (e: unknown) {
     return { ok: false, message: t("settings.connectFail", { msg: describeNetworkError(e, channel) }) };
   }

@@ -42,6 +42,16 @@ export interface PanelCtx {
   insertTodayToDiary: (range?: DiaryRange, target?: DiaryTarget) => Promise<string>;
   /** 发送一条测试提醒（由入口注入，用于自检提醒投递通道） */
   testReminder?: () => Promise<string>;
+  /**
+   * 手动触发一次同步（工具栏同步按钮）。
+   *
+   * 由入口注入而不是面板直接调 `ctx.sync.syncAll()`：入口那边还要负责刷状态栏、
+   * 刷新视图、重排提醒、出 Notice —— 面板只管触发，反馈一律走入口，
+   * 免得同一件事在两处各做一半（状态栏显示「同步中」但视图不刷新之类的）。
+   */
+  syncNow?: () => Promise<unknown>;
+  /** 当前是否正在同步（用于按钮的禁用/旋转态） */
+  isSyncing?: () => boolean;
   /** 提醒状态摘要（由入口注入，显示已排程条数与带提醒时间的条目数） */
   reminderStatus?: () => string;
   unsaved: Set<string>;

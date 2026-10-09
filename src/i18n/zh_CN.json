@@ -75,6 +75,7 @@
   "toolbar.viewWeek": "周",
   "toolbar.viewDay": "日",
   "toolbar.new": "新建",
+  "toolbar.syncNow": "立即同步 CalDAV",
   "toolbar.calFilter": "日历筛选",
   "toolbar.showTodosInCalendar": "日历视图中显示待办任务",
   "toolbar.showEventsInTaskView": "任务视图中显示日程事件",
@@ -407,7 +408,6 @@
   "backup.restored": "已恢复配置：{host}",
   "backup.skipped": "已丢弃旧配置备份，可重新填写",
 
-  "net.unreachableProxyHint": "网络请求失败（服务不可达，或直连被跨域拦截，建议把请求通道改为「内核代理」）",
   "net.timeout": "请求超时",
   "net.auth401": "认证失败（401）：用户名或密码错误",
   "net.forbidden": "无权限（403）",
@@ -426,8 +426,7 @@
   "net.unreachablePlain": "请求未能到达服务器（{raw}）——请检查服务器地址、端口与网络连通性",
   "net.unreachableHttpHint": "请求未能到达服务器（{raw}）——请确认服务器地址在当前设备网络上可达；若为明文 HTTP（http://），移动端可能需要https",
   "net.httpStatus": "服务器返回 HTTP {status}",
-  "net.connectOkProxy": "连接成功（内核代理，{ms}ms）",
-  "net.connectOkDirect": "连接成功（直连，{ms}ms）",
+  "net.connectOkDirect": "连接成功（{ms}ms）",
   "net.transportUninit": "HTTP 传输未初始化：宿主必须在 onload 时调用 setTransport()。（请勿在 core 层直接使用 fetch —— 移动端会被 CORS 拦截。）",
   "net.defaultDesc": "提醒",
 

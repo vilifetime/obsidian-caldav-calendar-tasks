@@ -69,6 +69,13 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       <div class="caldav-toolbar-stats" data-slot="task-stats"></div>
       <div class="caldav-toolbar-right">
         <button class="caldav-btn caldav-btn-primary" data-action="new">${icons.plus} ${t("toolbar.new")}</button>
+        <!--
+          手动同步按钮（2026-10-09 雄哥要求）：右下角状态栏虽然也能点，
+          但那是个文本、没有按钮外观，用户不会想到它可点 —— 想立刻拉一次时没有入口。
+          图标用 icons.sync（两个箭头，与 Dock 里的刷新同一语义）。
+        -->
+        <button class="caldav-icon-btn" data-action="sync-now" title="${t("toolbar.syncNow")}"
+                aria-label="${t("toolbar.syncNow")}">${icons.sync}</button>
         <div class="caldav-calfilter-wrap">
           <button class="caldav-icon-btn" data-action="calfilter" title="${t("toolbar.calFilter")}">${icons.layers}</button>
           <div class="caldav-calfilter-pop" data-pop="calfilter" hidden>
@@ -122,6 +129,10 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   const cursorTitleEl = root.querySelector(".caldav-cursor-title") as HTMLElement;
   const segBtns = Array.from(root.querySelectorAll<HTMLElement>(".caldav-seg-btn"));
   const viewToggleBtn = root.querySelector('[data-action="toggle-view"]') as HTMLElement;
+  // 与上面的模板同源生成，必然存在（同 viewToggleBtn 的处理）
+  const syncBtn = root.querySelector('[data-action="sync-now"]') as HTMLButtonElement;
+  /** 同步按钮的「正在同步」闸：连点时直接忽略第二次 */
+  let syncBusy = false;
   let destroyed = false;
 
   function renderCalList(): void {
@@ -706,6 +717,24 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     }
     if (action === "calfilter") {
       calfilterPop.hidden = !calfilterPop.hidden;
+      return;
+    }
+    if (action === "sync-now") {
+      // 防重复点击：同步中直接 return，否则连点会并发跑 syncAll
+      //（引擎内部有 syncing 闸，但用户看到的是「点了没反应」）。
+      if (syncBusy) return;
+      if (!ctx.syncNow) return;
+      syncBusy = true;
+      syncBtn.classList.add("is-syncing");
+      syncBtn.disabled = true;
+      void ctx
+        .syncNow()
+        .catch(() => undefined)
+        .finally(() => {
+          syncBusy = false;
+          syncBtn.classList.remove("is-syncing");
+          syncBtn.disabled = false;
+        });
       return;
     }
   });

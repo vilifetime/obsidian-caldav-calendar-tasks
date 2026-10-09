@@ -1,13 +1,13 @@
 {
   "name": "obsidian-caldav-calendar-tasks",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "description": "双向同步 CalDAV 服务器的事件与待办任务（思源插件 siyuan-plugin-caldav-sync 的 Obsidian 移植版）",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "typecheck": "tsc -noEmit -skipLibCheck",
-    "test": "node test/smoke.cjs && node test/leaf-split.cjs && node test/dock-toggle.cjs && node test/dock-focus-entry.cjs && node test/task-bucket.cjs && node test/group-collapse.cjs && node test/view-pref.cjs && node test/diary-range.cjs && node test/reconcile.cjs && node test/i18n-dict.cjs && node test/settings-dedupe.cjs && node test/config-backup.cjs && node test/dock-filter-prio.cjs && node test/check-mark-visible.cjs && node test/readme-en.cjs && node test/review-scan.cjs",
+    "test": "node test/smoke.cjs && node test/leaf-split.cjs && node test/dock-toggle.cjs && node test/dock-focus-entry.cjs && node test/task-bucket.cjs && node test/group-collapse.cjs && node test/view-pref.cjs && node test/diary-range.cjs && node test/reconcile.cjs && node test/sync-token.cjs && node test/i18n-dict.cjs && node test/settings-dedupe.cjs && node test/config-backup.cjs && node test/dock-filter-prio.cjs && node test/check-mark-visible.cjs && node test/toolbar-buttons.cjs && node test/readme-en.cjs && node test/review-scan.cjs",
     "deploy": "node scripts/deploy.mjs"
   },
   "keywords": [

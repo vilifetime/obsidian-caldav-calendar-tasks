@@ -218,14 +218,46 @@ export async function clearBackup(app: App): Promise<void> {
  * 合并策略是「备份为底、当前为上」：`{...DEFAULT_SETTINGS, ...backup.settings}`。
  * 这样用户重装后即使默认值本身在两个版本间改过，也能拿到备份里的旧值，
  * 而不是被新版默认值覆盖掉。
+ *
+ * ⚠️ 这里必须**清掉每个日历的 syncToken**（2026-10-09 修复）。
+ * sync-token 是服务端发的增量游标，语义是「服务端截至该时刻的全量，我本地
+ * 已经全都有了」；而备份**故意不含 items**（只存 settings + keyring，见 writeBackup
+ * 的取舍说明）—— 于是恢复出来的状态自相矛盾：拿着「本地全都有」的凭证，本地却是空的。
+ * 后果不是报错而是**静默空白**：增量拉取如实返回 0 条，日历空的，且不会自愈
+ * （只要服务端没再变动，那个 token 就一直有效）。
+ *
+ * 在这里清（而不是只在 onRestore 里清）是因为这是恢复的唯一漏斗 ——
+ * 将来若再加「从文件导入配置」之类的入口，自动就带上这个修正。
+ * 双保险还有 core/sync.ts 里的「本地空则忽略 token」通用护栏。
  */
 export function mergeBackupSettings(backup: BackupPayload): CalSettings {
-  return { ...DEFAULT_SETTINGS, ...backup.settings };
+  const merged: CalSettings = { ...DEFAULT_SETTINGS, ...backup.settings };
+  // 日历数组要**新建**，不能就地改：merged.calendars 与 backup.settings.calendars
+  // 是同一个数组引用，就地清token 会把调用方（读备份做展示的那侧）的对象也改掉。
+  merged.calendars = (merged.calendars || []).map((c) => ({ ...c, syncToken: undefined }));
+  return merged;
 }
 
-/** 备份里有没有可恢复的实质内容（只有一个空服务器地址的备份不值得打扰用户） */
+/**
+ * 备份里有没有可恢复的实质内容（只有一个空服务器地址的备份不值得打扰用户）。
+ *
+ * ⚠️ 存了密文却没存keyring 的备份，**不算可用**（2026-10-09 修复）。
+ * 判据是「密码字段与 keyring 必须成对」：
+ * 备份里的 password 是 `enc:v3:` 密文，没有配套主密钥就解不开，恢复后
+ * 表现为「服务器地址有了、一同步就报密码解不开」—— 用户看到的现象像是
+ * 密码记错了，实际上整份备份里的密码部分都是死的。
+ * 这种情况宁可判为不可用、让用户重新填密码（一次输入即换新本机密钥，
+ * 之后自动备份就完整了），也别让一份半死的备份躺在那儿冒充保险。
+ *
+ * 顺带兼容 v1/v2 密文：它们的密钥是从设备标识派生的，不依赖 keyring 字段，
+ * 所以只在遇到 **v3** 密文时才要求 keyring。
+ */
 export function isBackupUseful(b: BackupPayload): boolean {
-  return !!(b.settings?.serverUrl || (b.settings?.calendars || []).length);
+  if (!(b.settings?.serverUrl || (b.settings?.calendars || []).length)) return false;
+  // v3 密文必须配keyring，否则密码解不开（v1/v2 用设备派生密钥，不在此列）
+  const pw = b.settings?.password || "";
+  if (pw.startsWith("enc:v3:") && !(b.keyring || "").trim()) return false;
+  return true;
 }
 
 /**

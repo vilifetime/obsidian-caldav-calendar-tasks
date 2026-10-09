@@ -164,8 +164,14 @@ export class CalStore {
    *
    * 恢复失败（密钥对不上、密文解不开）**不抛**：退化成「没恢复」的状态，
    * 让用户手工重填，比插件加载失败好。
+   *
+   * 返回一个 Promise，**必须等它完成**再拿设置去同步或落盘。
+   * 解密是异步的（WebCrypto），而这里把 `unlockPassword()` 丢在后台 fire-and-forget：
+   * 调用方若不等，`settings.password` 此刻仍是那串 `enc:v3:` 密文 ——
+   * 同步会拿密文当密码去连服务器（401），落盘还会把密文再加密一层（套娃）。
+   * 这正是「恢复后没有立即同步」的直接成因（2026-10-09 雄哥反馈）。
    */
-  adoptBackup(backup: { settings: CalSettings; keyring?: string }): void {
+  adoptBackup(backup: { settings: CalSettings; keyring?: string }): Promise<void> {
     this.settings = mergeBackupSettings({ v: 1, savedAt: "", settings: backup.settings });
     this.secretBroken = false;
     this.pendingUnlock = false;
@@ -177,7 +183,7 @@ export class CalStore {
     // 旧密文就此作废 —— 必须清空。否则恢复失败时 persist() 会把它写回去，
     // 看起来就像「备份没生效」。
     this.rawCipher = "";
-    void this.unlockPassword()
+    return this.unlockPassword()
       .catch(() => {
         this.settings.password = "";
         this.rawCipher = "";
@@ -200,6 +206,25 @@ export class CalStore {
 
   get(key: string): CalItem | undefined {
     return this.items.get(key);
+  }
+
+  /**
+   * 某个日历在本地**一条条目都没有**吗？
+   *
+   * 用于「该不该信任 sync-token」的判定（见 core/sync.ts 的拉取分支）。
+   *
+   * 判据是「有没有任何条目」，**包含标记了 deleted 的** —— 待删条目同样说明
+   * 本地掌握着这个日历的状态（哪怕 DELETE 这轮失败了），token 的声明仍然可信。
+   *
+   * 已知取舍：服务端本来就是空的日历（或条目全在时间窗外）会让本地恒为空，
+   * 于是每轮都走全量。但那只是多一次返回空的 REPORT，代价可忽略；反过来，
+   * 若把待删条目算成「空」，就会在「正清空某个日历」的当口触发无谓的全量重拉。
+   */
+  isCalendarLocallyEmpty(calendarUrl: string): boolean {
+    for (const it of this.items.values()) {
+      if (it.calendarUrl === calendarUrl) return false;
+    }
+    return true;
   }
 
   /** upsert（不触发 emit 的低层方法） */

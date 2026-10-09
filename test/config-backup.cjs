@@ -104,6 +104,51 @@ const ok = (m) => console.log("  ✓ " + m);
   ok("isBackupUseful 过滤掉空备份");
 }
 
+/* ── 5b. v3 密文必须配keyring，否则整份备份的密码部分是死的 ──
+ * 真实事故（2026-10-09）：一份手工转换出来的 backup.json 存了 serverUrl、
+ * 日历、配色，却没存 keyring —— isBackupUseful 判为「可用」并弹出恢复，
+ * 用户点下去就撞「同步失败：密码解不开（密文可能来自另一台设备）」。
+ * 那句提示还容易把人引向「是不是换设备了」的错误方向，真因是备份本身残缺。
+ */
+{
+  const v3 = { serverUrl: "https://x/", password: "enc:v3:AAAA" };
+  assert.strictEqual(
+    B.isBackupUseful(B.buildBackup(v3, undefined)),
+    false,
+    "存了 v3 密文却没带 keyring ⇒ 密码解不开，不该判为可用（否则恢复必失败）"
+  );
+  assert.strictEqual(
+    B.isBackupUseful(B.buildBackup(v3, "  ")),
+    false,
+    "keyring 必须是有效值，空白串等同于没有"
+  );
+  assert.strictEqual(
+    B.isBackupUseful(B.buildBackup(v3, "POjsY05/Bgv+ngdCq2v7RSaiPr4aUaRRMfI6hBX7SD0=")),
+    true,
+    "v3 密文 + keyring 成对存在 ⇒ 判为可用"
+  );
+  // v1/v2 密文用设备标识派生密钥，不依赖 keyring 字段，不能误伤
+  assert.strictEqual(
+    B.isBackupUseful(B.buildBackup({ serverUrl: "https://x/", password: "enc:v2:BBBB" }, undefined)),
+    true,
+    "v2 密文不依赖 keyring 字段，不该被判为不可用"
+  );
+  assert.strictEqual(
+    B.isBackupUseful(B.buildBackup({ serverUrl: "https://x/", password: "" }, undefined)),
+    true,
+    "没填密码的新装配置（password 为空）不该被判为不可用"
+  );
+  ok("isBackupUseful 要求 v3 密文与 keyring 成对");
+
+  // offerRestore 必须复用 isBackupUseful —— 否则这条修复被绕过，
+  // 弹窗照弹、用户照点、照旧失败。
+  const main = fs.readFileSync(path.join(ROOT, "src", "main.ts"), "utf8");
+  assert.ok(
+    /if \(!backup \|\| !isBackupUseful\(backup\)\) return;/.test(main),
+    "offerRestore 必须用 isBackupUseful 过滤（含「密文无 keyring」这一类）"
+  );
+}
+
 /* ── 6. 路径必须在 .obsidian/ 内、且在 plugins/ 之外 ──
  * 卸载只删 plugins/<id>/ 一个目录，所以备份放在 .obsidian/ 下才安全。
  * ⚠️ 原先这条只断言「不在 plugins/ 下」，而 0.4.6 的错误路径
@@ -268,7 +313,8 @@ const ok = (m) => console.log("  ✓ " + m);
     "读不到磁盘形态时必须把密码整个剔除（内存里是明文，绝不能落盘）");
 
   // 恢复走 store.adoptBackup，且先给 keyring 再解密
-  assert.ok(/this\.store\.adoptBackup\(backup\)/.test(main), "恢复必须走 store.adoptBackup");
+  assert.ok(/await this\.store\.adoptBackup\(payload\)/.test(main),
+    "恢复必须 **await** store.adoptBackup（解密是异步的，不等就会拿密文当密码去同步）");
   const adopt = store.slice(store.indexOf("adoptBackup("));
   const keyringAt = adopt.indexOf("adoptKeyring(");
   const unlockAt = adopt.indexOf("unlockPassword(");
@@ -276,6 +322,35 @@ const ok = (m) => console.log("  ✓ " + m);
     "必须先 adoptKeyring 再 unlockPassword（反了会把新密文误判成解不开而丢弃）");
   assert.ok(/this\.rawCipher = "";/.test(adopt),
     "恢复时必须清掉 rawCipher，否则恢复失败会把作废的旧密文写回去");
+  // adoptBackup 必须返回 Promise（内部要等异步解密），否则调用方无从等待
+  assert.ok(/adoptBackup\([^)]*\): Promise<void>/.test(store),
+    "adoptBackup 必须返回 Promise<void>，否则调用方等不到密码解密完成");
+
+  /* ★ 恢复必须用「点按钮那一刻」的磁盘内容，不能用弹窗打开时的内存快照。
+   * 真实事故（2026-10-09）：弹窗弹出时 backup.json 尚无 keyring，几分钟后别处
+   * 把正确的 keyring 写进磁盘，用户此时点恢复 —— 拿旧快照恢复 ⇒ adoptKeyring("")
+   * ⇒ 回退到 localStorage 里另一把密钥 ⇒ 永久 mismatch，还会把写回磁盘的
+   * backup.json 一起污染成错配对。备份文件会被自动备份覆写，快照极易过期。
+   */
+  const restoreSeg = main.slice(main.indexOf("onRestore: async () =>"), main.indexOf("onDismiss"));
+  assert.ok(
+    /await readBackup\(this\.app\)/.test(restoreSeg),
+    "恢复时必须重新 readBackup 一次：用弹窗打开时的旧快照会恢复出一份已被覆写的配置"
+  );
+  assert.ok(/adoptBackup\(payload\)/.test(restoreSeg),
+    "必须 adoptBackup(重读到的 payload)，而不是 adoptBackup(最初捕获的 backup)");
+  assert.ok(
+    /isBackupUseful\(fresh\)/.test(restoreSeg),
+    "重读到的备份同样要过 isBackupUseful（期间可能被写成不可用状态）"
+  );
+
+  /* ★ 0.4.9 修的：恢复后没立即同步。逐条钉住 */
+  const restore = main.slice(main.indexOf("onRestore: async () =>"));
+  assert.ok(/await this\.runSync\(true\)/.test(restore.slice(0, restore.indexOf("onDismiss"))),
+    "恢复后必须 runSync(true)：既要把条目拉回来，也要用提示告诉用户结果（静默同步失败时用户只看到空日历）");
+  // 并发同步必须「排队」而不是丢弃：丢掉的话启动时的自动同步会把这次顶掉
+  assert.ok(/if \(this\.inflight\)/.test(main) && /await this\.inflight/.test(main),
+    "runSync 遇到已有同步必须 await 等它跑完，不能静默丢弃（否则恢复后的首轮同步会被顶掉）");
 
   // 备份不含 items —— 判据是「结构里没有该字段」，而不是「源码里没有 items 这个词」
   //（源码的注释里必须解释清楚为什么不含，那段文字里就会出现 items）。

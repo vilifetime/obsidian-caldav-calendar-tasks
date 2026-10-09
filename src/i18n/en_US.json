@@ -75,6 +75,7 @@
   "toolbar.viewWeek": "Week",
   "toolbar.viewDay": "Day",
   "toolbar.new": "New",
+  "toolbar.syncNow": "Sync CalDAV now",
   "toolbar.calFilter": "Calendar filter",
   "toolbar.showTodosInCalendar": "Show tasks in the calendar view",
   "toolbar.showEventsInTaskView": "Show events in the task view",
@@ -407,7 +408,6 @@
   "backup.restored": "Settings restored: {host}",
   "backup.skipped": "Old settings backup discarded — fill them in again",
 
-  "net.unreachableProxyHint": "Network request failed (the service is unreachable, or the direct request was blocked as cross-origin — try switching the request channel to the kernel proxy)",
   "net.timeout": "The request timed out",
   "net.auth401": "Authentication failed (401): wrong username or password",
   "net.forbidden": "Permission denied (403)",
@@ -426,8 +426,7 @@
   "net.unreachablePlain": "The request never reached the server ({raw}) — check the server address, port, and network",
   "net.unreachableHttpHint": "The request never reached the server ({raw}) — make sure the address is reachable on this device's network; for plain HTTP (http://) mobile may require https",
   "net.httpStatus": "Server returned HTTP {status}",
-  "net.connectOkProxy": "Connected (kernel proxy, {ms}ms)",
-  "net.connectOkDirect": "Connected (direct, {ms}ms)",
+  "net.connectOkDirect": "Connected ({ms}ms)",
   "net.transportUninit": "HTTP transport is not initialized: the host must call setTransport() in onload. (Do not use fetch directly in the core layer — CORS blocks it on mobile.)",
   "net.defaultDesc": "Reminder",
 

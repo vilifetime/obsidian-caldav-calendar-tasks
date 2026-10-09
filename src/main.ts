@@ -203,6 +203,12 @@ export default class CalDavPlugin extends Plugin {
   private backupTimer: TimerHandle | null = null;
   /** 上次写备份时的配置指纹，用来判「配置是否真的变了」（见 settingsFingerprint） */
   private lastBackupFingerprint = "";
+  /**
+   * 正在跑的同步（null = 空闲）。
+   * 用 promise 而非 boolean：并发调用方要能**等**上一轮跑完再接上，
+   * 单纯 `if (syncing) return` 会把请求静默丢掉（见 runSync）。
+   */
+  private inflight: Promise<SyncReport | undefined> | null = null;
 
   async onload(): Promise<void> {
     // ① 注入宿主传输实现 —— 必须最先做，core/http.ts 依赖它发请求
@@ -452,6 +458,13 @@ export default class CalDavPlugin extends Plugin {
    *   ① 备份读得出来且格式对；
    *   ② 备份里确有实质内容（否则空备份只是噪音）；
    *   ③ 备份里没有明文密码（有的话宁可不恢复，也不能把明文搬进 data.json）。
+   *
+   * 其中 ② 已经涵盖「v3 密文却没带 keyring」这一种（见 isBackupUseful）：
+   * 那份备份恢复了也必然解不开密码，弹窗只会让用户白点一次、
+   * 然后对着「密码解不开（密文可能来自另一台设备）」这句提示费解——
+   * 密钥不匹配与「设备不对」是两回事，提示语容易把人引向错误的排查方向。
+   * 这种备份直接当没有，让用户走「重新填密码」：一次输入换新本机密钥，
+   * 之后自动备份就是完整的了。
    */
   private async offerRestore(): Promise<void> {
     let backup: BackupPayload | undefined;
@@ -465,13 +478,40 @@ export default class CalDavPlugin extends Plugin {
 
     new RestoreConfigModal(this.app, backup, {
       onRestore: async () => {
+        // ⚠️ 重新读一次磁盘，**不要**用弹窗打开时捕获的那份快照。
+        // offerRestore() 在弹窗弹出时就读好了 backup 并传进来，而弹窗可能停留很久；
+        // 期间备份文件完全可能已被改写（自动备份会覆写它，见 writeBackup）。
+        // 拿旧快照恢复 ⇒ 恢复的是一份已经不存在的配置。
+        //
+        // 真实事故（2026-10-09）：弹窗弹出时 backup.json 还没有 keyring，
+        // 几分钟后另一处把正确的 keyring 写进了磁盘文件，用户此时点「恢复」——
+        // 恢复的仍是内存里那份没有 keyring 的旧快照，于是 adoptKeyring("") 回退到
+        // localStorage 里的**另一把**密钥，配不上密文，永久性mismatch，
+        // 还把写回磁盘的 backup.json 一起污染成错配对。
+        //
+        // 读失败（文件被删/损坏）就退回最初那份：宁可恢复一份旧配置，
+        // 也别在用户点确认的瞬间什么都不做。
+        let payload = backup;
+        try {
+          const fresh = await readBackup(this.app);
+          if (fresh && isBackupUseful(fresh)) payload = fresh;
+        } catch {
+          /* 保留最初那份 */
+        }
+
         // 恢复 = 把备份里的设置整份写进 store，再立刻落盘。
         // keyring 一并交回：它必须与密文同时到位，否则密码解不开。
-        this.store.adoptBackup(backup);
+        //
+        // ⚠️ 必须 await adoptBackup —— 它内部要解密码（异步 WebCrypto），
+        // 不等就往下走的话，此刻 settings.password 还是密文，同步必然 401，
+        // 落盘还会把密文套一层。用户看到的就是「恢复了但一条都没回来」。
+        await this.store.adoptBackup(payload);
         await this.store.persist();
-        new Notice(t("backup.restored", { host: describeBackup(backup) }));
-        // 恢复后马上同步一次：让用户立刻看到条目回来，也顺便验证配置真的可用
-        await this.runSync(false);
+        new Notice(t("backup.restored", { host: describeBackup(payload) }));
+        // 恢复后马上同步一次：让用户立刻看到条目回来，也顺便验证配置真的可用。
+        // manual=true → 出结果给提示（含失败原因），否则这次同步是「静默」的，
+        // 万一密码/地址有问题用户只会看到一片空日历。
+        await this.runSync(true);
       },
       onDismiss: async () => {
         // 点「不恢复」= 用户想重新配 → 把备份删掉，否则每次重装都问一遍
@@ -717,6 +757,9 @@ export default class CalDavPlugin extends Plugin {
       sortMode: "start",
       testReminder: () => this.testReminder(),
       reminderStatus: () => this.reminderStatus(),
+      // 工具栏同步按钮：走 runSync，状态栏/视图/提醒/Notice 都由它统一负责
+      syncNow: () => this.runSync(true),
+      isSyncing: () => this.inflight !== null,
     };
   }
 
@@ -731,6 +774,27 @@ export default class CalDavPlugin extends Plugin {
 
   /** 执行同步；manual=true 时无论结果都给出提示（自动同步只在出错时提示） */
   async runSync(manual: boolean): Promise<SyncReport | undefined> {
+    // 已有同步在跑 → 等它跑完再跑一轮，而不是直接返回。
+    // 静默丢弃的代价很实在：恢复配置后紧接着的首轮同步正好会被启动时的
+    // 那次自动同步顶掉，于是「恢复了却没拉回数据」（2026-10-09 雄哥反馈）。
+    if (this.inflight) {
+      try {
+        await this.inflight;
+      } catch {
+        /* 上一轮的结果与本次无关，忽略 */
+      }
+    }
+    const task = this.doRunSync(manual);
+    this.inflight = task;
+    try {
+      return await task;
+    } finally {
+      if (this.inflight === task) this.inflight = null;
+    }
+  }
+
+  /** runSync 的真正 bodies（调用方已处理并发排队） */
+  private async doRunSync(manual: boolean): Promise<SyncReport | undefined> {
     if (this.statusBarEl) this.statusBarEl.setText(t("statusBarSyncing"));
     try {
       const report = await this.sync.syncAll();

@@ -95,4 +95,46 @@ const srcAll = srcFiles.map((f) => fs.readFileSync(f, "utf8")).join("\n");
 const unused = zhKeys.filter((k) => !srcAll.includes(`"${k}"`));
 assert.deepStrictEqual(unused, [], `${unused.length} 个 key 无源码引用（新增 key 需接上引用）：${unused.join(", ")}`);
 
-console.log(`  [PASS] i18n 字典一致：${zhKeys.length} key，占位符对齐，无空串，英文无中文残留，无废弃 key`);
+/* ── 思源专属概念不得出现在 Obsidian 侧 ──
+ * 「内核代理 / kernel proxy」是思源渲染进程才有的东西（core/http.ts 里的
+ * forwardProxy 通道）。Obsidian 走 requestUrl：桌面端 Electron、移动端
+ * Capacitor 原生 HTTP，**天然无 CORS**，压根没有第二条通道 —— channel 字段
+ * 只剩兼容占位（httpRequest 里 void channel，via 恒为 "direct"）。
+ *
+ * 真实教训（2026-10-09）：从思源版搬来的 net.unreachableProxyHint 劝用户
+ * 「把请求通道改为内核代理」，用户去设置里找不到这个选项。已改用
+ * net.unreachableHttpHint 并删掉两条死文案，这里钉住不许复活。
+ */
+for (const [dict, name] of [[zh, "zh_CN"], [en, "en_US"]]) {
+  const stale = Object.keys(dict).filter((k) => /Proxy/i.test(k) || /unreachableProxyHint|connectOkProxy/.test(k));
+  assert.deepStrictEqual(stale, [], `${name} 里不应有「代理通道」相关 key（Obsidian 无内核代理）：${stale.join(", ")}`);
+}
+const kernelWords = /内核代理|kernel proxy|kernelProxy/;
+for (const [name, dict] of [["zh_CN", zh], ["en_US", en]]) {
+  const hit = Object.entries(dict).filter(([, v]) => kernelWords.test(String(v)));
+  assert.deepStrictEqual(hit.map(([k]) => k), [], `${name} 的文案里不应出现「内核代理」字样：${hit.map(([k]) => k).join(", ")}`);
+}
+// 「直连」在 Obsidian 里也是无意义的措辞（只有一条通道），提示语应直接说结果。
+for (const [name, dict] of [["zh_CN", zh], ["en_US", en]]) {
+  const hit = Object.entries(dict).filter(([, v]) => /直连|\(direct,/.test(String(v)));
+  assert.deepStrictEqual(hit.map(([k]) => k), [], `${name} 的文案里不应再提「直连」（只有单通道）：${hit.map(([k]) => k).join(", ")}`);
+}
+// 同步失败提示必须给可执行的下一步，而不是指向不存在的选项。
+const syncSrc = fs.readFileSync(path.join(ROOT, "src", "core", "sync.ts"), "utf8");
+assert.ok(
+  /net\.unreachableHttpHint/.test(syncSrc),
+  "sync.explainError 必须用 net.unreachableHttpHint（明文HTTP/不可达），不能用思源的 Proxy 版"
+);
+// 只查**代码**：注释里写「不要用 xxx」是刻意留的反例说明，不算引用。
+// 逐行剥掉 // 与 /* */ 注释后再扫，否则这条断言会被它自己的说明文字打挂。
+const codeOnly = srcAll
+  .split("\n")
+  .map((l) => l.replace(/\/\/.*$/, ""))
+  .join("\n")
+  .replace(/\/\*[\s\S]*?\*\//g, "");
+assert.ok(
+  !/unreachableProxyHint/.test(codeOnly),
+  "源码里不该再**引用** net.unreachableProxyHint（注释提及反例不算）"
+);
+
+console.log(`  [PASS] i18n 字典一致：${zhKeys.length} key，占位符对齐，无空串，英文无中文残留，无废弃 key，无思源专属概念`);
