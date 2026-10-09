@@ -104,12 +104,22 @@ const ok = (m) => console.log("  ✓ " + m);
   ok("isBackupUseful 过滤掉空备份");
 }
 
-/* ── 6. 路径必须在 plugins/ 之外（卸载只删 plugins/<id>/）── */
+/* ── 6. 路径必须在 .obsidian/ 内、且在 plugins/ 之外 ──
+ * 卸载只删 plugins/<id>/ 一个目录，所以备份放在 .obsidian/ 下才安全。
+ * ⚠️ 原先这条只断言「不在 plugins/ 下」，而 0.4.6 的错误路径
+ * （库根下的 caldav-calendar-tasks/）恰好也满足 —— 断言太弱，
+ * 等于给 bug 发了通行证。现在把 .obsidian/ 前缀钉死。
+ */
 {
   const p = B.backupPathOf();
-  assert.strictEqual(p, "caldav-calendar-tasks/backup.json", `路径应固定，实际 ${p}`);
-  assert.ok(!p.startsWith("plugins/"), "备份绝不能落在会被卸载删掉的 plugins/ 下");
-  ok("备份路径位于 plugins/ 之外：" + p);
+  assert.strictEqual(p, ".obsidian/caldav-calendar-tasks/backup.json", `备份路径应固定为 .obsidian/ 下的固定位置，实际 ${p}`);
+  assert.ok(p.startsWith(".obsidian/"),
+    `备份必须落在 .obsidian/ 内 —— vault.adapter 的根是**库根**，少个前缀就写到库根去了（0.4.6 的实际 bug），实际 ${p}`);
+  assert.ok(!p.startsWith("plugins/") && !p.includes("/plugins/"),
+    "备份绝不能落在会被卸载删掉的 plugins/ 下");
+  assert.ok(!/^caldav-calendar-tasks\//.test(p),
+    `备份不能是库根下的同名目录（那是 0.4.6 写错的位置），实际 ${p}`);
+  ok("备份路径在 .obsidian/ 内且不在 plugins/ 下：" + p);
 }
 
 /* ── 7. 描述文案：解析不出时间就用兜底，不露出 Invalid Date ── */
@@ -130,6 +140,11 @@ const ok = (m) => console.log("  ✓ " + m);
 {
   const files = new Map();
   const dirs = new Set();
+  // 路径一律由 backupPathOf() 派生，**不要在测试里硬写路径字符串**。
+  // 0.4.6 的事故正是实现把备份写到库根，而当时的测试把旧路径硬写在桩里，
+  // 于是实现和测试一起漂移、谁都没发现 —— 判据必须绑在实现出口上。
+  const TARGET = B.backupPathOf();
+  const TMP = TARGET + ".tmp";
   const app = {
     vault: {
       adapter: {
@@ -139,15 +154,39 @@ const ok = (m) => console.log("  ✓ " + m);
         read: async (p) => files.get(p),
         remove: async (p) => { files.delete(p); },
         rename: async (a, b) => { files.set(b, files.get(a)); files.delete(a); }
+        // 注意：故意不提供 getFullPath —— 模拟移动端 adapter，验证
+        // backupAbsPathOf 拿不到绝对路径时 writeBackup 仍能按相对路径工作。
       }
     }
   };
   (async () => {
+    // ★ 落点断言：必须在 .obsidian/ 内，且不在 plugins/ 下（卸载会删）。
+    assert.ok(TARGET.startsWith(".obsidian/"),
+      `备份必须落在 .obsidian/ 内，实际 ${TARGET}`);
+    assert.ok(!/\/\.obsidian\/plugins\//.test("/" + TARGET),
+      `备份不能写在 plugins/ 下（卸载会被一起删），实际 ${TARGET}`);
+    assert.ok(TARGET === ".obsidian/caldav-calendar-tasks/backup.json",
+      `备份路径应为 .obsidian/caldav-calendar-tasks/backup.json，实际 ${TARGET}`);
+    assert.strictEqual(B.backupPathOf(), TARGET, "backupPathOf 必须是纯函数（多次调用一致）");
+    ok("备份落点在 .obsidian/ 内且不在 plugins/ 下（0.4.6 写错位置的回归防线）");
+
+    // 备份子目录必须被建出来，且不能误建到 .obsidian 根
     const payload = B.buildBackup({ serverUrl: "https://dav.example.com/", username: "u", password: "enc:v3:CIPHER" }, "KR");
     const wrote = await B.writeBackup(app, payload);
     assert.strictEqual(wrote, true, "写入应成功");
-    assert.ok(!files.has("caldav-calendar-tasks/backup.json.tmp"), "临时文件必须已改名掉，不能残留");
-    assert.ok(files.has("caldav-calendar-tasks/backup.json"), "目标文件应存在");
+    assert.ok(dirs.has(".obsidian/caldav-calendar-tasks"),
+      `应创建备份子目录，实际建了 ${[...dirs].join(", ")}`);
+    assert.ok(!files.has(TMP), "临时文件必须已改名掉，不能残留");
+    assert.ok(files.has(TARGET), "目标文件应存在");
+    // 库根下不能出现同名目录 —— 这正是 0.4.6 实际发生的事
+    assert.ok(!dirs.has("caldav-calendar-tasks"),
+      "绝不能在库根下建同名目录（adapter 的根是库根，不是 .obsidian）");
+    ok("写入落在 .obsidian/caldav-calendar-tasks/，库根下无残留目录");
+
+    // 空配置不该写（否则会挡住将来真正的备份）
+    const emptyWrote = await B.writeBackup(app, B.buildBackup({ serverUrl: "", calendars: [] }, ""));
+    assert.strictEqual(emptyWrote, false, "空配置必须拒绝写入");
+    ok("空配置不写备份（避免占位文件挡住真备份的恢复提示）");
 
     const back = await B.readBackup(app);
     assert.ok(back, "应能读回");
@@ -163,12 +202,12 @@ const ok = (m) => console.log("  ✓ " + m);
     ok("重复写入是替换而非追加（原子改名路径正确）");
 
     // 损坏的 JSON
-    files.set("caldav-calendar-tasks/backup.json", "{ 这不是 JSON");
+    files.set(TARGET, "{ 这不是 JSON");
     assert.strictEqual(await B.readBackup(app), undefined, "坏 JSON 必须返回 undefined 而非抛异常");
     ok("备份文件损坏时不抛异常（返回 undefined）");
 
     // 格式对但内容不是备份（撞上同名文件）
-    files.set("caldav-calendar-tasks/backup.json", JSON.stringify({ hello: "world" }));
+    files.set(TARGET, JSON.stringify({ hello: "world" }));
     assert.strictEqual(await B.readBackup(app), undefined, "非备份内容必须被拒");
     ok("内容不合法的文件被拒绝（不误认成备份）");
 
@@ -183,9 +222,9 @@ const ok = (m) => console.log("  ✓ " + m);
     ok("写入失败返回 false（保险失败不拖垮正常流程）");
 
     // clearBackup
-    files.set("caldav-calendar-tasks/backup.json", "{}");
+    files.set(TARGET, "{}");
     await B.clearBackup(app);
-    assert.strictEqual(files.has("caldav-calendar-tasks/backup.json"), false, "clearBackup 应删掉文件");
+    assert.strictEqual(files.has(TARGET), false, "clearBackup 应删掉文件");
     await B.clearBackup(app); // 再删一次不能抛
     ok("clearBackup 可重复调用（点过「重新配置」后不会再问）");
 
@@ -245,6 +284,35 @@ const ok = (m) => console.log("  ✓ " + m);
   assert.ok(!/\bitems\??\s*:/.test(iface.slice(0, iface.indexOf("}"))),
     "BackupPayload 里不该有 items 字段（条目能重新拉取，备份只会让文件膨胀）");
   ok("BackupPayload 不含 items（结构级断言）");
+
+  /* ★ 0.4.7 修的三个真实缺陷，逐条钉住 */
+  // ① 备份只在 onload 排过一次 → 用户改完配置再卸载，备份永远不更新。
+  //    必须挂在 store.onChange 上，且经指纹判重（否则勾待办也会触发写盘）。
+  assert.ok(/store\.onChange\(/.test(main) && /scheduleBackupIfSettingsChanged\(\)/.test(main),
+    "备份必须挂在 store.onChange 上（只挂 onload 的话，改完配置再卸载就丢备份）");
+  assert.ok(/settingsFingerprint/.test(main),
+    "备份触发必须经配置指纹判重（onChange 也会被勾待办等高频操作触发）");
+  const fp = main.slice(main.indexOf("private settingsFingerprint"));
+  assert.ok(/calendars/.test(fp.slice(0, fp.indexOf("\n  }"))),
+    "指纹必须覆盖 calendars（增删日历是配置变更，必须触发备份）");
+  assert.ok(/categories/.test(fp.slice(0, fp.indexOf("\n  }"))),
+    "指纹必须覆盖 categories（分类也是配置）");
+
+  // ② onunload 之前只是「取消」去抖定时器 —— 卸载前最后一刻的改动全丢。
+  //    必须主动落盘（persist + 立即写备份）。
+  const unload = main.slice(main.indexOf("onunload(): void"));
+  assert.ok(/store\?\.persist\(\)/.test(unload.slice(0, unload.indexOf("\n  }"))),
+    "onunload 必须主动 persist（persist 与备份各自去抖，卸载会清掉定时器）");
+  assert.ok(/syncBackup\(\)/.test(unload.slice(0, unload.indexOf("\n  }"))),
+    "onunload 必须立即触发一次备份（不能只靠去抖中被清掉的那次）");
+
+  // ③ 空配置不该写备份 —— 否则占位文件会挡住将来真备份的恢复提示。
+  const wb = cb.slice(cb.indexOf("export async function writeBackup"));
+  assert.ok(/isBackupUseful\(payload\)/.test(wb.slice(0, wb.indexOf("\n}"))),
+    "writeBackup 必须先判 isBackupUseful（空配置不写，否则挡住真备份的恢复）");
+  // 路径形状自检必须留在写之前（0.4.6 静默写到库根的根因就是少了 .obsidian/ 前缀）
+  assert.ok(/startsWith\("\.obsidian\/"\)/.test(wb.slice(0, wb.indexOf("\n  try"))),
+    "writeBackup 必须在写之前校验路径落在 .obsidian/ 内（0.4.6 写错位置的防线）");
 
   console.log("  ✓ 接线和安全约束的源码级断言通过");
 }

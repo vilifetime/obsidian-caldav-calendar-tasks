@@ -201,6 +201,8 @@ export default class CalDavPlugin extends Plugin {
   private snoozeTimers = new Set<TimerHandle>();
   /** 配置备份的去抖定时器（见 syncBackupSoon） */
   private backupTimer: TimerHandle | null = null;
+  /** 上次写备份时的配置指纹，用来判「配置是否真的变了」（见 settingsFingerprint） */
+  private lastBackupFingerprint = "";
 
   async onload(): Promise<void> {
     // ① 注入宿主传输实现 —— 必须最先做，core/http.ts 依赖它发请求
@@ -216,13 +218,17 @@ export default class CalDavPlugin extends Plugin {
     });
     await this.store.load();
 
-    // ②.5 配置备份：卸载插件会连data.json 一起删掉，重装后设置全丢。
-    //这里在数据还在内存里时另存一份到 .obsidian/caldav-calendar-tasks/backup.json
-    //（卸载只删 plugins/<id>/ 一个目录，这个位置不受影响），并在「新装且有备份」
-    //时问用户要不要恢复。详见 core/config-backup.ts。
+    // ②.5 配置备份：卸载插件会连 data.json 一起删掉，重装后设置全丢。
+    // 这里在数据还在内存里时另存一份到 .obsidian/caldav-calendar-tasks/backup.json
+    // （卸载只删 plugins/<id>/ 一个目录，这个位置不受影响），并在「新装且有备份」
+    // 时问用户要不要恢复。详见 core/config-backup.ts。
     const fresh = looksFreshInstall(rawLoaded);
-    void this.syncBackupSoon();
     if (fresh) void this.offerRestore();
+    else {
+      // 先把当前指纹记下来，否则首次 onChange 会被误判成「配置变了」而白写一轮
+      this.lastBackupFingerprint = this.settingsFingerprint(this.store.settings);
+      void this.syncBackupSoon();
+    }
 
     // 语言要在数据加载后初始化 —— 用户可能手动指定过语言，值存在插件数据里。
     initLocale(this.hostSettings().language);
@@ -235,6 +241,10 @@ export default class CalDavPlugin extends Plugin {
       this.reconcileReminders();
       this.reminder?.reschedule();
       this.updateStatusBar();
+      // 配置一变就排队备份。用户改服务器/日历/分类全走这里 ——
+      // 之前只在 onload 排过一次，等于「改完配置再卸载」必然丢备份。
+      // onChange 也会被勾待办、拖颜色这类高频操作触发，所以下面按内容判重。
+      this.scheduleBackupIfSettingsChanged();
     });
 
     // ④ 视图与入口
@@ -325,9 +335,17 @@ export default class CalDavPlugin extends Plugin {
     clearReminderToasts();
     for (const t of this.snoozeTimers) window.clearTimeout(t);
     this.snoozeTimers.clear();
-    // 去抖中的备份也取消：卸载后不该再写盘。若已完成则文件早已落好，不受影响。
+    // 卸载前把「最后一刻的改动」落盘。
+    //
+    // 为什么要在这里再存一次：persist 与备份各自是去抖的（400ms / 3s），
+    // 用户改完配置不到一秒就卸载的话，两个定时器都会在卸载时被清掉 ——
+    // 结果是 data.json 还是旧的，而 data.json 紧接着就被卸载删掉。
+    // adapter 全是 async、构建目标又是 browser（拿不到 fs），无法同步写；
+    // 这里只能发起 async 写。Obsidian 停用插件不会立刻销毁进程，实测能落盘；
+    // 即便没落上也还有备份兜底，不是唯一一道保险。
+    void this.store?.persist();
     if (this.backupTimer) window.clearTimeout(this.backupTimer);
-    this.backupTimer = null;
+    void this.syncBackup();
   }
 
   // ────────────────────── 配置备份（卸载后重装免重配） ──────────────────────
@@ -355,6 +373,45 @@ export default class CalDavPlugin extends Plugin {
   }
 
   /**
+   * 配置指纹：只有它变了才需要重新写备份。
+   *
+   * `store.onChange` 触发得极频繁（勾一个待办、拖一次颜色都算），若无条件排队
+   * 备份，同步一次就会写一轮磁盘 —— 而备份文件里并不含 items，这些写入纯属浪费。
+   * 指纹只取「用户配置」相关字段，items 的变化不会引起它变化。
+   */
+  private settingsFingerprint(s: CalSettings): string {
+    return JSON.stringify([
+      s.serverUrl,
+      s.username,
+      s.password,
+      s.channel,
+      s.syncIntervalMin,
+      s.enableReminders,
+      s.conflict,
+      s.pastDays,
+      s.futureDays,
+      s.showTodosInCalendar,
+      s.categoryMulti,
+      (s.calendars || []).map((c) => [c.url, c.displayName, c.eventColor, c.todoColor, c.enabled]),
+      (s.categories || []).map((c) => [c.name, c.color])
+    ]);
+  }
+
+  /**
+   * store 变化后：配置指纹变了才排队备份。
+   *
+   * 判重放在这里（而不是 syncBackup 里）是为了让「没变就不排队」，
+   * 省掉高频操作下的定时器反复重设。
+   */
+  private scheduleBackupIfSettingsChanged(): void {
+    if (!this.store) return;
+    const fp = this.settingsFingerprint(this.store.settings);
+    if (fp === this.lastBackupFingerprint) return;
+    this.lastBackupFingerprint = fp;
+    this.syncBackupSoon();
+  }
+
+  /**
    * 实际写备份。
    *
    * 走 `store.persist()` 落盘的同一份数据形状：为此临时调一次 persist 的
@@ -368,12 +425,13 @@ export default class CalDavPlugin extends Plugin {
     if (!this.store) return;
     let settings = this.store.settings;
     try {
+      // 优先读回磁盘形态（data.json 里那一份密码是密文，直接拿它就是安全的）。
+      // ⚠️ onunload 里调用时**读不到最新值** —— Obsidian 在停用插件后可能已让
+      // loadData 返回卸载前的缓存。所以卸载路径由调用方先 await persist()，
+      // 这里的读只是兜底；拿不到就退回内存值并**整个剔除密码**。
       const disk = (await this.loadData()) as { settings?: CalSettings } | null;
-      if (disk?.settings) settings = disk.settings;
-      else {
-        // 读不到磁盘形态 → 只用内存值，但必须把明文密码换掉
-        settings = { ...settings, password: "" };
-      }
+      if (disk?.settings?.password !== undefined) settings = disk.settings;
+      else settings = { ...settings, password: "" };
     } catch {
       settings = { ...settings, password: "" };
     }

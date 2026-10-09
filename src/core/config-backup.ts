@@ -44,16 +44,51 @@ import { normalizePath, type App } from "obsidian";
 import { DEFAULT_SETTINGS, type CalSettings } from "./types";
 import { isEncrypted } from "./secret";
 
-/** 备份文件相对 `.obsidian/` 的路径（注意：与插件目录 `.obsidian/plugins/...` 无关） */
-export const BACKUP_DIR = "caldav-calendar-tasks";
+/**
+ * 备份文件在**库根下的相对路径**。
+ *
+ * ⚠️ 必须显式带上 `.obsidian/` 前缀。`app.vault.adapter` 的根是**库根目录**，
+ * 不是 `.obsidian/` —— 传裸相对路径会落在 `<库根>/caldav-calendar-tasks/backup.json`，
+ * 也就是库根下一个可见文件夹（会被文件索引当成笔记目录、被同步软件/网盘扫走）。
+ * 这个错误在 0.4.6 真实发生过：路径与注释不符，备份写到了库根。
+ */
+export const BACKUP_DIR = ".obsidian/caldav-calendar-tasks";
 export const BACKUP_FILE = "backup.json";
 
 /** 备份文件的格式版本。改动结构时递增，旧版本按缺字段处理（不整体拒绝）。 */
 export const BACKUP_VERSION = 1;
 
-/** 备份文件名在 `.obsidian/` 下的完整相对路径 */
+/** 备份文件名在库根下的完整相对路径（含 `.obsidian/` 前缀） */
 export function backupPathOf(): string {
   return normalizePath(`${BACKUP_DIR}/${BACKUP_FILE}`);
+}
+
+/**
+ * 备份文件的**绝对路径**（桌面端）。
+ *
+ * 存在的理由：写备份是「保险」，而保险最怕写到别处 —— 0.4.6 把裸相对路径交给
+ * adapter，结果落在库根而非 `.obsidian/`，静默失效了一整天。所以这里先用
+ * `getFullPath()` 拿到真实绝对路径并**验证它确实在 `.obsidian/` 里**，验证不过
+ * 就不写。与其写错地方让人以为有备份，不如明确失败。
+ *
+ * 移动端 adapter 的 getFullPath 语义不一致（部分实现返回空串），故返回 undefined，
+ * 由调用方退回 adapter 抽象。
+ */
+export function backupAbsPathOf(app: App): string | undefined {
+  const adapter = app.vault.adapter as { getFullPath?: (p: string) => string };
+  if (typeof adapter.getFullPath !== "function") return undefined;
+  let abs: string;
+  try {
+    abs = adapter.getFullPath(backupPathOf());
+  } catch {
+    return undefined;
+  }
+  if (!abs) return undefined;
+  const norm = abs.replace(/\\/g, "/");
+  // 必须落在 .obsidian/ 内，且不是 plugins/ 的子路径（后者卸载时会被删）
+  if (!/\/\.obsidian\//.test(norm)) return undefined;
+  if (/\/\.obsidian\/plugins\//.test(norm)) return undefined;
+  return abs;
 }
 
 /**
@@ -104,12 +139,30 @@ export function buildBackup(settings: CalSettings, keyring: string | undefined):
  * 原子性用「先写临时文件、再改名」实现：直接覆盖的话，中途断电/崩溃会留下
  * 半截 JSON，重装时用户就丢掉了唯一的备份 —— 这正是本模块要解决的问题，
  * 不能自己再制造一次。
+ *
+ * **空配置不写**（`isBackupUseful` 为假就返回）：新装后配置还没填时如果照样写，
+ * 产出的备份既不能恢复什么，又会挡住将来真正的备份（读侧同样按可用性过滤，
+ * 用户永远等不到提示）。宁可不写。
  */
 export async function writeBackup(app: App, payload: BackupPayload): Promise<boolean> {
+  if (!isBackupUseful(payload)) return false;
   const adapter = app.vault.adapter;
-  const dir = backupPathOf().split("/")[0];
   const target = backupPathOf();
+  // 取完整目录名（".obsidian/caldav-calendar-tasks"）。不能只取第一段 ——
+  // 那样拿到的是已存在的 ".obsidian"，真正的备份子目录反而建不出来。
+  const dir = target.slice(0, target.lastIndexOf("/"));
   const tmp = `${target}.tmp`;
+  // 写之前验证落点。0.4.6 的事故正是「以为写进 .obsidian/、实际落在库根」：
+  // adapter 的根是库根，路径少个前缀就静默写到别处，用户全程无感。
+  // 验证不过宁可不写 —— 写错位置的备份比没有备份更危险，它会让人以为有保险。
+  if (target !== normalizePath(`${BACKUP_DIR}/${BACKUP_FILE}`) || !target.startsWith(".obsidian/")) {
+    return false;
+  }
+  if (backupAbsPathOf(app) === undefined) {
+    // 拿不到绝对路径就无法验证（移动端 adapter 可能不支持）。此时退回按
+    // adapter 抽象写，但仍要求上面的相对路径形状正确。
+    if (!dir.startsWith(".obsidian/")) return false;
+  }
   try {
     if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
     await adapter.write(tmp, JSON.stringify(payload, null, 2));
