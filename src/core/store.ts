@@ -14,6 +14,7 @@ import {
   isLegacyEncrypted
 } from "./secret";
 import { t } from "../i18n";
+import { mergeBackupSettings } from "./config-backup";
 
 /**
  * 宿主提供的持久化接口。
@@ -149,6 +150,43 @@ export class CalStore {
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  }
+
+  /**
+   * 用一份备份替换当前设置（卸载后重装的恢复路径）。
+   *
+   * 三件事，按顺序都不能省：
+   *   1. **设置整份替换**（不是合并）—— 半份设置比没有更糟，用户看不出哪缺了；
+   *   2. **keyring 一并交回** —— 必须**先**给 keyring 再解密 password，
+   *      否则新密文会被当成解不开的脏数据（`mismatch`）而被丢弃；
+   *   3. **清掉 `rawCipher`** —— 它存着上一个（已作废的）密文，
+   *      若新解锁失败会把旧密文写回去，等于备份没生效。
+   *
+   * 恢复失败（密钥对不上、密文解不开）**不抛**：退化成「没恢复」的状态，
+   * 让用户手工重填，比插件加载失败好。
+   */
+  adoptBackup(backup: { settings: CalSettings; keyring?: string }): void {
+    this.settings = mergeBackupSettings({ v: 1, savedAt: "", settings: backup.settings });
+    this.secretBroken = false;
+    this.pendingUnlock = false;
+    // 先 adopt keyring：它会把主密钥灌进 secret.ts 的模块级缓存，
+    // 不先给的话下面 decryptSecretDeep 会因取不到密钥而判为 mismatch。
+    adoptKeyring(backup.keyring || "", (k) => {
+      this.keyring = k;
+    });
+    // 旧密文就此作废 —— 必须清空。否则恢复失败时 persist() 会把它写回去，
+    // 看起来就像「备份没生效」。
+    this.rawCipher = "";
+    void this.unlockPassword()
+      .catch(() => {
+        this.settings.password = "";
+        this.rawCipher = "";
+        this.secretBroken = true;
+      })
+      .then(() => {
+        // emit() 内含 persistSoon()，顺带通知面板重渲染
+        this.emit();
+      });
   }
 
   private emit(): void {

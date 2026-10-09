@@ -398,6 +398,15 @@
   "sync.reconcileRequeue": "{count} 条本地条目在服务端已不存在，将重新上传",
   "sync.reconcileCleaned": "已清理 {count} 条服务端不存在的本地条目",
 
+  "backup.title": "找到上次使用的配置",
+  "backup.found": "检测到 {when} 保存的配置：{host}。是否恢复？",
+  "backup.unknownTime": "某个时间",
+  "backup.hint": "备份只含服务器与日历等设置（密码以密文保存），恢复后会立即同步一次。选「重新配置」则丢弃这份备份。",
+  "backup.restore": "恢复",
+  "backup.skip": "重新配置",
+  "backup.restored": "已恢复配置：{host}",
+  "backup.skipped": "已丢弃旧配置备份，可重新填写",
+
   "net.unreachableProxyHint": "网络请求失败（服务不可达，或直连被跨域拦截，建议把请求通道改为「内核代理」）",
   "net.timeout": "请求超时",
   "net.auth401": "认证失败（401）：用户名或密码错误",

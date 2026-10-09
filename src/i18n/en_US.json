@@ -398,6 +398,15 @@
   "sync.reconcileRequeue": "{count} local item(s) no longer exist on the server and will be uploaded again",
   "sync.reconcileCleaned": "Removed {count} local item(s) that no longer exist on the server",
 
+  "backup.title": "Found your previous settings",
+  "backup.found": "Settings saved on {when} were found: {host}. Restore them?",
+  "backup.unknownTime": "an unknown time",
+  "backup.hint": "The backup holds only settings such as the server and calendars (the password stays encrypted). Restoring syncs right away. Choosing \"Set up again\" discards this backup.",
+  "backup.restore": "Restore",
+  "backup.skip": "Set up again",
+  "backup.restored": "Settings restored: {host}",
+  "backup.skipped": "Old settings backup discarded — fill them in again",
+
   "net.unreachableProxyHint": "Network request failed (the service is unreachable, or the direct request was blocked as cross-origin — try switching the request channel to the kernel proxy)",
   "net.timeout": "The request timed out",
   "net.auth401": "Authentication failed (401): wrong username or password",

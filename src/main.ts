@@ -15,7 +15,7 @@
  * 原版为承载「移动端没有页签栏」而写的一整套 Dialog 层级管理（mobile-layers.ts、
  * dialog-resize.ts）在 Obsidian 下不需要，已整体移除。
  */
-import { Notice, Plugin, TFile, normalizePath, type App, type Workspace, type WorkspaceLeaf } from "obsidian";
+import { ButtonComponent, Modal, Notice, Plugin, TFile, normalizePath, type App, type Workspace, type WorkspaceLeaf } from "obsidian";
 import { CalStore } from "@/core/store";
 import { SyncEngine, type SyncReport } from "@/core/sync";
 import type { CalItem, CalSettings } from "@/core/types";
@@ -52,6 +52,18 @@ import { clearReminderToasts, showReminderToast } from "@/ui/reminder-toast";
 import type { PanelCtx, ViewMode } from "@/ui/panel-ctx";
 import { DOCK_VIEW_TYPE, ICON_ID, VIEW_TYPE_CALDAV } from "@/constants";
 import type { TimerHandle } from "./constants";
+import {
+  backupTimeText,
+  buildBackup,
+  clearBackup,
+  describeBackup,
+  hasPlaintextPassword,
+  isBackupUseful,
+  looksFreshInstall,
+  readBackup,
+  writeBackup,
+  type BackupPayload
+} from "@/core/config-backup";
 
 export { VIEW_TYPE_CALDAV };
 
@@ -187,17 +199,30 @@ export default class CalDavPlugin extends Plugin {
   private statusBarEl?: HTMLElement;
   /** 「稍后提醒」的定时器：卸载时要一并清掉，否则会在插件停用后仍触发 */
   private snoozeTimers = new Set<TimerHandle>();
+  /** 配置备份的去抖定时器（见 syncBackupSoon） */
+  private backupTimer: TimerHandle | null = null;
 
   async onload(): Promise<void> {
     // ① 注入宿主传输实现 —— 必须最先做，core/http.ts 依赖它发请求
     setTransport(obsidianTransport);
 
     // ② 数据层：Obsidian 的 loadData/saveData 与思源语义一致（后者多一个文件名参数）
+    //    先把原始数据取出来判「是否新装」—— loadData() 只能调一次（缓存了），
+    //    所以这里手动取一次并注入给 store。
+    const rawLoaded = (await this.loadData()) as unknown;
     this.store = new CalStore({
-      loadData: () => this.loadData(),
+      loadData: async () => rawLoaded,
       saveData: (d) => this.saveData(d),
     });
     await this.store.load();
+
+    // ②.5 配置备份：卸载插件会连data.json 一起删掉，重装后设置全丢。
+    //这里在数据还在内存里时另存一份到 .obsidian/caldav-calendar-tasks/backup.json
+    //（卸载只删 plugins/<id>/ 一个目录，这个位置不受影响），并在「新装且有备份」
+    //时问用户要不要恢复。详见 core/config-backup.ts。
+    const fresh = looksFreshInstall(rawLoaded);
+    void this.syncBackupSoon();
+    if (fresh) void this.offerRestore();
 
     // 语言要在数据加载后初始化 —— 用户可能手动指定过语言，值存在插件数据里。
     initLocale(this.hostSettings().language);
@@ -300,6 +325,102 @@ export default class CalDavPlugin extends Plugin {
     clearReminderToasts();
     for (const t of this.snoozeTimers) window.clearTimeout(t);
     this.snoozeTimers.clear();
+    // 去抖中的备份也取消：卸载后不该再写盘。若已完成则文件早已落好，不受影响。
+    if (this.backupTimer) window.clearTimeout(this.backupTimer);
+    this.backupTimer = null;
+  }
+
+  // ────────────────────── 配置备份（卸载后重装免重配） ──────────────────────
+
+  /**
+   * 把当前配置另存一份到 `.obsidian/caldav-calendar-tasks/backup.json`。
+   *
+   * ## 为什么必须去抖
+   *
+   * `persist()` 本身是 400ms 去抖的，但它触发得**很频繁**（勾一个待办、
+   * 拖一次颜色都算）。备份是一次真实的磁盘写，跟着每次都写会让同步备份文件
+   * 变成 IO 热点；而且 Obsidian 的 `adapter.write` 在移动端还可能跨进程。
+   * 这里再叠一层 3 秒去抖：配置改动通常在 3 秒内会连续来好几下，合并成一次写。
+   *
+   * ## 为什么用磁盘形态（密文）而不是内存明文
+   *
+   * `store.settings.password` 在内存里是**明文**（store 加载时解开了）。
+   * 直接把它写进备份就是明文密码落盘 —— 即使文件在 `.obsidian/` 里，
+   * 这也是我们不该做的事（备份比 data.json 更可能被用户复制出去）。
+   * 正确做法是复用 `persist()` 存到 `data.json` 的那一份形态：密码是密文。
+   */
+  private syncBackupSoon(): void {
+    if (this.backupTimer) window.clearTimeout(this.backupTimer);
+    this.backupTimer = window.setTimeout(() => void this.syncBackup(), 3000);
+  }
+
+  /**
+   * 实际写备份。
+   *
+   * 走 `store.persist()` 落盘的同一份数据形状：为此临时调一次 persist 的
+   * 数据构造不方便（persist 是 async 且带解密逻辑），所以改为**读回磁盘**
+   * —— 刚保存完的 `data.json` 就是最权威的磁盘形态，直接复制它的 settings。
+   * 若读不到（极端情况，如刚改完还没落盘就卸载），就退回内存值并**把密码
+   * 整个剔除**：宁可不备份密码，也不能把明文写出去。
+   */
+  private async syncBackup(): Promise<void> {
+    this.backupTimer = null;
+    if (!this.store) return;
+    let settings = this.store.settings;
+    try {
+      const disk = (await this.loadData()) as { settings?: CalSettings } | null;
+      if (disk?.settings) settings = disk.settings;
+      else {
+        // 读不到磁盘形态 → 只用内存值，但必须把明文密码换掉
+        settings = { ...settings, password: "" };
+      }
+    } catch {
+      settings = { ...settings, password: "" };
+    }
+    const payload = buildBackup(settings, this.store.keyring);
+    // 最后一道闸：万一上游逻辑变了、备份里出现明文密码，宁可不写。
+    if (hasPlaintextPassword(payload)) return;
+    await writeBackup(this.app, payload);
+  }
+
+  /**
+   * 新装且检测到备份时，问用户要不要恢复。
+   *
+   * 刻意**不静默恢复**：用户重装插件的原因可能正是「想推倒重来」（比如换
+   * 服务器、或之前配置搞坏了）。静默恢复会把这部分人 stuck 在旧配置里，
+   * 而他们既不知道发生了什么、也不知道怎么清掉 —— 比重新配一次更糟。
+   *
+   * 三条前置检查（任一不满足就当没有备份）：
+   *   ① 备份读得出来且格式对；
+   *   ② 备份里确有实质内容（否则空备份只是噪音）；
+   *   ③ 备份里没有明文密码（有的话宁可不恢复，也不能把明文搬进 data.json）。
+   */
+  private async offerRestore(): Promise<void> {
+    let backup: BackupPayload | undefined;
+    try {
+      backup = await readBackup(this.app);
+    } catch {
+      return;
+    }
+    if (!backup || !isBackupUseful(backup)) return;
+    if (hasPlaintextPassword(backup)) return;
+
+    new RestoreConfigModal(this.app, backup, {
+      onRestore: async () => {
+        // 恢复 = 把备份里的设置整份写进 store，再立刻落盘。
+        // keyring 一并交回：它必须与密文同时到位，否则密码解不开。
+        this.store.adoptBackup(backup);
+        await this.store.persist();
+        new Notice(t("backup.restored", { host: describeBackup(backup) }));
+        // 恢复后马上同步一次：让用户立刻看到条目回来，也顺便验证配置真的可用
+        await this.runSync(false);
+      },
+      onDismiss: async () => {
+        // 点「不恢复」= 用户想重新配 → 把备份删掉，否则每次重装都问一遍
+        await clearBackup(this.app);
+        new Notice(t("backup.skipped"));
+      }
+    }).open();
   }
 
   // ─────────────────────────── 视图 ───────────────────────────
@@ -897,5 +1018,63 @@ export default class CalDavPlugin extends Plugin {
     // 故需手动触发一次重渲染，否则用户改完语言要等到下次打开面板才生效。
     this.store.notify();
     this.updateStatusBar();
+  }
+}
+
+/**
+ * 「检测到上次的配置，是否恢复？」确认弹窗。
+ *
+ * 为什么用 `Modal` 而不是 `Notice` + 命令：这是个**需要用户做决定**的分叉
+ * （恢复 / 不恢复），通知条只能点一下、没有第二个按钮，也不该在自动消失后
+ * 让人错过的同时把备份删掉。`Modal` 有明确的两个按钮，Esc 视为「不恢复」。
+ *
+ * 刻意用 `Modal`（而非 `FuzzySuggestModal` 之类）：这是一次性确认，
+ * 不该占用搜索入口、也不该出现在命令面板里。
+ */
+class RestoreConfigModal extends Modal {
+  constructor(
+    app: App,
+    private readonly backup: BackupPayload,
+    private readonly handlers: {
+      onRestore: () => Promise<void>;
+      onDismiss: () => Promise<void>;
+    }
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h3", { text: t("backup.title") });
+
+    // 说清「这份备份是什么时候的、里面有什么」—— 用户据此判断要不要恢复，
+    // 而不是盲点一个按钮。时间解析不了就显示兜底文案，别露出 "Invalid Date"。
+    contentEl.createEl("p", {
+      text: t("backup.found", {
+        host: describeBackup(this.backup),
+        when: backupTimeText(this.backup, t("backup.unknownTime"))
+      })
+    });
+    contentEl.createEl("p", { text: t("backup.hint") });
+
+    const row = contentEl.createDiv({ cls: "modal-button-container" });
+    new ButtonComponent(row)
+      .setButtonText(t("backup.restore"))
+      .setCta()
+      .onClick(() => {
+        void this.handlers.onRestore();
+        this.close();
+      });
+    new ButtonComponent(row).setButtonText(t("backup.skip")).onClick(() => {
+      void this.handlers.onDismiss();
+      this.close();
+    });
+  }
+
+  onClose(): void {
+    // 关掉弹窗（含 Esc / 点遮罩）一律按「不恢复」处理：
+    // 留着备份只会让下次重装再问一遍，而用户已经用行动表示了「不需要」。
+    this.contentEl.empty();
   }
 }

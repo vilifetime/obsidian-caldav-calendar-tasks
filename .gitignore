@@ -23,6 +23,9 @@ push-to-github.sh
 # Release 说明生成物（由 scripts/build-notes.mjs 产出）
 RELEASE_NOTES.md
 
+# 测试的临时编译产物（config-backup 测试用 esbuild 现编的 JS）
+.test-config-backup/
+
 # 临时排查产物（下划线开头的调试文件，如 curl -o _x.json）
 _*.json
 _*.cjs

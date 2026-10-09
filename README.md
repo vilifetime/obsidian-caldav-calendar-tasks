@@ -104,6 +104,12 @@ This plugin accesses the network to talk to your own CalDAV server. In full disc
 - **No data collection.** The plugin contains no telemetry, no analytics, and no code that
   sends your data to the developer or anyone else.
 - **Clipboard.** Not used.
+- **Files written.** Two files inside the vault's `.obsidian` directory: the plugin's own
+  `data.json` (settings and cached items), and `caldav-calendar-tasks/backup.json` — a copy of
+  the settings only, so that reinstalling after an uninstall does not require configuring the
+  server again. The backup contains the encrypted password together with the key that decrypts
+  it (the same pairing that already exists in `data.json`), never a plaintext password. It is
+  never read or sent anywhere except your own disk.
 - **Files outside the vault.** Apart from the network access above, no file outside the vault
   directory is read or written.
 - **Reminder notifications.** Desktop system notifications are emitted by Obsidian itself and
@@ -127,6 +133,14 @@ to skip discovery, or check that the account has read access to the target colle
 **Tasks are not syncing.** Make sure the collection supports VTODO. Each calendar in the
 discovery list is labelled with what it supports; if only events are shown, that collection
 contains no task component.
+
+**Do I have to configure the server again after uninstalling and reinstalling?** No. Settings are
+backed up to `.obsidian/caldav-calendar-tasks/backup.json` whenever they change — uninstalling
+removes the `plugins/` directory, and this file is not part of it. On the first launch after
+reinstalling, a dialog reports the settings that were found: choose "Restore" to bring back the
+server, calendars, categories and password together, or "Set up again" to discard the backup and
+start from scratch. Items themselves are not part of the backup; a sync runs right after
+restoring so they come back.
 
 **The password changed and can no longer be decrypted.** If you clear the password in settings
 and type a new one, the master key is kept and re-encryption works. If a credential error is
@@ -228,6 +242,10 @@ bundled: `scripts/deploy.mjs` copies `src/styles.css` to `styles.css` directly.
   AES-GCM 加密。
 - **不收集数据**：插件不包含任何遥测、埋点或分析代码，不向开发者或第三方发送你的数据。
 - **剪贴板**：不使用。
+- **写入的文件**：库内 `.obsidian` 目录下两个文件 —— 插件自身的 `data.json`（设置与条目缓存），
+  以及 `caldav-calendar-tasks/backup.json`（**仅设置**，用于卸载后重装免去重新配置服务器）。
+  备份里保存的是**加密后的密码**及其解密密钥（与 `data.json` 中原有的配对方式相同），
+  **不会出现明文密码**；除你自己的磁盘外，该文件不会被读取或发送到任何地方。
 - **库外文件**：除上述网络访问外，不访问库目录以外的任何文件。
 - **提醒通知**：桌面端系统通知由 Obsidian 自身发出，不经任何外部服务。
 
@@ -246,6 +264,11 @@ bundled: `scripts/deploy.mjs` copies `src/styles.css` to `styles.css` directly.
 
 **待办没有同步。** 确认该日历集合支持 VTODO。发现列表中每个日历下方会标注「支持：日程 / 待办」，
 若只显示日程则该集合不含待办组件。
+
+**卸载插件后重装，要重新配一遍服务器吗？** 不用。设置会在每次改动后备份到
+`.obsidian/caldav-calendar-tasks/backup.json`（卸载插件删的是 `plugins/` 目录，这个文件不受影响）。
+重装后首次打开会弹窗告知找到了上次的配置，点「恢复」即可 —— 服务器、日历、分类与密码一并恢复。
+选「重新配置」则丢弃这份备份、从空白开始。条目本身不进备份，恢复后会立即同步一次重新拉回。
 
 **密码变了之后解不开。** 若在设置中清空密码后再重新填写，主密钥保持不变，可正常重新加密。
 若提示凭据异常，可在设置页查看「凭据状态」的具体说明。
