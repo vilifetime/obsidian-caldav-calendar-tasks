@@ -400,6 +400,8 @@
   "sync.reconcileSkipEmpty": "服务端清单为空但本地有 {count} 条，跳过对账",
   "sync.reconcileRequeue": "{count} 条本地条目在服务端已不存在，将重新上传",
   "sync.reconcileCleaned": "已清理 {count} 条服务端不存在的本地条目",
+  "sync.pushedUpload": "已同步到服务端：上传 {count} 条",
+  "sync.pushedDelete": "已同步到服务端：删除 {count} 条",
 
   "backup.title": "找到上次使用的配置",
   "backup.found": "检测到 {when} 保存的配置：{host}。是否恢复？",

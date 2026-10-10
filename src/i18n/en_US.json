@@ -400,6 +400,8 @@
   "sync.reconcileSkipEmpty": "The server list came back empty while {count} local item(s) exist; skipping reconcile",
   "sync.reconcileRequeue": "{count} local item(s) no longer exist on the server and will be uploaded again",
   "sync.reconcileCleaned": "Removed {count} local item(s) that no longer exist on the server",
+  "sync.pushedUpload": "Synced to server: uploaded {count} item(s)",
+  "sync.pushedDelete": "Synced to server: deleted {count} item(s)",
 
   "backup.title": "Found your previous settings",
   "backup.found": "Settings saved on {when} were found: {host}. Restore them?",
