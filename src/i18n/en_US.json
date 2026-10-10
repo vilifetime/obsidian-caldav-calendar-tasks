@@ -8,6 +8,7 @@
   "statusBarSyncing": "Syncing…",
   "statusBarIdle": "CalDAV",
   "statusBarError": "Sync failed",
+  "statusBarNote": "Sync note",
   "kindEvent": "event",
   "kindTodo": "task",
 
@@ -97,6 +98,7 @@
   "empty.goConfigure": "Configure →",
   "empty.dockNoMatch": "No matching items",
   "empty.taskNoResult": "No tasks match this filter",
+  "empty.taskSearchNoMatch": "No tasks match \u201c{q}\u201d",
 
   "chip.noTitle": "(no title)",
   "chip.repeat": "Repeats",
@@ -117,7 +119,6 @@
   "dock.categoryPick": "Pick categories",
   "dock.prioPick": "By priority",
   "dock.prioAll": "All",
-  "dock.searchPlaceholder": "Search tasks…",
   "dock.backToList": "← Back to list",
   "dock.nodateHidden": "{count} undated task(s) hidden · Click to view",
   "dock.markDone": "Mark as done",
@@ -215,6 +216,7 @@
   "task.filter.doneall": "Completed",
   "task.filter.byCondition": "Filter by condition",
   "task.quickAdd": "Quick-add a task, Enter to save (defaults to today)…",
+  "task.searchPlaceholder": "Search tasks…",
   "task.group.overdue": "Overdue",
   "task.group.today": "Today",
   "task.group.tomorrow": "Tomorrow",

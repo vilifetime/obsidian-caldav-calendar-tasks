@@ -8,6 +8,7 @@
   "statusBarSyncing": "同步中…",
   "statusBarIdle": "CalDAV",
   "statusBarError": "同步失败",
+  "statusBarNote": "同步提示",
   "kindEvent": "日程",
   "kindTodo": "待办",
 
@@ -97,6 +98,7 @@
   "empty.goConfigure": "去配置 →",
   "empty.dockNoMatch": "暂无匹配条目",
   "empty.taskNoResult": "该筛选下暂无任务",
+  "empty.taskSearchNoMatch": "没有匹配「{q}」的任务",
 
   "chip.noTitle": "(无标题)",
   "chip.repeat": "重复",
@@ -117,7 +119,6 @@
   "dock.categoryPick": "选择分类",
   "dock.prioPick": "按优先级",
   "dock.prioAll": "全部",
-  "dock.searchPlaceholder": "搜索任务...",
   "dock.backToList": "← 返回列表",
   "dock.nodateHidden": "另有 {count} 条无日期待办未显示 · 点此查看",
   "dock.markDone": "标记完成",
@@ -215,6 +216,7 @@
   "task.filter.doneall": "已完成",
   "task.filter.byCondition": "按条件筛选",
   "task.quickAdd": "快速添加待办，回车保存（默认今天）…",
+  "task.searchPlaceholder": "搜索...",
   "task.group.overdue": "逾期",
   "task.group.today": "今天",
   "task.group.tomorrow": "明天",

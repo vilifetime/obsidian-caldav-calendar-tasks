@@ -77,13 +77,13 @@ export class CalDavView extends ItemView {
     el.querySelectorAll(".caldav-status").forEach((n) => n.remove());
     const store = this.plugin.store;
     const issue = store.credentialsIssue();
-    const msg = issue
-      ? issue
-      : store.lastError
-        ? t("view.syncError", { msg: store.lastError })
-        : "";
-    if (!msg) return;
-    const bar = el.createDiv({ cls: "caldav-status is-error", text: msg });
+    const errMsg = issue ? issue : store.lastError ? t("view.syncError", { msg: store.lastError }) : "";
+    // 对账提示走中性样式，不能套 is-error —— 那是「同步失败」的红条
+    // （2026-10-10 实测：原先对账结果塞进 lastError，成功同步被报成失败）。
+    const noteMsg = errMsg ? "" : store.lastNote || "";
+    const text = errMsg || noteMsg;
+    if (!text) return;
+    const bar = el.createDiv({ cls: errMsg ? "caldav-status is-error" : "caldav-status is-note", text });
     // 插到面板之前（面板本身没有这类宿主级提示位）
     const body = el.querySelector(".caldav-view-body");
     if (body) el.insertBefore(bar, body);

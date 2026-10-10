@@ -859,6 +859,8 @@
 
 .cal-task-filterbar {
   display: flex;
+  /* 三列等高对齐：缺 align-items 时 flex 项顶对齐，
+     而「包裹层 + 内层 input」是两级嵌套，不加这句会明显错位。 */
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
@@ -888,7 +890,38 @@
 .cal-task-filter:hover { border-color: var(--caldav-accent); }
 .cal-task-filter:focus { outline: none; border-color: var(--caldav-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--caldav-accent) 20%, transparent); }
 
-.cal-task-quick { flex: 1; }
+/* 快速添加占 2 份、搜索占 1 份（2026-10-09 雄哥要求 2:1）。
+   用 flex 基准而不是写死 px —— 面板宽度随窗口变，写死宽度在窄屏会挤爆。 */
+.cal-task-quick { flex: 2 1 0; min-width: 0; }
+
+/* 搜索框：外层包裹层负责「放大镜压在左边」，内层 input 才是真正的输入框。
+   为什么不用 background-image 直接画在 input 上：那会被主题/宿主对
+   .caldav-input 的 background 声明覆盖掉，而 DOM 图标不受影响。
+   padding-left 30px 给图标让位。 */
+.cal-task-searchwrap {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.cal-task-search-icon {
+  position: absolute;
+  left: 9px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--caldav-text-2);
+  pointer-events: none;
+}
+.cal-task-search-icon svg { width: 14px; height: 14px; }
+/* ⚠️ 必须双类提特异性：.caldav-input 的 padding 简写定义在本文件**更后面**
+   （同特异性下后写者赢），单类 .cal-task-search 写的 padding-left 会被那个
+   简写整体覆盖回去 → 放大镜压在占位文字上（2026-10-10 雄哥截图）。
+   本文件里已有同款前科：.caldav-calfilter-opt 的 padding 吃掉 padding-left。 */
+.caldav-input.cal-task-search {
+  width: 100%;
+  padding-left: 30px;
+}
 
 /* 整框与左侧色条同色（2026-10-07雄哥要求）：
    原先只 `border-left: 3px solid var(--cal-color)`，其余三边是灰线，
@@ -3132,40 +3165,6 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   background: color-mix(in srgb, var(--d-accent) 8%, var(--d-card));
 }
 
-/* 搜索框 */
-.caldav-dock-search-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.caldav-dock-search-icon {
-  position: absolute;
-  left: 10px;
-  display: inline-flex;
-  align-items: center;
-  color: var(--d-text-2);
-  pointer-events: none;
-}
-.caldav-dock-search-icon svg { width: 14px; height: 14px; }
-.caldav-dock-search {
-  width: 100%;
-  border: 1px solid var(--d-border);
-  border-radius: 10px;
-  background: var(--d-input);
-  color: var(--d-text);
-  padding: 7px 11px 7px 32px;
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-}
-.caldav-dock-search::placeholder { color: var(--d-text-2); opacity: 0.7; }
-.caldav-dock-search:hover { background: var(--d-input-hover); border-color: color-mix(in srgb, var(--d-accent) 45%, var(--d-border)); }
-.caldav-dock-search:focus {
-  border-color: var(--d-accent);
-  background: var(--d-card);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--d-accent) 16%, transparent);
-}
-
 /* 列表 */
 .caldav-dock-items {
   display: flex;
@@ -3819,6 +3818,21 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .caldav-view .caldav-status.is-error {
+  color: var(--caldav-danger);
+}
+
+/* 对账等中性提示：不是失败，只是要让用户看见「本地少了 N 条」。
+   刻意不用 is-error 的红色，否则一次成功同步会被报成失败。 */
+.caldav-view .caldav-status.is-note {
+  color: var(--caldav-text-2);
+}
+
+/* 底部状态栏的中性提示态（与 .is-note 呼应，但作用在状态栏元素上） */
+.status-bar-item.caldav-status-is-note {
+  color: var(--caldav-text-2);
+}
+
+.status-bar-item.caldav-status-is-error {
   color: var(--caldav-danger);
 }
 

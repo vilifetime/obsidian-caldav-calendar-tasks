@@ -206,4 +206,90 @@ t("新增文案都走 i18n（Obsidian 侧不写死中文）", () => {
   assert.deepStrictEqual(literals, [], "reconcile 里出现中文字面量：" + literals.join(","));
 });
 
+// ---- 2026-10-10 实测回归：思源删一条 → Obsidian 同步，用户看到「删除 0 条」
+//      且状态栏报「同步失败：对账：已清理 1 条…」。两个独立缺陷，各自钉死。 ----
+
+t("服务端删除要计入 report.deleted（否则用户以为删除没同步过来）", () => {
+  assert.ok(
+    /report\.deleted \+= this\.store\.mergeServerItems\(items, deletedKeys\)\.removed/.test(syncSrc),
+    "mergeServerItems 的 removed 返回值必须累加进 report.deleted"
+  );
+  // 对账清理的幽灵条目同理：本地确实少了一条
+  const recon = syncSrc.slice(syncSrc.indexOf("private async reconcile"), syncSrc.indexOf("private async pushDirty"));
+  assert.ok(/report\.reconciled\+\+/.test(recon), "对账清理要计 reconciled");
+  assert.ok(
+    /report\.reconciled\+\+;[\s\S]{0,200}?report\.deleted\+\+/.test(recon),
+    "对账清理的条目也要计入 report.deleted（否则仍是「删除 0 条」）"
+  );
+});
+
+t("mergeServerItems 返回 removed 计数（store 侧真的实现了吗）", () => {
+  const storeSrc = readSrc("src/core/store.ts");
+  assert.ok(
+    /mergeServerItems\(incoming: CalItem\[\], deletedKeys: string\[\] = \[\]\): \{ changed: boolean; removed: number \}/.test(
+      storeSrc
+    ),
+    "签名要改成返回 { changed, removed }"
+  );
+  const body = storeSrc.slice(storeSrc.indexOf("mergeServerItems(incoming"));
+  assert.ok(/let removed = 0/.test(body), "要有 removed 计数");
+  assert.ok(
+    /if \(this\.items\.has\(key\)\) \{\s*this\.items\.delete\(key\);\s*changed = true;\s*removed\+\+/.test(body),
+    "deletedKeys 命中时才 removed++（命中不存在的 key 不能计数，否则会虚报删除）"
+  );
+  assert.ok(/return \{ changed, removed \}/.test(body), "要返回 removed");
+});
+
+t("对账提示走 lastNote 中性通道，绝不塞进 lastError", () => {
+  assert.ok(
+    /this\.store\.lastNote = notes\.join\("; "\) \|\| undefined/.test(syncSrc),
+    "对账提示要写 lastNote"
+  );
+  assert.ok(
+    /this\.store\.lastError = report\.errors\.join\("; "\) \|\| undefined/.test(syncSrc),
+    "lastError 只装真错误"
+  );
+  assert.ok(
+    !/lastError = \[\.\.\.report\.errors, \.\.\.notes\]/.test(syncSrc),
+    "绝不能让对账说明混进 lastError（会把成功同步显示成「同步失败」）"
+  );
+});
+
+t("lastNote 有完整的存取盘链路（加了字段但没存 = 重启即丢）", () => {
+  const typesSrc = readSrc("src/core/types.ts");
+  const storeSrc = readSrc("src/core/store.ts");
+  assert.ok(/lastNote\?: string/.test(typesSrc), "SyncState 要有 lastNote");
+  assert.ok(/lastNote\?: string/.test(storeSrc), "CalStore 要有 lastNote 字段");
+  assert.ok(/this\.lastNote = data\.sync\?\.lastNote/.test(storeSrc), "load 要读 lastNote");
+  assert.ok(/lastNote: this\.lastNote/.test(storeSrc), "persist 要写 lastNote");
+});
+
+t("同步抛异常时要清掉过期 lastNote（否则报错后中性提示一直挂着）", () => {
+  // 用 lastNote 赋值点定位 syncAll 的兜底 catch —— 文件里有多处 catch
+  // （pushDirty / 每个日历 / reconcile 各一个），按序号数位置会随重构漂移。
+  const iAssign = syncSrc.indexOf("this.store.lastNote = notes.join");
+  assert.ok(iAssign > 0, "先找到正常路径的 lastNote 赋值点");
+  const iCatch = syncSrc.indexOf("} catch (e: unknown) {", iAssign);
+  assert.ok(iCatch > iAssign, "正常路径之后应紧跟 syncAll 的兜底 catch");
+  const body = syncSrc.slice(iCatch, iCatch + 600);
+  assert.ok(/this\.store\.lastNote = undefined/.test(body), "异常路径要清 lastNote");
+});
+
+t("UI 层：状态栏与横幅对 lastNote 用中性样式，不用 is-error", () => {
+  const mainSrc = readSrc("src/main.ts");
+  const viewSrc = readSrc("src/ui/main-view.ts");
+  const cssSrc = readSrc("src/styles.css");
+  assert.ok(/statusBarNote/.test(mainSrc), "状态栏要有中性前缀 statusBarNote");
+  assert.ok(
+    /if \(note\)[\s\S]{0,300}statusBarNote/.test(mainSrc),
+    "状态栏要单独处理 lastNote 分支，且放在 lastError 之后"
+  );
+  assert.ok(/is-note/.test(viewSrc), "面板横幅要有 is-note 样式");
+  assert.ok(/\.caldav-status\.is-note/.test(cssSrc), "is-note 样式要定义");
+  assert.ok(
+    /statusBarError/.test(mainSrc) && /is-error/.test(viewSrc),
+    "真错误仍然走原来的错误通道，别把错误提示一起降级"
+  );
+});
+
 console.log(failed ? `\n[reconcile] ${failed} 项失败` : "\n[reconcile] 全部通过");

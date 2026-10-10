@@ -827,10 +827,23 @@ export default class CalDavPlugin extends Plugin {
     const err = this.store.lastError;
     if (err) {
       this.statusBarEl.setText(`${t("statusBarError")}：${err.slice(0, 24)}`);
+      this.statusBarEl.addClass("caldav-status-is-error");
+      this.statusBarEl.removeClass("caldav-status-is-note");
+      return;
+    }
+    // 对账提示是**中性信息**，不是失败 —— 不能复用「同步失败」的前缀，
+    // 否则一次成功同步会被报成失败（2026-10-10 实测）。
+    const note = this.store.lastNote;
+    if (note) {
+      this.statusBarEl.setText(`${t("statusBarNote")}：${note.slice(0, 24)}`);
+      this.statusBarEl.addClass("caldav-status-is-note");
+      this.statusBarEl.removeClass("caldav-status-is-error");
       return;
     }
     const when = this.store.lastSync ? this.store.lastSync.slice(5, 16).replace("T", " ") : t("sync.never");
     this.statusBarEl.setText(`${t("statusBarIdle")} · ${when}`);
+    this.statusBarEl.removeClass("caldav-status-is-error");
+    this.statusBarEl.removeClass("caldav-status-is-note");
   }
 
   // ─────────────────────────── 提醒 ───────────────────────────
