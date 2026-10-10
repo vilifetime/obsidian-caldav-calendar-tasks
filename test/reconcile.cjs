@@ -263,6 +263,22 @@ t("applied 只在真写入时 ++（same 判定跳过的条目不能算拉取）"
   assert.ok(iApplied > iSet, "applied++ 要紧跟在真写入之后");
 });
 
+// 自环回显的真正守门员：逐字段比对会被服务端规范化的 raw 打败，
+// 只有「etag 相同即跳过」能挡住。源码级断言不够 —— 写了也可能因顺序/条件写错
+// 而实际不生效，故这里必须在源码里钉住 etag 短路这一条。
+t("etag 相同即跳过写入（挡住自环回显的关键判据）", () => {
+  const storeSrc = readSrc("src/core/store.ts");
+  const body = storeSrc.slice(storeSrc.indexOf("mergeServerItems(incoming"));
+  const iEtag = body.indexOf("cur.etag === inc.etag");
+  const iSet = body.indexOf("this.items.set(keyOf(inc)");
+  assert.ok(iEtag > 0, "必须有 etag 短路判定");
+  assert.ok(iEtag < iSet, "etag 判定必须排在写入之前");
+  // 逐字段比对里不能再拿 raw 当判据 —— 服务端规范化后几乎必然不等
+  const iSameBlock = body.indexOf("const same =");
+  const sameBlock = body.slice(iSameBlock, body.indexOf("if (same) continue;"));
+  assert.ok(!/cur\.raw === inc\.raw/.test(sameBlock), "raw 不能参与比对（服务端规范化后必然不等）");
+});
+
 t("对账提示走 lastNote 中性通道，绝不塞进 lastError", () => {
   assert.ok(
     /this\.store\.lastNote = notes\.join\("; "\) \|\| undefined/.test(syncSrc),
