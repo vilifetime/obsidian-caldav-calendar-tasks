@@ -108,7 +108,10 @@ export function askDiaryRange(
     if (!host) return;
     opts.forEach((o, i) => {
       const label = host.createEl("label", { cls: `caldav-range-target${i === 0 ? " is-checked" : ""}` });
-      const input = label.createEl("input", { type: "radio" }) as HTMLInputElement;
+      // 不写 as HTMLInputElement：Obsidian 的 createEl 签名带 K extends keyof
+      // HTMLElementTagNameMap 泛型，"input" 本身就推得出 HTMLInputElement，
+      // 断言纯属多余（官方 review 会报"unnecessary assertion"）。
+      const input = label.createEl("input", { type: "radio" });
       input.name = "caldav-target";
       input.value = o.key;
       input.checked = i === 0;

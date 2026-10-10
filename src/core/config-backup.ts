@@ -11,11 +11,13 @@
  * 不保证在目录被删之后还能写盘），所以唯一的办法是：**趁 `data.json` 还在时，
  * 把配置另存一份到卸载删不到的地方**，重装时再问用户要不要恢复。
  *
- * ## 存哪：`.obsidian/caldav-calendar-tasks/backup.json`
+ * ## 存哪：`<配置目录>/caldav-calendar-tasks/backup.json`（默认即 `.obsidian/` 下）
  *
- * 卸载只删 `plugins/<id>/` 一个目录，`.obsidian/` 下别的东西都不动。
+ * 卸载只删 `plugins/<id>/` 一个目录，配置目录下别的东西都不动。
  * 选它而不是库根目录：① 不会被同步软件/网盘当笔记文件扫进去；② 不会被
  * Obsidian 的文件索引当成笔记；③ 位置固定、可预期。
+ *
+ * 配置目录名**不写死** —— 用户可在设置里改名，一律走 `app.vault.configDir`。
  *
  * ## 存什么：settings + keyring，**不含 items**
  *
@@ -33,8 +35,8 @@
  *
  * 但要注意一个**安全边界**：这个备份文件是明文 JSON，里面有 keyring，
  * 拿到它就等于拿到密码。它的保护级别应当与 `data.json` 相同 —— 都在
- * 用户的 `.obsidian/` 目录里、都可能被同步软件带走。若用户把 `.obsidian/`
- * 提交到公开仓库，那密码就等于公开了。这是既有设计（data.json 本来就这样），
+ * 用户的配置目录下、都可能被同步软件带走。若用户把配置目录提交到公开仓库，
+ * 那密码就等于公开了。这是既有设计（data.json 本来就这样），
  * 本模块不引入新风险，但也不该把备份推到更暴露的地方（所以不放库根目录）。
  *
  * @module core/config-backup
@@ -47,28 +49,52 @@ import { isEncrypted } from "./secret";
 /**
  * 备份文件在**库根下的相对路径**。
  *
- * ⚠️ 必须显式带上 `.obsidian/` 前缀。`app.vault.adapter` 的根是**库根目录**，
- * 不是 `.obsidian/` —— 传裸相对路径会落在 `<库根>/caldav-calendar-tasks/backup.json`，
+ * 形态是 `<配置目录>/caldav-calendar-tasks/backup.json`。
+ *
+ * ⚠️ 必须显式带上**配置目录前缀**。`app.vault.adapter` 的根是**库根目录**，
+ * 不是配置目录 —— 传裸相对路径会落在 `<库根>/caldav-calendar-tasks/backup.json`，
  * 也就是库根下一个可见文件夹（会被文件索引当成笔记目录、被同步软件/网盘扫走）。
  * 这个错误在 0.4.6 真实发生过：路径与注释不符，备份写到了库根。
+ *
+ * ⚠️ 配置目录名**不能写死成 `.obsidian`** —— Obsidian 允许用户在
+ * 「设置 → 通用 → 配置文件文件夹」里改名（常见于多配置库、团队库，
+ * 也有人为避开源扫描器的扫描而改名）。写死后这类用户的备份会落在
+ * 一个不存在的目录里，静默失效 —— 与 0.4.6 那次事故同一性质，只是更隐蔽。
+ * 必须走 `app.vault.configDir` 取当前值。
  */
-export const BACKUP_DIR = ".obsidian/caldav-calendar-tasks";
+export const BACKUP_SUBFOLDER = "caldav-calendar-tasks";
 export const BACKUP_FILE = "backup.json";
 
 /** 备份文件的格式版本。改动结构时递增，旧版本按缺字段处理（不整体拒绝）。 */
 export const BACKUP_VERSION = 1;
 
-/** 备份文件名在库根下的完整相对路径（含 `.obsidian/` 前缀） */
-export function backupPathOf(): string {
-  return normalizePath(`${BACKUP_DIR}/${BACKUP_FILE}`);
+/**
+ * 备份文件的**相对路径**（相对于库根）。
+ *
+ * 取 `app.vault.configDir` 而不是硬编码 —— 见 `BACKUP_SUBFOLDER` 处的说明。
+ * 配置目录名兜底为 `.obsidian`：`configDir` 是官方 API，正常必有值，
+ * 但它是纯 getter，万一拿不到（如某些测试桩、非官方打包环境）不该让备份整体失效。
+ */
+export function backupPathOf(app: App): string {
+  const cfg = normalizePath(app?.vault?.configDir || ".obsidian");
+  return normalizePath(`${cfg}/${BACKUP_SUBFOLDER}/${BACKUP_FILE}`);
+}
+
+/**
+ * 备份文件在**配置目录下**的子目录路径（相对于库根）。
+ *
+ * 单独给出是因为 `writeBackup` 要拿它去 mkdir、还要断言「没跑到 plugins/ 下」。
+ */
+export function backupDirOf(app: App): string {
+  return normalizePath(`${normalizePath(app?.vault?.configDir || ".obsidian")}/${BACKUP_SUBFOLDER}`);
 }
 
 /**
  * 备份文件的**绝对路径**（桌面端）。
  *
  * 存在的理由：写备份是「保险」，而保险最怕写到别处 —— 0.4.6 把裸相对路径交给
- * adapter，结果落在库根而非 `.obsidian/`，静默失效了一整天。所以这里先用
- * `getFullPath()` 拿到真实绝对路径并**验证它确实在 `.obsidian/` 里**，验证不过
+ * adapter，结果落在库根而非配置目录，静默失效了一整天。所以这里先用
+ * `getFullPath()` 拿到真实绝对路径并**验证它确实在当前配置目录里**，验证不过
  * 就不写。与其写错地方让人以为有备份，不如明确失败。
  *
  * 移动端 adapter 的 getFullPath 语义不一致（部分实现返回空串），故返回 undefined，
@@ -79,15 +105,18 @@ export function backupAbsPathOf(app: App): string | undefined {
   if (typeof adapter.getFullPath !== "function") return undefined;
   let abs: string;
   try {
-    abs = adapter.getFullPath(backupPathOf());
+    abs = adapter.getFullPath(backupPathOf(app));
   } catch {
     return undefined;
   }
   if (!abs) return undefined;
   const norm = abs.replace(/\\/g, "/");
-  // 必须落在 .obsidian/ 内，且不是 plugins/ 的子路径（后者卸载时会被删）
-  if (!/\/\.obsidian\//.test(norm)) return undefined;
-  if (/\/\.obsidian\/plugins\//.test(norm)) return undefined;
+  // 必须落在配置目录内，且不是 plugins/ 的子路径（后者卸载时会被删）。
+  // ⚠️ 这里的判据必须用**当前配置目录名**去比对，不能写死 `.obsidian` ——
+  // 写死的话，用户改过配置目录名时本该放行的备份会被误判为「落点不可疑」而拒写。
+  const cfgDir = normalizePath(app?.vault?.configDir || ".obsidian");
+  if (!norm.includes(`/${cfgDir}/`)) return undefined;
+  if (norm.includes(`/${cfgDir}/plugins/`)) return undefined;
   return abs;
 }
 
@@ -147,21 +176,26 @@ export function buildBackup(settings: CalSettings, keyring: string | undefined):
 export async function writeBackup(app: App, payload: BackupPayload): Promise<boolean> {
   if (!isBackupUseful(payload)) return false;
   const adapter = app.vault.adapter;
-  const target = backupPathOf();
-  // 取完整目录名（".obsidian/caldav-calendar-tasks"）。不能只取第一段 ——
-  // 那样拿到的是已存在的 ".obsidian"，真正的备份子目录反而建不出来。
+  const target = backupPathOf(app);
+  const expectedDir = backupDirOf(app);
+  // 取完整目录名（"<配置目录>/caldav-calendar-tasks"）。不能只取第一段 ——
+  // 那样拿到的是已存在的配置目录，真正的备份子目录反而建不出来。
   const dir = target.slice(0, target.lastIndexOf("/"));
   const tmp = `${target}.tmp`;
-  // 写之前验证落点。0.4.6 的事故正是「以为写进 .obsidian/、实际落在库根」：
+  // 写之前验证落点。0.4.6 的事故正是「以为写进配置目录、实际落在库根」：
   // adapter 的根是库根，路径少个前缀就静默写到别处，用户全程无感。
   // 验证不过宁可不写 —— 写错位置的备份比没有备份更危险，它会让人以为有保险。
-  if (target !== normalizePath(`${BACKUP_DIR}/${BACKUP_FILE}`) || !target.startsWith(".obsidian/")) {
+  //
+  // ⚠️ 判据要与 backupPathOf/backupDirOf 同源（都用当前 configDir），
+  // 不能一边取动态配置目录、一边拿写死的 ".obsidian/" 来比 ——
+  // 那会让改过配置目录名的用户**永远写不出备份**，且无任何提示。
+  if (target !== normalizePath(`${expectedDir}/${BACKUP_FILE}`) || dir !== expectedDir) {
     return false;
   }
   if (backupAbsPathOf(app) === undefined) {
     // 拿不到绝对路径就无法验证（移动端 adapter 可能不支持）。此时退回按
     // adapter 抽象写，但仍要求上面的相对路径形状正确。
-    if (!dir.startsWith(".obsidian/")) return false;
+    if (!dir.startsWith(`${normalizePath(app?.vault?.configDir || ".obsidian")}/`)) return false;
   }
   try {
     if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
@@ -185,7 +219,7 @@ export async function writeBackup(app: App, payload: BackupPayload): Promise<boo
  */
 export async function readBackup(app: App): Promise<BackupPayload | undefined> {
   const adapter = app.vault.adapter;
-  const target = backupPathOf();
+  const target = backupPathOf(app);
   try {
     if (!(await adapter.exists(target))) return undefined;
     const raw = await adapter.read(target);
@@ -203,7 +237,7 @@ export async function readBackup(app: App): Promise<BackupPayload | undefined> {
 export async function clearBackup(app: App): Promise<void> {
   const adapter = app.vault.adapter;
   try {
-    const target = backupPathOf();
+    const target = backupPathOf(app);
     if (await adapter.exists(target)) await adapter.remove(target);
   } catch {
     // 同 writeBackup：清不掉就算了，它只是不再被读到而已

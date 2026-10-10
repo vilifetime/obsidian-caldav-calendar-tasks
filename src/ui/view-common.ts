@@ -35,6 +35,26 @@ export function keyOfItem(it: CalItem): string {
 }
 
 /**
+ * 按关键词匹配一个条目（标题 / 备注 / 地点 / 分类，大小写与首尾空格都不敏感）。
+ *
+ * 抽到 view-common 是因为它此前住在 panel.ts 里、只服务 Dock 搜索框；
+ * Dock 搜索框移除后那处就成了孤儿，而任务视图的搜索框又需要同一套口径 ——
+ * 两处各写一份必然漂移（一处加了字段另一处没加）。
+ *
+ * 空关键词一律判为命中 —— 调用方不必自己先判空。
+ */
+export function matchesSearchQuery(it: CalItem, q: string): boolean {
+  const s = q.trim().toLowerCase();
+  if (!s) return true;
+  return (
+    (it.summary || "").toLowerCase().includes(s) ||
+    (it.description || "").toLowerCase().includes(s) ||
+    (it.location || "").toLowerCase().includes(s) ||
+    (it.categories || []).some((c) => c.toLowerCase().includes(s))
+  );
+}
+
+/**
  * 月视图专用 chip：两行显示。
  * - 第一行：复选框（待办）+ 标题；标题单行，超出直接裁切（无省略号）。
  * - 第二行：开始/到期时间；全天事件/任务不显示时间行。

@@ -149,22 +149,51 @@ const ok = (m) => console.log("  ✓ " + m);
   );
 }
 
-/* ── 6. 路径必须在 .obsidian/ 内、且在 plugins/ 之外 ──
- * 卸载只删 plugins/<id>/ 一个目录，所以备份放在 .obsidian/ 下才安全。
+/* ── 6. 路径必须在配置目录内、且在 plugins/ 之外 ──
+ * 卸载只删 plugins/<id>/ 一个目录，所以备份放在配置目录下才安全。
  * ⚠️ 原先这条只断言「不在 plugins/ 下」，而 0.4.6 的错误路径
  * （库根下的 caldav-calendar-tasks/）恰好也满足 —— 断言太弱，
- * 等于给 bug 发了通行证。现在把 .obsidian/ 前缀钉死。
+ * 等于给 bug 发了通行证。现在把「配置目录前缀」钉死。
+ *
+ * ⚠️ 但断言里**不能写死 `.obsidian/`**：Obsidian 允许用户在
+ * 「设置 → 通用 → 配置文件文件夹」改名，写死前缀会让改名用户永远写不出备份。
+ * 所以判据必须绑在 `app.vault.configDir` 上（见下面第 6b 组的改名用例）。
  */
 {
-  const p = B.backupPathOf();
-  assert.strictEqual(p, ".obsidian/caldav-calendar-tasks/backup.json", `备份路径应固定为 .obsidian/ 下的固定位置，实际 ${p}`);
+  const app = { vault: { configDir: ".obsidian", adapter: {} } };
+  const p = B.backupPathOf(app);
+  assert.strictEqual(p, ".obsidian/caldav-calendar-tasks/backup.json", `默认配置目录下的备份路径应固定，实际 ${p}`);
   assert.ok(p.startsWith(".obsidian/"),
-    `备份必须落在 .obsidian/ 内 —— vault.adapter 的根是**库根**，少个前缀就写到库根去了（0.4.6 的实际 bug），实际 ${p}`);
+    `备份必须落在配置目录内 —— vault.adapter 的根是**库根**，少个前缀就写到库根去了（0.4.6 的实际 bug），实际 ${p}`);
   assert.ok(!p.startsWith("plugins/") && !p.includes("/plugins/"),
     "备份绝不能落在会被卸载删掉的 plugins/ 下");
   assert.ok(!/^caldav-calendar-tasks\//.test(p),
     `备份不能是库根下的同名目录（那是 0.4.6 写错的位置），实际 ${p}`);
-  ok("备份路径在 .obsidian/ 内且不在 plugins/ 下：" + p);
+  ok("备份路径在配置目录内且不在 plugins/ 下：" + p);
+}
+
+/* ── 6b. 配置目录改名后仍要跟着走（官方 review 提示的真问题）──
+ * 2026-10-09 官方 code review 报「Obsidian 的配置目录不一定是 .obsidian」，
+ * 确实成立：设置里可以改名。原先写死 `.obsidian/` 的后果是
+ * **改名用户永远写不出备份、也读不到，且全程无任何提示** ——
+ * 与 0.4.6 那次「以为存了、其实没存」同一性质，只是更隐蔽。
+ */
+{
+  const app = { vault: { configDir: ".obsidian-work", adapter: {} } };
+  const p = B.backupPathOf(app);
+  assert.strictEqual(p, ".obsidian-work/caldav-calendar-tasks/backup.json",
+    `改名后的配置目录必须被跟进，实际 ${p}`);
+  assert.ok(p.startsWith(".obsidian-work/") && !p.startsWith(".obsidian/"),
+    "备份路径必须跟着 configDir 走，不能仍写死 .obsidian/");
+  assert.strictEqual(B.backupDirOf(app), ".obsidian-work/caldav-calendar-tasks",
+    "子目录路径也要跟着 configDir 走");
+  // 反向：默认库里不能因为兼容兜底而偏移
+  assert.strictEqual(B.backupPathOf({ vault: { configDir: ".obsidian", adapter: {} } }),
+    ".obsidian/caldav-calendar-tasks/backup.json", "默认配置目录不受影响");
+  // configDir 拿不到时兜底 .obsidian（官方 API 是纯 getter，但桩/非官方环境可能没有）
+  assert.strictEqual(B.backupPathOf({ vault: {} }), ".obsidian/caldav-calendar-tasks/backup.json",
+    "拿不到 configDir 时应兜底 .obsidian，而不是抛异常或返回 undefined");
+  ok("备份路径跟随 vault.configDir；configDir 缺失时兜底 .obsidian");
 }
 
 /* ── 7. 描述文案：解析不出时间就用兜底，不露出 Invalid Date ── */
@@ -185,48 +214,56 @@ const ok = (m) => console.log("  ✓ " + m);
 {
   const files = new Map();
   const dirs = new Set();
+  const mkAdapter = (over = {}) => ({
+    exists: async (p) => files.has(p) || dirs.has(p),
+    mkdir: async (p) => { dirs.add(p); },
+    write: async (p, c) => { files.set(p, c); },
+    read: async (p) => files.get(p),
+    remove: async (p) => { files.delete(p); },
+    rename: async (a, b) => { files.set(b, files.get(a)); files.delete(a); },
+    ...over
+  });
+  // ⚠️ 桩里必须给 vault.configDir —— 实现现在从它取路径（官方 review 指出
+  // 不能写死 .obsidian）。这里刻意用**改过名**的目录：一旦实现偷偷写死
+  // `.obsidian/`，这个桩立刻写不进 backupDirOf 约定的目录，测试当场挂 ——
+  // 正是我们要在意的那个回归。
+  const app = {
+    vault: {
+      configDir: ".obsidian-x",
+      // 注意：故意不提供 getFullPath —— 模拟移动端 adapter，验证
+      // backupAbsPathOf 拿不到绝对路径时 writeBackup 仍能按相对路径工作。
+      adapter: mkAdapter()
+    }
+  };
   // 路径一律由 backupPathOf() 派生，**不要在测试里硬写路径字符串**。
   // 0.4.6 的事故正是实现把备份写到库根，而当时的测试把旧路径硬写在桩里，
   // 于是实现和测试一起漂移、谁都没发现 —— 判据必须绑在实现出口上。
-  const TARGET = B.backupPathOf();
+  const CFG = ".obsidian-x";
+  const TARGET = B.backupPathOf(app);
   const TMP = TARGET + ".tmp";
-  const app = {
-    vault: {
-      adapter: {
-        exists: async (p) => files.has(p) || dirs.has(p),
-        mkdir: async (p) => { dirs.add(p); },
-        write: async (p, c) => { files.set(p, c); },
-        read: async (p) => files.get(p),
-        remove: async (p) => { files.delete(p); },
-        rename: async (a, b) => { files.set(b, files.get(a)); files.delete(a); }
-        // 注意：故意不提供 getFullPath —— 模拟移动端 adapter，验证
-        // backupAbsPathOf 拿不到绝对路径时 writeBackup 仍能按相对路径工作。
-      }
-    }
-  };
   (async () => {
-    // ★ 落点断言：必须在 .obsidian/ 内，且不在 plugins/ 下（卸载会删）。
-    assert.ok(TARGET.startsWith(".obsidian/"),
-      `备份必须落在 .obsidian/ 内，实际 ${TARGET}`);
-    assert.ok(!/\/\.obsidian\/plugins\//.test("/" + TARGET),
+    // ★ 落点断言：必须在配置目录内，且不在 plugins/ 下（卸载会删）。
+    assert.strictEqual(TARGET, `${CFG}/caldav-calendar-tasks/backup.json`,
+      `备份路径应落在当前配置目录下，实际 ${TARGET}`);
+    assert.ok(TARGET.startsWith(`${CFG}/`),
+      `备份必须落在配置目录内，实际 ${TARGET}`);
+    assert.ok(!/\/plugins\//.test("/" + TARGET),
       `备份不能写在 plugins/ 下（卸载会被一起删），实际 ${TARGET}`);
-    assert.ok(TARGET === ".obsidian/caldav-calendar-tasks/backup.json",
-      `备份路径应为 .obsidian/caldav-calendar-tasks/backup.json，实际 ${TARGET}`);
-    assert.strictEqual(B.backupPathOf(), TARGET, "backupPathOf 必须是纯函数（多次调用一致）");
-    ok("备份落点在 .obsidian/ 内且不在 plugins/ 下（0.4.6 写错位置的回归防线）");
+    assert.strictEqual(B.backupPathOf(app), TARGET, "backupPathOf 必须是纯函数（多次调用一致）");
+    ok("备份落点在配置目录内且不在 plugins/ 下（0.4.6 写错位置 + 写死 .obsidian 的双重回归防线）");
 
-    // 备份子目录必须被建出来，且不能误建到 .obsidian 根
+    // 备份子目录必须被建出来，且不能误建到配置目录根
     const payload = B.buildBackup({ serverUrl: "https://dav.example.com/", username: "u", password: "enc:v3:CIPHER" }, "KR");
     const wrote = await B.writeBackup(app, payload);
     assert.strictEqual(wrote, true, "写入应成功");
-    assert.ok(dirs.has(".obsidian/caldav-calendar-tasks"),
+    assert.ok(dirs.has(`${CFG}/caldav-calendar-tasks`),
       `应创建备份子目录，实际建了 ${[...dirs].join(", ")}`);
     assert.ok(!files.has(TMP), "临时文件必须已改名掉，不能残留");
     assert.ok(files.has(TARGET), "目标文件应存在");
     // 库根下不能出现同名目录 —— 这正是 0.4.6 实际发生的事
     assert.ok(!dirs.has("caldav-calendar-tasks"),
-      "绝不能在库根下建同名目录（adapter 的根是库根，不是 .obsidian）");
-    ok("写入落在 .obsidian/caldav-calendar-tasks/，库根下无残留目录");
+      "绝不能在库根下建同名目录（adapter 的根是库根，不是配置目录）");
+    ok(`写入落在 ${CFG}/caldav-calendar-tasks/，库根下无残留目录`);
 
     // 空配置不该写（否则会挡住将来真正的备份）
     const emptyWrote = await B.writeBackup(app, B.buildBackup({ serverUrl: "", calendars: [] }, ""));
@@ -257,14 +294,42 @@ const ok = (m) => console.log("  ✓ " + m);
     ok("内容不合法的文件被拒绝（不误认成备份）");
 
     // 读失败（adapter 抛）也不应冒泡
-    const brokenApp = { vault: { adapter: { exists: async () => true, read: async () => { throw new Error("EACCES"); } } } };
+    const brokenApp = { vault: { configDir: CFG, adapter: mkAdapter({ exists: async () => true, read: async () => { throw new Error("EACCES"); } }) } };
     assert.strictEqual(await B.readBackup(brokenApp), undefined, "读失败必须降级为 undefined");
     ok("读取失败降级为 undefined，不影响插件加载");
 
     // 写入失败返回 false（保险失败不能影响正常配置流程）
-    const failApp = { vault: { adapter: { exists: async () => false, mkdir: async () => { throw new Error("EROFS"); }, remove: async () => {} } } };
+    const failApp = { vault: { configDir: CFG, adapter: mkAdapter({ exists: async () => false, mkdir: async () => { throw new Error("EROFS"); } }) } };
     assert.strictEqual(await B.writeBackup(failApp, payload), false, "写入失败应返回 false 而非抛");
     ok("写入失败返回 false（保险失败不拖垮正常流程）");
+
+    // ★ 桌面端分支：有 getFullPath 时，落点校验也必须认自定义配置目录名。
+    // 原实现用 /\/\.obsidian\// 判，改名用户会被判为「落点可疑」→ 拒写备份。
+    const absApp = {
+      vault: {
+        configDir: CFG,
+        adapter: mkAdapter({
+          getFullPath: (p) => `D:/vault/${p}`
+        })
+      }
+    };
+    assert.strictEqual(B.backupAbsPathOf(absApp), `D:/vault/${CFG}/caldav-calendar-tasks/backup.json`,
+      "getFullPath 应拼在当前配置目录下");
+    assert.strictEqual(await B.writeBackup(absApp, payload), true,
+      "改名用户（且适配器支持 getFullPath）必须能写出备份，不能被落点校验误拒");
+    assert.ok(dirs.has(`${CFG}/caldav-calendar-tasks`), "改名用户应把备份写进自己的配置目录");
+    ok("桌面端落点校验跟随 configDir（改名用户不再被误拒写）");
+
+    // 但插件目录下的路径仍必须被拒（卸载会删）—— 这是不能放松的安全约束
+    const pluginsApp = {
+      vault: {
+        configDir: CFG,
+        adapter: mkAdapter({ getFullPath: () => `D:/vault/${CFG}/plugins/caldav-calendar-tasks/backup.json` })
+      }
+    };
+    assert.strictEqual(B.backupAbsPathOf(pluginsApp), undefined,
+      "落在 plugins/ 下的备份必须被拒（卸载会被一起删）");
+    ok("plugins/ 下的落点仍被拒（安全约束不因 configDir 化而放松）");
 
     // clearBackup
     files.set(TARGET, "{}");
@@ -288,6 +353,31 @@ const ok = (m) => console.log("  ✓ " + m);
 {
   const main = read("src/main.ts");
   const store = read("src/core/store.ts");
+  const backup = read("src/core/config-backup.ts");
+  // 剥注释后再扫：注释里留反例说明（"不能写死 .obsidian"）是有价值的，
+  // 断言该守的是**代码引用**，不是文档措辞。
+  const backupCode = backup
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .map((l) => l.replace(/\/\/.*$/, ""))
+    .join("\n");
+
+  /* ★ 0.4.8 修的：配置目录名写死。官方 review 提醒「Obsidian 的配置目录
+   * 不一定是 .obsidian，用户可改」，确实成立 —— 写死会让改名用户
+   * 永远写不出备份、也读不到，且全程无提示（与 0.4.6 那次事故同性质）。
+   * 官方 API 是 app.vault.configDir。 */
+  assert.ok(/app\??\.vault\??\.configDir/.test(backupCode),
+    "config-backup.ts 必须读 app.vault.configDir 决定配置目录名，不能写死 .obsidian");
+  assert.ok(!/startsWith\(\s*["']\.obsidian\//.test(backupCode),
+    "不许用硬编码的 \".obsidian/\" 前缀做落点校验（改名用户会被误拒写）");
+  assert.ok(!/\/\\\.obsidian\\\//.test(backupCode),
+    "不许用写死 .obsidian 的正则校验绝对路径（改名用户会被判为落点可疑）");
+  // 但 plugins/ 这条安全约束必须还在（卸载会删），不能被 configDir 化顺手删掉
+  assert.ok(/plugins\//.test(backupCode),
+    "仍必须保留「不在 plugins/ 下」的校验（卸载会删掉那个目录）");
+  // configDir 缺失时兜底，而不是抛异常
+  assert.ok(/\|\|\s*["']\.obsidian["']/.test(backupCode),
+    "configDir 拿不到时应兜底 .obsidian，不该抛异常或返回 undefined");
 
   // onload 里必须先取原始数据再判新装（loadData 只能调一次）
   assert.ok(/const rawLoaded = \(await this\.loadData\(\)\)/.test(main),
@@ -385,9 +475,14 @@ const ok = (m) => console.log("  ✓ " + m);
   const wb = cb.slice(cb.indexOf("export async function writeBackup"));
   assert.ok(/isBackupUseful\(payload\)/.test(wb.slice(0, wb.indexOf("\n}"))),
     "writeBackup 必须先判 isBackupUseful（空配置不写，否则挡住真备份的恢复）");
-  // 路径形状自检必须留在写之前（0.4.6 静默写到库根的根因就是少了 .obsidian/ 前缀）
-  assert.ok(/startsWith\("\.obsidian\/"\)/.test(wb.slice(0, wb.indexOf("\n  try"))),
-    "writeBackup 必须在写之前校验路径落在 .obsidian/ 内（0.4.6 写错位置的防线）");
+  // 路径形状自检必须留在写之前（0.4.6 静默写到库根的根因就是少了配置目录前缀）。
+  // ⚠️ 判据从 `startsWith(".obsidian/")` 换成「与 backupDirOf 同源比对」——
+  // 写死的前缀对改名用户是错的判据（见第 6b 组）。防线本身不能删。
+  const wbPreTry = wb.slice(0, wb.indexOf("\n  try"));
+  assert.ok(/target !== normalizePath/.test(wbPreTry) && /dir !== expectedDir/.test(wbPreTry),
+    "writeBackup 必须在写之前校验路径与 backupDirOf 同源（0.4.6 写错位置的防线）");
+  assert.ok(wbPreTry.indexOf("backupDirOf(app)") < wbPreTry.indexOf("backupAbsPathOf(app)"),
+    "落点校验必须在真正的写入（try 块）之前，且先比对相对路径再取绝对路径");
 
   console.log("  ✓ 接线和安全约束的源码级断言通过");
 }

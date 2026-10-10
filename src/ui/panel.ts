@@ -1004,14 +1004,10 @@ export function renderDockPanel(
       </div>
     </div>
   </div>
-  <div class="caldav-dock-search-wrap">
-    <span class="caldav-dock-search-icon">${icons.search}</span>
-    <input class="caldav-dock-search" data-dock="search" placeholder="${t("dock.searchPlaceholder")}" />
-  </div>
 </div>
 <div class="caldav-dock-list">
-  <div class="caldav-dock-items" data-dock="items"></div>
-</div>`
+    <div class="caldav-dock-items" data-dock="items"></div>
+  </div>`
   );
 
   const listEl = root.querySelector("[data-dock='items']") as HTMLElement;
@@ -1089,7 +1085,6 @@ export function renderDockPanel(
    */
 
   let dockFilter: DockFilter = "next7";
-  let dockSearch = "";
   let dockCategoryFilter: string[] = []; // 空 = 所有分类；"__none__" = 无分类
   /**
    * 聚焦锚点日期（"YYYY-MM-DD"）与聚焦粒度。非空时**优先于** dockFilter：
@@ -1231,17 +1226,6 @@ export function renderDockPanel(
       default:
         return true;
     }
-  }
-
-  function matchesDockSearch(it: CalItem, q: string): boolean {
-    if (!q.trim()) return true;
-    const s = q.trim().toLowerCase();
-    return (
-      it.summary.toLowerCase().includes(s) ||
-      (it.description || "").toLowerCase().includes(s) ||
-      (it.location || "").toLowerCase().includes(s) ||
-      (it.categories || []).some((c) => c.toLowerCase().includes(s))
-    );
   }
 
   function matchesDockCategoryFilter(it: CalItem, filter: string[]): boolean {
@@ -1452,15 +1436,13 @@ export function renderDockPanel(
    */
   function hiddenNodateCount(): number {
     if (dockFilter === "nodate" || dockFilter === "undone" || dockFilter.startsWith("done")) return 0;
-    const q = dockSearch.toLowerCase().trim();
     return opts.store
       .getAll()
       .filter((it) => it.kind === "todo" && !it.deleted && it.percent !== 100)
       .filter((it) => isEnabledCalendar(it))
       .filter((it) => !dateKeyOf(it))
       .filter((it) => matchesDockCategoryFilter(it, dockCategoryFilter))
-      .filter((it) => matchesDockPriorityFilter(it, dockPriorityFilter))
-      .filter((it) => matchesDockSearch(it, q)).length;
+      .filter((it) => matchesDockPriorityFilter(it, dockPriorityFilter)).length;
   }
 
   /**
@@ -1599,14 +1581,12 @@ export function renderDockPanel(
       renderItemDetail();
       return;
     }
-    const q = dockSearch.toLowerCase().trim();
     const items = opts.store
       .getAll()
       // 聚焦（日 / 月 / 周）优先：它来自主面板的单击或双击，比预设筛选更具体
       .filter((it) => (focusDate ? matchesFocus(it) : matchesDockFilter(it, dockFilter)))
       .filter((it) => matchesDockCategoryFilter(it, dockCategoryFilter))
       .filter((it) => matchesDockPriorityFilter(it, dockPriorityFilter))
-      .filter((it) => matchesDockSearch(it, q))
       .sort(dockSort)
       .slice(0, 50);
 
@@ -1901,15 +1881,7 @@ export function renderDockPanel(
   document.addEventListener(DOCK_EXIT_DETAIL_EVENT, onExitDetail);
 
   // 筛选下拉已改为自定义控件（原生 <select> 的 change 监听随之移除）
-
-  const onRootInput = (ev: Event) => {
-    const target = ev.target as HTMLElement;
-    if (target.dataset.dock === "search") {
-      dockSearch = (target as HTMLInputElement).value;
-      renderDockList();
-    }
-  };
-  root.addEventListener("input", onRootInput);
+  // Dock 搜索框已于 2026-10-09 移除（雄哥要求），原先唯一的 input 监听随之删除。
 
   const onDocClick = (ev: MouseEvent) => {
     const t = ev.target as HTMLElement;
@@ -1964,7 +1936,6 @@ export function renderDockPanel(
       // 先摘掉挂在容器自身上的监听：容器可能被复用（移动端 Dock），
       // 漏掉就会叠加处理器，一次点击触发多次（见 onRootClick 处说明）。
       root.removeEventListener("click", onRootClick);
-      root.removeEventListener("input", onRootInput);
       document.removeEventListener("click", onDocClick, true);
       document.removeEventListener(FOCUS_DATE_EVENT, onFocusDate);
       document.removeEventListener(VIEW_CHANGE_EVENT, onViewChange);

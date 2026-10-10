@@ -82,13 +82,39 @@ implementations.
 - **Open calendar and tasks in the right sidebar** — the same full panel, docked to the right.
 - **Open calendar and tasks manager (right sidebar)** — a compact list for keeping the sidebar
   open full time.
-- **Click** a day cell to list that day in the sidebar. **Click** an item to see its details.
-  **Double-click** an item to edit it. When the sidebar is closed, clicking an item does
-  nothing — open it first.
+- Mouse actions on day cells and items — see [Mouse actions](#mouse-actions) below.
 - **Sync CalDAV now**, **New task**, **New event**, **Insert events and tasks into daily
   note**, and **Send a test reminder** are all available from the command palette.
 - The status bar shows `CalDAV` in the bottom right, and changes appearance while syncing and
   when a sync fails.
+
+#### Mouse actions
+
+What each mouse gesture does depends on what is already on screen — in particular whether the
+sidebar is open and which day, if any, is focused.
+
+| Mouse action | Current state | Result |
+| --- | --- | --- |
+| Click a day cell | that day is not focused | Focus that day (its border darkens) and list that day in the sidebar. The sidebar is left open or closed as it was |
+| Click a day cell | that day is already focused | Clear the focus and restore what the sidebar was showing before. The sidebar is left open or closed as it was |
+| Right-click a day cell | sidebar hidden | Open the sidebar and switch it to **All unfinished** |
+| Right-click a day cell | sidebar open, showing **All unfinished** | Switch to the list for the month containing that date (in month view) or the week containing it (in week view) — the sidebar dropdown shows that date's month. The sidebar stays open |
+| Right-click a day cell | sidebar open, showing that month or week, or the day view is showing | Hide the sidebar |
+| Right-click an item | sidebar hidden | Open the sidebar with that item's full details |
+| Right-click an item | sidebar open | Hide the sidebar |
+| Click an item | that item is not focused | Show that item's full details. The sidebar is left open or closed as it was |
+| Click an item | that item is already focused | Restore what the sidebar was showing before. The sidebar is left open or closed as it was |
+| Double-click an item | — | Open the editor for that item |
+| Double-click a day cell | — | Open the new-item menu |
+
+Two things worth knowing:
+
+- Right-clicking a day cell **cycles the sidebar through three states** — open it at
+  "All unfinished", then widen it to that date's month (month view) or week (week view), then
+  hide it. In the day view the cycle has no middle step, so it goes straight from open to
+  hidden.
+- On touch devices, **long-pressing an item is the same as right-clicking it**. Day cells have
+  no long-press gesture; use **New task / New event** from the command palette instead.
 
 ### Privacy and network use
 
@@ -225,10 +251,33 @@ bundled: `scripts/deploy.mjs` copies `src/styles.css` to `styles.css` directly.
 - **打开日历与任务**：面板出现在主工作区中央。
 - **在右侧栏打开日历与任务**：同一个完整面板，停在右侧栏。
 - **打开日历任务管理（右侧栏）**：精简清单，适合常驻右侧栏。
-- **单击**日期格 → 在右侧栏列出该天的清单；**单击**条目 → 显示详情；**双击**条目 → 进入编辑。
-  侧栏关闭时单击条目无反应，需先打开侧栏。
+- 日期格与条目上的鼠标动作见下方[鼠标操作](#鼠标操作)。
 - **立即同步**、**新建待办**、**新建日程**、**把今日日程与待办插入日记** 等命令均可在命令面板找到。
 - 状态栏右下角显示 `CalDAV` 字样，同步中与失败会切换显示。
+
+#### 鼠标操作
+
+同一手势做什么，取决于当前屏幕上是什么状态 —— 尤其是右侧栏是否打开、以及当前有没有聚焦某一天。
+
+| 鼠标动作 | 当前状态 | 执行操作 |
+| --- | --- | --- |
+| 单击单元格 | 未聚焦该日 | 聚焦该日（并加深单元格边框），右侧栏显示该日清单，不改变右侧栏打开或隐藏状态 |
+| 单击单元格 | 已聚焦该日 | 取消聚焦该日，右侧栏恢复之前显示内容，不改变右侧栏打开或关闭状态 |
+| 右击单元格 | 右侧栏隐藏 | 打开右侧栏 + 切到「所有未完成」 |
+| 右击单元格 | 右侧栏已打开，且清单为「所有未完成」 | 切到「单元格日期所在月（月视图时）/ 周（周视图时）」清单（右侧栏下拉菜单内显示该日期所在月），不隐藏右侧栏 |
+| 右击单元格 | 右侧栏已打开，且清单为「单元格日期所在月/周」或者当前为日视图 | 隐藏右侧栏 |
+| 右击条目 | 右侧栏隐藏 | 打开右侧栏，显示该条目的所有详细信息 |
+| 右击条目 | 右侧栏已打开 | 隐藏右侧栏 |
+| 单击条目 | 未聚焦该条目 | 显示该条目的所有详细信息，不改变右侧栏打开或隐藏状态 |
+| 单击条目 | 已聚焦该条目 | 右侧栏恢复之前显示内容，不改变右侧栏打开或关闭状态 |
+| 双击条目 | — | 弹出编辑界面 |
+| 双击单元格 | — | 弹出新建菜单 |
+
+两点补充：
+
+- 右击单元格是**右侧栏的三态循环** —— 先打开到「所有未完成」，再展开到该日期所在月（月视图）/ 周（周视图），
+  再隐藏。日视图没有中间这一档，于是直接从打开跳到隐藏。
+- 触摸端**长按条目等同于右击条目**。日期格没有长按手势，需要新建请用命令面板里的「新建待办 / 新建日程」。
 
 ### 隐私与网络使用
 

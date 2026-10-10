@@ -31,3 +31,4 @@ _*.json
 _*.cjs
 _*.js
 _*.html
+.test-task-search/
