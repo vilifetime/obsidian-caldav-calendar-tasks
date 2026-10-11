@@ -215,6 +215,49 @@ const fail = (m) => {
   } else {
     pass(`引用计数边界自测通过（${USE_CASES.length} 个用例，含展开运算符写法）`);
   }
+
+  // ④ `as Partial<T>` 判据必须只命中「动态 key」场景（2026-10-11）
+  //
+  // 背景：check-report 的这一项原来只匹配 `as Partial<T>` 一个形状，
+  // 把**必要的 unknown 收窄**也报了出来 ——
+  // config-backup.ts 的 `isBackupPayload(v: unknown)` 里那句
+  // `v as Partial<BackupPayload>` 删掉就会 tsc 报错（unknown 上取不到任何属性）。
+  // 社区的 no-unnecessary-type-assertion 明确**不报**这种（它改变类型）。
+  // 判据收窄成只匹配索引访问后的断言，就是审核措辞里点名的「动态 key 场景」。
+  //
+  // 这组自测的作用是：判据再改窄或改宽时，这里会立刻failure，
+  // 而不是等到审核又返回一条才发现。
+  const PARTIAL_RE = /\[\s*[\w"'[\].]+\s*\][!?]?\s*as\s+Partial<\w+>/;
+  const PARTIAL_CASES = [
+    // 应命中：索引访问后断言成 Partial —— 索引结果本就是 T | undefined，断言多余
+    { code: "const x = cfg[key] as Partial<Settings>;", want: true },
+    { code: 'const v = obj["a"] as Partial<Cal>;', want: true },
+    { code: 'const y = a.b["k"] as Partial<X>;', want: true },
+    { code: "const z = arr[i] as Partial<Item>;", want: true },
+    { code: "const w = cfg[key]! as Partial<Y>;", want: true },
+    { code: 'const q = cfg["k"]? as Partial<Z>;', want: true },
+    // 应豁免：变量收窄（非索引），unknown→Partial 是必要的类型收窄
+    { code: "const o = v as Partial<BackupPayload>;", want: false },
+    { code: "const o = value as Partial<Foo>;", want: false },
+    { code: "const p = a as Partial<B>;", want: false },
+    // 应豁免：索引后断言成非 Partial 类型（不在本检查范围）
+    { code: "const x = cfg[key] as Settings;", want: false },
+    // 应豁免：类型谓词位置，不是表达式断言
+    { code: "function f(v: unknown): v is Partial<T> { return true; }", want: false },
+    // 应豁免：回调形参上的收窄
+    { code: "foo.map((m) => m as Partial<Item>);", want: false },
+  ];
+  const partialWrong = PARTIAL_CASES.filter((c) => PARTIAL_RE.test(c.code) !== c.want);
+  if (partialWrong.length) {
+    fail(
+      "as Partial<T> 判据失效: " +
+        partialWrong.map((c) => `${JSON.stringify(c.code)} 判定为 ${PARTIAL_RE.test(c.code)}，期望 ${c.want}`).join(" | ")
+    );
+  } else {
+    const hitN = PARTIAL_CASES.filter((c) => c.want).length;
+    const missN = PARTIAL_CASES.length - hitN;
+    pass(`as Partial<T> 判据自测通过（${hitN} 个命中用例 + ${missN} 个豁免用例）`);
+  }
 }
 
 console.log(

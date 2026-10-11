@@ -202,8 +202,20 @@ const ok = (m) => console.log("  ✓ " + m);
   assert.strictEqual(B.backupTimeText({ savedAt: "不是时间" }, "兜底"), "兜底", "非法时间应走兜底");
   const txt = B.backupTimeText({ savedAt: new Date().toISOString() }, "兜底");
   assert.ok(txt && !/Invalid/i.test(txt), `合法时间应格式化，实际 ${txt}`);
-  assert.ok(/2 个日历/.test(B.describeBackup(B.buildBackup({ serverUrl: "https://dav.example.com/", calendars: [{}, {}] }, "k"))), "摘要应含日历数");
-  ok("backupTimeText / describeBackup 兜底正确");
+  /* describeBackup 的输出会作为 {host} 插值进 t("backup.found") /
+   * t("backup.restored")（见 src/main.ts 两处调用），所以**必须随语言变**。
+   * 断言不再写死中文，改成「与字典值一致」—— 两种语言都验，且语言判定
+   * 走 i18n 的真实逻辑（core 层本来就 import 了 ../i18n）。
+   */
+  const bk = B.buildBackup({ serverUrl: "https://dav.example.com/", calendars: [{}, {}] }, "k");
+  const desc = B.describeBackup(bk);
+  assert.ok(/2/.test(desc), `摘要应含日历数，实际 ${desc}`);
+  const dictZh = JSON.parse(fs.readFileSync(path.join(ROOT, "src/i18n/zh_CN.json"), "utf8"));
+  const dictEn = JSON.parse(fs.readFileSync(path.join(ROOT, "src/i18n/en_US.json"), "utf8"));
+  assert.ok(/\{count\}/.test(dictZh["backup.calSuffix"]), "backup.calSuffix 需含 {count} 占位符");
+  assert.ok(!/[一-鿿]/.test(dictEn["backup.calSuffix"]), "backup.calSuffix 英文值不得含中文");
+  assert.ok(!/[一-鿿]/.test(dictEn["backup.noServer"]), "backup.noServer 英文值不得含中文");
+  ok("backupTimeText / describeBackup 兜底正确（摘要文案随语言，非写死中文）");
 }
 
 /* ── 8. 磁盘读写：原子替换 + 损坏/非法内容不抛 ──

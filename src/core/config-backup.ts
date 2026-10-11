@@ -45,6 +45,7 @@
 import { normalizePath, type App } from "obsidian";
 import { DEFAULT_SETTINGS, type CalSettings } from "./types";
 import { isEncrypted } from "./secret";
+import { t } from "../i18n";
 
 /**
  * 备份文件在**库根下的相对路径**。
@@ -297,12 +298,16 @@ export function isBackupUseful(b: BackupPayload): boolean {
 /**
  * 人类可读的一行摘要，给恢复提示用。
  * 例如「Bonebear 的 CalDAV（2 个日历）」。
+ *
+ * ⚠️ 这段文案会作为 `{host}` 插值进 `t("backup.found")` / `t("backup.restored")`
+ * （见 src/main.ts 两处调用），所以**必须走 t()**，不能硬编码中文 ——
+ * 否则英文界面下重装恢复提示会露出「（未设置服务器）· N 个日历」。
  */
 export function describeBackup(b: BackupPayload): string {
   const n = (b.settings?.calendars || []).length;
   const host = safeHost(b.settings?.serverUrl || "");
-  const cals = n ? ` · ${n} 个日历` : "";
-  return `${host || "（未设置服务器）"}${cals}`;
+  const cals = n ? ` ${t("backup.calSuffix", { count: String(n) })}` : "";
+  return `${host || t("backup.noServer")}${cals}`;
 }
 
 function safeHost(url: string): string {

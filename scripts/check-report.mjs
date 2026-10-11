@@ -135,7 +135,17 @@ const checks = {
   // 2026-10-06 第五轮：as 断言类。社区扫描的 no-unnecessary-type-assertion
   // 只报「不改变类型」的那类（如 `(x as T) as T`、动态 key 处的 `as Partial<T>`），
   // **不报**非空断言 `!` —— 故未列入本检查。
-  "as Partial<T>（动态 key 场景，通常多余）": [/as Partial<\w+>/],
+  //
+  // ⚠️ 2026-10-11 判据收窄：原来只匹配 `as Partial<T>` 这一个形状，
+  // 把**必要的类型收窄**也一起报了出来 —— config-backup.ts 的
+  // `isBackupPayload(v: unknown)` 里那句 `v as Partial<BackupPayload>`
+  // 是把 unknown 收到具体形状，删掉它 tsc 立刻报错（v 上取不到任何属性），
+  // 属社区规则明确**不报**的那一类（它改变类型，不是 no-unnecessary）。
+  //
+  // 现在只匹配审核措辞里点名的**动态 key 场景**：索引访问的结果断言成
+  // Partial<T> —— 那里索引的结果类型本就是 T | undefined，断言在「不改变类型」，
+  // 正是审核会报的多余写法。变量收窄（`o as Partial<T>`）不再命中。
+  "as Partial<T>（动态 key 场景，多余）": [/\[\s*[\w"'[\].]+\s*\][!?]?\s*as\s+Partial<\w+>/],
   "同一表达式上重复的 as": [/\)\s*as\s+\w+[\s\S]{0,4}\bas\s+\w+/],
   // 🔴 2026-10-06 真实故障（两次，同一根因）：
   // 声明式回调收到的是**已建好的 Setting 对象**，

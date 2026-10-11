@@ -411,6 +411,8 @@
   "backup.skip": "重新配置",
   "backup.restored": "已恢复配置：{host}",
   "backup.skipped": "已丢弃旧配置备份，可重新填写",
+  "backup.noServer": "（未设置服务器）",
+  "backup.calSuffix": "· {count} 个日历",
 
   "net.timeout": "请求超时",
   "net.auth401": "认证失败（401）：用户名或密码错误",

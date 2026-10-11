@@ -411,6 +411,8 @@
   "backup.skip": "Set up again",
   "backup.restored": "Settings restored: {host}",
   "backup.skipped": "Old settings backup discarded — fill them in again",
+  "backup.noServer": "(no server set)",
+  "backup.calSuffix": "· {count} calendars",
 
   "net.timeout": "The request timed out",
   "net.auth401": "Authentication failed (401): wrong username or password",
