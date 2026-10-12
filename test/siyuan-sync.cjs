@@ -246,6 +246,38 @@ for (const c of STRIP_CASES) {
   );
 }
 
+console.log("\n⑥ 图标尺寸（2026-10-12 雄哥要求放大）");
+// 截图反馈：粘贴识别日期的 sparkle、清除日期/时间的垃圾桶都太小。
+// 这两个是「功能入口但长得像装饰」的典型 —— 图标一小，用户根本发现不了能点。
+// 判据同时钉住 Ob 与思源两侧，避免只改一边导致两个项目不一致。
+const cssSize = (text, sel) => {
+  const m = new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\{[^}]*?width:\\s*(\\d+)px").exec(text);
+  return m ? +m[1] : null;
+};
+const siyuanCss = fs.existsSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "index.css"))
+  ? fs.readFileSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "index.css"), "utf8")
+  : null;
+check(
+  "Ob：sparkle 图标 ≥ 20px（原 17px）",
+  (cssSize(css, ".caldav-title-action svg") || 0) >= 20,
+  "当前 " + cssSize(css, ".caldav-title-action svg") + "px"
+);
+check(
+  "Ob：清除按钮图标 ≥ 18px（原 14px）",
+  (cssSize(css, ".caldav-input-clear svg") || 0) >= 18,
+  "当前 " + cssSize(css, ".caldav-input-clear svg") + "px"
+);
+if (siyuanCss) {
+  check(
+    "思源侧同步：sparkle ≥ 20px 且清除 ≥ 18px",
+    (cssSize(siyuanCss, ".caldav-title-action svg") || 0) >= 20 &&
+      (cssSize(siyuanCss, ".caldav-input-clear svg") || 0) >= 18,
+    "两侧必须一致，否则同一功能在两个项目里大小不同"
+  );
+} else {
+  console.log("  [SKIP] 思源侧源码不在预期路径，跳过跨项目一致性断言");
+}
+
 console.log(
   failed === 0 ? "\n✓ 思源侧同步回归测试通过" : `\n✗ ${failed} 个用例失败`
 );
