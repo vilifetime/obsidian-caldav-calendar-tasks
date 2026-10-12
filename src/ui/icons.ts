@@ -1,13 +1,23 @@
 /** 内联 SVG 图标（思源风格描边图标，currentColor）
  *
- * ⚠️ 宿主坑：思源 base.css 存在全局规则 `svg { fill: currentColor }`。
+ * ⚠️ 宿主坑 1：思源 base.css 存在全局规则 `svg { fill: currentColor }`。
  * presentation 属性 `fill="none"` 优先级低于 CSS，会被覆盖 —— 于是 rect/圆/闭合 path
  * 全被填成实心黑块，只有 line/polyline 不受影响。
  * 解法：用**内联 style** 强制 `fill:none`（内联样式 > element 选择器）。
  * stroke 仍保留为属性，便于各处 CSS 定制颜色（如 .is-open svg { stroke:#fff }）。
+ *
+ * ⚠️ 宿主坑 2（2026-10-13）：**不要在 svg 上写 width/height 属性**。
+ * 原先写了 `width="14" height="14"` 作为兜底，结果 Obsidian 宿主自己的全局
+ * `svg` 规则特异性高于插件的 `.xxx svg { width: 20px }`，14 赢、CSS 输 ——
+ * 表现是「CSS 里明明放了，界面上的图标还是 14px」。思源侧不犯是因为它的
+ * base.css 没有同类规则，同一个文件两边行为不同，极难对照。
+ *
+ * 尺寸一律交给 CSS 决定（各处 `.caldav-xxx svg { width: Npx }`），
+ * 这样改一个数字就够、且两边行为一致。完全没有 CSS 规则时浏览器按
+ * viewBox 兜到 300×150，那种情况本项目不存在（每个图标都有配套规则）。
  */
 function svg(path: string, viewBox = "0 0 24 24", strokeWidth = 2): string {
-  return `<svg viewBox="${viewBox}" width="14" height="14" fill="none" stroke="currentColor" style="fill:none;stroke-width:${strokeWidth};stroke-linecap:round;stroke-linejoin:round">${path}</svg>`;
+  return `<svg viewBox="${viewBox}" fill="none" stroke="currentColor" style="fill:none;stroke-width:${strokeWidth};stroke-linecap:round;stroke-linejoin:round">${path}</svg>`;
 }
 
 export const icons = {

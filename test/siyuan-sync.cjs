@@ -258,25 +258,84 @@ const siyuanCss = fs.existsSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "in
   ? fs.readFileSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "index.css"), "utf8")
   : null;
 check(
-  "Ob：sparkle 图标 ≥ 20px（原 17px）",
-  (cssSize(css, ".caldav-title-action svg") || 0) >= 20,
+  "Ob：sparkle 图标 ≥ 26px（原 17px，雄哥两次反馈后定）",
+  (cssSize(css, ".caldav-title-action svg") || 0) >= 26,
   "当前 " + cssSize(css, ".caldav-title-action svg") + "px"
 );
 check(
-  "Ob：清除按钮图标 ≥ 18px（原 14px）",
-  (cssSize(css, ".caldav-input-clear svg") || 0) >= 18,
+  "Ob：清除按钮图标 ≥ 24px（原 14px）",
+  (cssSize(css, ".caldav-input-clear svg") || 0) >= 24,
   "当前 " + cssSize(css, ".caldav-input-clear svg") + "px"
 );
+check(
+  "Ob：两个按钮本身也放大了（图标大但按钮小会顶到边框）",
+  (cssSize(css, ".caldav-title-action") || 0) >= 36 &&
+    (cssSize(css, ".caldav-input-clear") || 0) >= 30,
+  "按钮 " + cssSize(css, ".caldav-title-action") + " / " + cssSize(css, ".caldav-input-clear") + "px"
+);
 if (siyuanCss) {
+  // ⚠️ 这里**不要求思源与 Ob 同尺寸**：Obsidian 放大是因为宿主有 svg 属性坑 +
+  //    雄哥两次反馈；思源侧 base.css 没有那个坑、也没人反馈它小，
+  //    强行拉平会让思源界面无缘无故变样。只要求思源的 svg 也没有 width/height 属性
+  //    （它同样受 icons.ts 管，若哪天思源也遇到宿主坑，改法一致）。
   check(
-    "思源侧同步：sparkle ≥ 20px 且清除 ≥ 18px",
-    (cssSize(siyuanCss, ".caldav-title-action svg") || 0) >= 20 &&
-      (cssSize(siyuanCss, ".caldav-input-clear svg") || 0) >= 18,
-    "两侧必须一致，否则同一功能在两个项目里大小不同"
+    "思源侧 icons.ts 同样不带 svg 尺寸属性（改法一致，便于对照）",
+    (() => {
+      const syIcons = path.join(ROOT, "..", "SiYuanCalDAV", "src", "ui", "icons.ts");
+      if (!fs.existsSync(syIcons)) return true;
+      return !/<svg[^>]*\swidth=/.test(fs.readFileSync(syIcons, "utf8"));
+    })(),
+    "思源 icons.ts 仍带 width/height 属性"
   );
 } else {
   console.log("  [SKIP] 思源侧源码不在预期路径，跳过跨项目一致性断言");
 }
+
+console.log("\n⑦ svg 不得带 width/height 属性（Obsidian 宿主坑）");
+// 2026-10-13：雄哥两次反馈「图标框内的图形小」，而 CSS 里明明写了 20px。
+// 根因是 icons.ts 的 svg() 工厂函数在每个 <svg> 上写了 width="14" height="14"，
+// 而 Obsidian 宿主自己的全局 svg 规则特异性高于插件的 `.xxx svg { width: 20px }`
+// —— 于是 HTML 属性尺寸赢、CSS 输。思源侧不犯（它的 base.css 没有同类规则），
+// 同一个文件两边行为不同，极难对照。
+//
+// 判据：产物与源码里的 <svg> 都不得出现 width= / height= 属性。
+// 这条是**根因级**断言：只断言 CSS 尺寸数字，挡不住属性把 CSS 盖掉这种情况。
+const iconsSrc = read("ui/icons.ts");
+check(
+  "icons.ts 的 svg() 不再输出 width/height 属性",
+  /<svg viewBox="\$\{viewBox\}" fill="none"/.test(iconsSrc),
+  "svg() 模板串里若还有 width=\"14\" height=\"14\"，宿主的全局规则会盖过各处 CSS"
+);
+check(
+  "icons.ts 的 <svg> 标签上没有 width=/height= 属性",
+  !/<svg[^>]*\swidth=/.test(iconsSrc) && !/<svg[^>]*\sheight=/.test(iconsSrc),
+  "只查 <svg> 标签本身 —— 图形内部的 <rect width=\"17\"> 是合法属性，不能一起禁"
+);
+// 上面那条判据的自测：曾把范围写宽成「源码里任何 width=\"N\"」，
+// 结果把 <rect width="17"> 这类**图形内部属性**也判成违规（FAIL 了一次）。
+// 收窄后必须验证它仍能抓住真正的违规写法。
+const SVG_ATTR_RE = /<svg[^>]*\swidth=/;
+const SVG_CASES = [
+  { code: '<svg viewBox="0 0 24 24" width="14" height="14">', want: true, why: "旧写法，属性在后" },
+  { code: '<svg width="14" viewBox="0 0 24 24">', want: true, why: "属性在前也要命中" },
+  { code: '<svg viewBox="0 0 24 24" fill="none">', want: false, why: "新写法" },
+  { code: '<rect x="3" y="4" width="17" height="16" rx="3"/>', want: false, why: "图形内部属性" },
+  { code: '<circle cx="12" cy="12" r="3"/>', want: false, why: "无 width" },
+];
+const svgWrong = SVG_CASES.filter((c) => SVG_ATTR_RE.test(c.code) !== c.want);
+check(
+  "svg 属性判据自测通过（" + SVG_CASES.length + " 个用例）",
+  svgWrong.length === 0,
+  svgWrong.map((c) => c.why + " 判定为 " + SVG_ATTR_RE.test(c.code) + "，期望 " + c.want).join(" | ")
+);
+check(
+  "四个新增兜底尺寸规则齐备（去属性后不能有图标没尺寸）",
+  /\.caldav-btn svg \{ width:/.test(css) &&
+    /\.caldav-cat-manage svg \{ width:/.test(css) &&
+    /\.caldav-catmgr-btn svg \{ width:/.test(css) &&
+    /\.caldav-reminder-x svg \{ width:/.test(css),
+  "去掉属性后，原先靠属性兜底的容器必须补 CSS 尺寸"
+);
 
 console.log(
   failed === 0 ? "\n✓ 思源侧同步回归测试通过" : `\n✗ ${failed} 个用例失败`

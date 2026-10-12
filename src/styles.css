@@ -242,6 +242,11 @@
   transition: all 0.15s;
 }
 
+/* 图标尺寸必须显式写：icons.ts 的 svg() 不再带 width/height 属性
+ * （Obsidian 宿主的全局 svg 规则会盖过插件的规则，见 icons.ts 注释），
+ * 故每个用法都要有自己的尺寸兜底。 */
+.caldav-btn svg { width: 14px; height: 14px; }
+
 .caldav-btn:hover {
   border-color: var(--caldav-accent);
   color: var(--caldav-accent);
@@ -1610,6 +1615,8 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   transition: background 0.15s, border-color 0.15s;
 }
 .caldav-cat-manage:hover { border-color: color-mix(in srgb, var(--ed-accent) 50%, var(--ed-border)); background: color-mix(in srgb, var(--ed-accent) 8%, var(--ed-card)); }
+/* 图标尺寸显式兜底：icons.ts 的 svg() 不再带 width/height 属性 */
+.caldav-cat-manage svg { width: 13px; height: 13px; }
 .caldav-cat-multi {
   margin-left: auto;
   display: inline-flex;
@@ -1771,6 +1778,8 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 }
 .caldav-catmgr-btn:hover { color: var(--ed-accent); border-color: color-mix(in srgb, var(--ed-accent) 50%, var(--ed-border)); }
 .caldav-catmgr-btn:disabled { opacity: 0.35; cursor: default; }
+/* 图标尺寸显式兜底：icons.ts 的 svg() 不再带 width/height 属性 */
+.caldav-catmgr-btn svg { width: 14px; height: 14px; }
 .caldav-catmgr-arrows { display: flex; flex-direction: column; gap: 2px; }
 .caldav-catmgr-arrows .caldav-catmgr-btn { width: 24px; height: 18px; }
 .caldav-catmgr-arrow-up svg { transform: rotate(180deg); }
@@ -2211,16 +2220,16 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 
 .caldav-title-action {
   position: absolute;
-  right: 8px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 30px;
-  height: 30px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--caldav-accent);
   cursor: pointer;
@@ -2232,9 +2241,10 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   background: color-mix(in srgb, var(--caldav-accent) 10%, transparent);
 }
 
-/* 粘贴识别日期的图标：20px。原 17px 在 30px 的按钮里显得过小、看不清，
- * 与相邻输入框图标（15px）拉不开层级（2026-10-12 雄哥要求放大）。 */
-.caldav-title-action svg { width: 20px; height: 20px; }
+/* 粘贴识别日期的图标：26px（按钮 38px）。原 17px 在 30px 按钮里显得过小，
+ * 且 svg 上的 width="14" 属性会被 Obsidian 宿主全局规则放大生效、盖过这条 CSS
+ * —— 故 icons.ts 已去掉该属性，尺寸完全由这里决定（2026-10-13 雄哥反馈两次）。 */
+.caldav-title-action svg { width: 26px; height: 26px; }
 
 /* 日期时间行 */
 .caldav-datetime-row {
@@ -2281,14 +2291,14 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .caldav-input-clear {
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--caldav-text-2);
   cursor: pointer;
@@ -2300,10 +2310,11 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   color: var(--caldav-danger);
 }
 
-/* 清除日期/时间的垃圾桶图标：18px。原 14px 在 28px 按钮里偏小，
- * 且小于输入框内的日历/时钟图标（15px）—— 该清的按钮反而不显眼，
- * 2026-10-12 雄哥要求放大。 */
-.caldav-input-clear svg { width: 18px; height: 18px; }
+/* 清除日期/时间的垃圾桶图标：24px（按钮 32px）。原 14px 比输入框内的日历/时钟
+ * 图标（15px）还小，「该清掉内容」的按钮反而不显眼；且 svg 上的 width="14"
+ * 属性会被 Obsidian 宿主全局规则放大生效、盖过这条 CSS，故 icons.ts 已去掉该属性。
+ * 2026-10-13 雄哥连续两次反馈图标太小。 */
+.caldav-input-clear svg { width: 24px; height: 24px; }
 
 .caldav-all-day-row {
   display: flex;
@@ -3742,6 +3753,8 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   color: var(--caldav-text-2);
   cursor: pointer;
 }
+/* 图标尺寸显式兜底：icons.ts 的 svg() 不再带 width/height 属性 */
+.caldav-reminder-x svg { width: 14px; height: 14px; }
 
 /* 透明底的 hover：用 currentColor 派生，明暗主题自动适配 */
 .caldav-reminder-x:hover,
