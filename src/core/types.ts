@@ -58,6 +58,14 @@ export interface CalItem {
   deleted?: boolean;
   /** 服务端 ICS 原文，编辑时在其基础上修改 */
   raw?: string;
+  /**
+   * 编辑器会话态：粘贴时是否自动识别标题里的日期时间。默认开（仅显式 false 才关）。
+   *
+   * **不持久化到 ICS、不参与同步** —— 它只是编辑器打开期间那个勾选框的状态，
+   * 关掉弹窗就丢。做成可选字段是为了让「默认勾选」能用一个显式 false 表达：
+   * `it.aiParse === false` 才不勾，undefined / true 都勾。
+   */
+  aiParse?: boolean;
 }
 
 export interface CalCalendar {
@@ -156,6 +164,19 @@ export interface CalSettings {
   categories?: CategoryDef[];
   /** 分类是否允许多选 */
   categoryMulti?: boolean;
+  /**
+   * 插入日记时是否把逾期的待办也写进去，默认 false。
+   *
+   * 关着时只写「当日 / 本周 / 本月」范围内的条目，逾期的待办一条都不写
+   * —— 用户看到的日记是「接下来要做什么」。
+   *
+   * 打开后，DUE 早于今天零点且未完成的待办会被排在日记最前面，
+   * 单独成一个「逾期待办」子节，与范围内的条目不混在一起。
+   * 已经落在范围内的条目不会重复计入（「所有」范围本来含它们）。
+   *
+   * 2026-10-12 从思源侧同步回来（见思源 CalSettings.includeOverdueTodos）。
+   */
+  includeOverdueTodos?: boolean;
 }
 
 export const DEFAULT_SETTINGS: CalSettings = {
@@ -172,7 +193,8 @@ export const DEFAULT_SETTINGS: CalSettings = {
   calendars: [],
   showTodosInCalendar: true,
   categories: DEFAULT_CATEGORIES,
-  categoryMulti: false
+  categoryMulti: false,
+  includeOverdueTodos: false
 };
 
 export interface SyncState {

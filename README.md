@@ -30,7 +30,8 @@ syncs **VTODO task lists both ways** as well, and depends on no other plugin.
 - **Reminders.** In-app notices when a reminder time is reached; on desktop you can also get a
   system notification.
 - **Write into your daily note.** Pick a range (today / this week / this month / all) and the
-  matching events and tasks are inserted into that day's note.
+  matching events and tasks are inserted into that day's note. With **Include overdue tasks**
+  on, unfinished tasks whose due date has already passed go first in their own subsection.
 - **Adjustable display range.** Only fetch and show items within a chosen number of days back
   and ahead.
 
@@ -65,7 +66,7 @@ Open **Settings → CalDAV Calendar and Tasks** and fill in your server details.
 4. Under **Calendars**, tick each collection you want to sync, and pick a color for its events
    and for its tasks.
 5. Adjust the rest as needed: **Auto-sync interval (minutes)**, **Conflict handling**,
-   **Display range**, reminders, **Daily note folder**, and whether tasks appear in the
+   **Display range**, reminders, **Daily note folder**, **Include overdue tasks**, and whether tasks appear in the
    calendar view.
 
 Verified working against Radicale, Nextcloud, Baikal, and other standard CalDAV
@@ -239,7 +240,7 @@ bundled: `scripts/deploy.mjs` copies `src/styles.css` to `styles.css` directly.
 1. **服务器地址**：CalDAV 根地址或某个日历集合地址，例如 `http://192.168.1.10:5232/`。
 2. **用户名 / 密码**：留空表示匿名访问。3. 点击 **测试连接** 验证连通性，再点 **发现日历** 列出服务器上的日历。
 4. 在 **日历** 分区逐个勾选要同步的集合，并为日程色与待办色取值。
-5. 其余分项（同步间隔、冲突处理、显示范围、提醒、日记目录、待办是否显示在日历中）按需调整。
+5. 其余分项（同步间隔、冲突处理、显示范围、提醒、日记目录、插入日记时包含逾期的待办、待办是否显示在日历中）按需调整。
 
 已验证可用的服务端：Radicale、Nextcloud、Baikal，以及其他标准 CalDAV 实现。
 

@@ -366,11 +366,31 @@ function editorHtml(
         <label class="caldav-switch-line caldav-title-aiparse">
           <span class="caldav-switch-label">${t("editor.parsePaste")}</span>
           <span class="caldav-switch">
-            <input type="checkbox" data-f="aiParse"/>
+            <input type="checkbox" data-f="aiParse" ${it.aiParse === false ? "" : "checked"}/>
             <span class="caldav-switch-track"></span>
           </span>
         </label>
+        <div class="caldav-title-cal">
+          <span class="caldav-title-cal-label">${t("editor.sectionCalendar")}</span>
+          <div class="caldav-input-wrap caldav-cal-wrap" style="--cal-color:${escape(calColorOf(cals, it.calendarUrl))}">
+            <span class="caldav-input-icon caldav-input-icon--static caldav-cal-icon">${icons.calendar}</span>
+            <input type="hidden" data-f="calendar" value="${escape(it.calendarUrl)}"/>
+            <button type="button" class="caldav-input caldav-cal-trigger" data-action="cal-toggle">
+              <span class="caldav-cal-name">${escape(cals.find((c) => c.url === it.calendarUrl)?.displayName || it.calendarUrl)}</span>
+              <span class="caldav-input-suffix">${icons.chevron}</span>
+            </button>
+            <div class="caldav-cal-pop" data-cal-pop hidden>
+              ${cals
+                .map(
+                  (c) =>
+                    `<button type="button" class="caldav-cal-option ${c.url === it.calendarUrl ? "is-active" : ""}" data-cal-url="${escape(c.url)}"><span class="caldav-cal-dot" style="background:${escape(calEventColor(c))}"></span>${escape(c.displayName)}</button>`
+                )
+                .join("")}
+            </div>
+          </div>
+        </div>
       </div>
+
       <div class="caldav-title-row">
         <div class="caldav-input-wrap caldav-title-wrap">
           <input class="caldav-input caldav-title-input" data-f="summary" placeholder="${isTodo ? t("editor.summaryPlaceholderTodo") : t("editor.summaryPlaceholderEvent")}" value="${escape(it.summary)}"/>
@@ -380,34 +400,20 @@ function editorHtml(
     </div>
 
     <div class="caldav-section caldav-section--card">
-      <div class="caldav-section-title caldav-cal-head"><span class="caldav-section-icon">${icons.calendar}</span>${t("editor.sectionCalendar")}</div>
-      <div class="caldav-input-wrap" style="--cal-color:${escape(calColorOf(cals, it.calendarUrl))}">
-        <span class="caldav-input-icon caldav-input-icon--static caldav-cal-icon">${icons.calendar}</span>
-        <input type="hidden" data-f="calendar" value="${escape(it.calendarUrl)}"/>
-        <button type="button" class="caldav-input caldav-cal-trigger" data-action="cal-toggle">
-          <span class="caldav-cal-name">${escape(cals.find((c) => c.url === it.calendarUrl)?.displayName || it.calendarUrl)}</span>
-          <span class="caldav-input-suffix">${icons.chevron}</span>
-        </button>
-        <div class="caldav-cal-pop" data-cal-pop hidden>
-          ${cals
-            .map(
-              (c) =>
-                `<button type="button" class="caldav-cal-option ${c.url === it.calendarUrl ? "is-active" : ""}" data-cal-url="${escape(c.url)}"><span class="caldav-cal-dot" style="background:${escape(calEventColor(c))}"></span>${escape(c.displayName)}</button>`
-            )
-            .join("")}
+      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.clock}</span>${t("editor.sectionDateTime")}</div>
+      <div class="caldav-all-day-row">
+        <label class="caldav-switch-line caldav-all-day-switch">
+          <span class="caldav-switch-label">${t("editor.allDay")}</span>
+          <span class="caldav-switch">
+            <input type="checkbox" data-f="allDay" ${it.allDay ? "checked" : ""}/>
+            <span class="caldav-switch-track"></span>
+          </span>
+        </label>
+        <div class="caldav-duration-row caldav-duration-row--inline" ${isTodo || it.allDay ? 'style="display:none"' : ""}>
+          <span class="caldav-datetime-label">${t("editor.duration")}</span>
+          <span class="caldav-duration-val" data-duration>${initialDuration}</span>
         </div>
       </div>
-    </div>
-
-    <div class="caldav-section caldav-section--card">
-      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.clock}</span>${t("editor.sectionDateTime")}</div>
-      <label class="caldav-switch-line">
-        <span class="caldav-switch-label">${t("editor.allDay")}</span>
-        <span class="caldav-switch">
-          <input type="checkbox" data-f="allDay" ${it.allDay ? "checked" : ""}/>
-          <span class="caldav-switch-track"></span>
-        </span>
-      </label>
 
       <div class="caldav-datetime-row">
         <span class="caldav-datetime-label">${t("editor.start")}</span>
@@ -427,11 +433,6 @@ function editorHtml(
           </div>
           <button class="caldav-input-clear caldav-input-clear--time" data-clear="startTime" title="${t("common.clearTime")}" ${it.allDay ? 'style="display:none"' : ""}>${icons.trash}</button>
         </div>
-      </div>
-
-      <div class="caldav-duration-row" ${isTodo || it.allDay ? 'style="display:none"' : ""}>
-        <span class="caldav-datetime-label">${t("editor.duration")}</span>
-        <span class="caldav-duration-val" data-duration>${initialDuration}</span>
       </div>
 
       <div class="caldav-datetime-row">
@@ -674,7 +675,18 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
         )
         .join("")}</div>`;
     setHtml(pop, col("h", hours, ch) + col("m", minutes, cm));
-    pop.querySelector(".caldav-time-item.is-active")?.scrollIntoView?.({ block: "center" });
+    // 选中项滚动到列的视口顶部：上方是更早的值（上滚可取）、下方是更晚的值（下滚可取）。
+    // 注意 a.offsetTop 是相对定位祖先（弹层）的偏移，必须减去列自身的 offsetTop 折算成「列内滚动量」，
+    // 否则会多算弹层的 padding 与列的横向偏移，导致滚动被钳到最大、选中块被顶到中下部甚至被上边框裁切。
+    // （2026-10-12 从思源侧同步：原写法是 scrollIntoView({block:"center"})，在列内滚动场景定位不准）
+    const pos = () => {
+      pop.querySelectorAll<HTMLElement>(".caldav-time-col").forEach((c) => {
+        const a = c.querySelector<HTMLElement>(".caldav-time-item.is-active");
+        if (a) c.scrollTop = Math.max(0, a.offsetTop - c.offsetTop);
+      });
+    };
+    if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(pos);
+    else pos();
   }
 
   /** "YYYY-MM-DDTHH:mm" 加一小时，返回同格式（跨天会进位到次日） */

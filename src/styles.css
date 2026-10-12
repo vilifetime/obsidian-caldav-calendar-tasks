@@ -2134,12 +2134,14 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 .caldav-title-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   margin-bottom: 8px;
+  flex-wrap: nowrap;
 }
 .caldav-title-head .caldav-title-label {
   margin-bottom: 0;
+  flex: 0 0 auto;
 }
 .caldav-title-aiparse {
   flex: 0 0 auto;
@@ -2149,6 +2151,38 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   gap: 6px;
   font-size: 12px;
   color: var(--caldav-text-2);
+}
+/* 「日历」标签 + 下拉框收至标题行右端（2026-10-12 从思源侧同步） */
+.caldav-title-cal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.caldav-title-cal-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--caldav-text);
+  white-space: nowrap;
+}
+.caldav-title-cal .caldav-cal-wrap {
+  position: relative;
+  width: 140px;
+  min-width: 90px;
+  flex: 0 0 auto;
+}
+.caldav-title-cal .caldav-cal-trigger {
+  width: 100%;
+  height: 32px;
+  padding: 0 26px 0 30px;
+  border-radius: 8px;
+  background: var(--caldav-input-bg);
+  border: 1px solid var(--caldav-border);
+  font-size: 13px;
+}
+.caldav-title-cal .caldav-cal-icon {
+  left: 8px;
 }
 
 .caldav-title-wrap {
@@ -2266,11 +2300,29 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 
 .caldav-input-clear svg { width: 14px; height: 14px; }
 
+.caldav-all-day-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.caldav-all-day-switch {
+  flex: 0 0 auto;
+  border-bottom: none;
+  padding: 0;
+  margin-bottom: 0;
+}
+
 .caldav-duration-row {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 4px 0;
+}
+/* 持续时长挪到「全天」开关同一行右侧，省出一整行（2026-10-12 从思源侧同步） */
+.caldav-duration-row--inline {
+  flex: 0 0 auto;
+  padding: 0;
 }
 
 .caldav-duration-val {

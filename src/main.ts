@@ -1004,6 +1004,11 @@ export default class CalDavPlugin extends Plugin {
 
       // 收集落在区间内的实例：日程展开重复规则，待办取到期时刻
       const rows: { ms: number; line: string }[] = [];
+      // 逾期的待办（开关开启时）：DUE 早于今天零点且未完成 —— 排在日记最前面，
+      // 与范围内的条目分开成小节（2026-10-12 从思源侧同步回来）
+      const overdueRows: { ms: number; line: string }[] = [];
+      const includeOverdue = !!this.store.settings.includeOverdueTodos;
+      const todayMidnight = parseLocalStamp(today + "T00:00:00").getTime();
       for (const it of this.store.getAll()) {
         if (it.deleted || it.dirty || !enabled.has(it.calendarUrl)) continue;
         if (it.kind === "todo" && it.percent === 100) continue;
@@ -1011,6 +1016,7 @@ export default class CalDavPlugin extends Plugin {
           it.kind === "todo"
             ? todoDueOccurrences(it, startMs, endMs)
             : occurrencesInRange(it, startMs, endMs);
+        let inRange = false;
         for (const occ of occs) {
           if (!occ) continue;
           const ms = parseLocalStamp(occ).getTime();
@@ -1021,12 +1027,29 @@ export default class CalDavPlugin extends Plugin {
             ms,
             line: `- ${mark} ${timed ? occ.slice(11, 16) : t("time.allDay")} ${it.summary || t("chip.noTitle")}`,
           });
+          inRange = true;
+        }
+        // 逾期的待办：仅当开关开启、且本条没落在范围内（避免「所有」范围重复计入）时，按 DUE 收集到最前面
+        if (includeOverdue && it.kind === "todo" && it.end && !inRange) {
+          const dueMs = parseLocalStamp(it.end).getTime();
+          if (Number.isFinite(dueMs) && dueMs < todayMidnight) {
+            const dueTimed = !it.allDay && /T\d{1,2}:\d{2}/.test(it.end);
+            const dueLabel = dueTimed ? it.end.slice(11, 16) : t("time.allDay");
+            overdueRows.push({
+              ms: dueMs,
+              line: `- ⏰ ${it.end.slice(0, 10)} ${dueLabel} ${it.summary || t("chip.noTitle")}`,
+            });
+          }
         }
       }
       rows.sort((a, b) => a.ms - b.ms);
-      if (!rows.length) return this.notify(t("diary.noItems", { label: span.label }));
+      overdueRows.sort((a, b) => a.ms - b.ms); // 逾期最久（DUE 最早）排最前
+      if (!rows.length && !overdueRows.length) return this.notify(t("diary.noItems", { label: span.label }));
 
-      const md = `## ${span.sectionTitle}\n${rows.map((r) => r.line).join("\n")}\n`;
+      const overdueMd = overdueRows.length
+        ? `### ${t("diary.sectionOverdue")}\n${overdueRows.map((r) => r.line).join("\n")}\n`
+        : "";
+      const md = `## ${span.sectionTitle}\n${overdueMd}${rows.map((r) => r.line).join("\n")}\n`;
 
       // 日记文件：默认今天；选「本周/本月 + 区间首日」时换成周一 / 1 号。
       // ⚠️ 走 diaryTargetStamp 收敛 —— 「所有」的区间首日是 1900-01-01 那个哨兵，

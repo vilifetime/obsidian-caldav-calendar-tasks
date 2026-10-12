@@ -275,6 +275,12 @@ export class CalDavSettingTab extends PluginSettingTab {
           control: { type: "text" as const, key: "host.dailyNoteFolder", placeholder: t("settings.dailyNoteFolderPlaceholder") },
           aliases: ["日记", "daily", "note", "目录", "folder"],
         },
+        {
+          name: t("settings.includeOverdueTodos"),
+          desc: t("settings.includeOverdueTodosDesc"),
+          control: { type: "toggle" as const, key: "includeOverdueTodos" },
+          aliases: ["逾期", "overdue", "待办", "todo"],
+        },
       ],
     });
 
