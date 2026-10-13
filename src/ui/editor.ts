@@ -57,7 +57,10 @@ export function openEditor(ctx: PanelCtx, preset: EditorPreset): void {
         percent: 0,
         createdAt: todayStamp() + "T" + new Date().toTimeString().slice(0, 8)
       };
-  if (kind === "todo" && isNew) it.end = undefined; // 待办默认无截止，由用户按需填写
+  // 待办新建时的默认截止：**下一日的同一时刻**（2026-10-13 雄哥要求）。
+  // 原先是不给截止（undefined），用户每次都得自己补；现在默认跨一天，
+  // 时间沿用开始时间（本身就是「下一个整点」）。用户仍可清空或自行修改。
+  if (kind === "todo" && isNew) it.end = addDays(it.start, 1);
 
   // 移动端竖屏（375~430px）放不下 520/560px 定宽弹窗，改为占满视口
   const mobile = isMobile();
@@ -409,6 +412,9 @@ function editorHtml(
             <span class="caldav-switch-track"></span>
           </span>
         </label>
+        <button type="button" class="caldav-all-day-clear" data-clear-datetime title="${t("common.clearDateTime")}">
+          ${icons.trash}<span>${t("common.clearDateTime")}</span>
+        </button>
         <div class="caldav-duration-row caldav-duration-row--inline" ${isTodo || it.allDay ? 'style="display:none"' : ""}>
           <span class="caldav-datetime-label">${t("editor.duration")}</span>
           <span class="caldav-duration-val" data-duration>${initialDuration}</span>
@@ -846,6 +852,20 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
       inp.dispatchEvent(new Event("input"));
       syncTimeText(target); // 日期没有配套文字节点，命中不到时静默跳过
     });
+  });
+
+  // 「清除日期时间」：一键清掉开始/结束的日期与时间共 4 个字段（2026-10-13 雄哥要求）。
+  // 与上面逐个清除的关系：那个按字段清，这个整组清 —— 待办常要表达「哪天都行」，
+  // 逐个点四次太琐碎。复用同一套「置空 + 派发 input」的路径，下游联动
+  // （结束时间早于开始时间时自动补齐等）因此与手动清空逐字段时完全一致。
+  el.querySelector<HTMLElement>("[data-clear-datetime]")?.addEventListener("click", () => {
+    for (const name of ["startDate", "startTime", "endDate", "endTime"]) {
+      const inp = f(name);
+      if (!inp) continue;
+      inp.value = "";
+      inp.dispatchEvent(new Event("input"));
+      syncTimeText(name);
+    }
   });
 
   // 重复详情展开 / 折叠

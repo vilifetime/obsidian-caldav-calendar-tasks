@@ -2333,9 +2333,34 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 .caldav-all-day-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* 原来是 space-between，加「清除日期时间」按钮后变成三个子元素，
+     均铺会让开关和按钮被拉开 —— 改成左组 + 右侧时长：左侧两项自己贴住，
+     时长靠 margin-left:auto 推到右端。 */
   gap: 12px;
 }
+/* 「清除日期时间」按钮：图标 + 文字，比纯图标按钮宽（2026-10-13 雄哥要求）。
+   与全天开关同高，视觉上是一组。 */
+.caldav-all-day-clear {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 8px;
+  background: var(--caldav-bg);
+  color: var(--caldav-text-2);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.caldav-all-day-clear:hover {
+  border-color: var(--caldav-danger);
+  color: var(--caldav-danger);
+  background: color-mix(in srgb, var(--caldav-danger) 8%, var(--caldav-bg));
+}
+.caldav-all-day-clear svg { width: 16px; height: 16px; }
 .caldav-all-day-switch {
   flex: 0 0 auto;
   border-bottom: none;
@@ -2353,6 +2378,9 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 .caldav-duration-row--inline {
   flex: 0 0 auto;
   padding: 0;
+  /* 推到行尾：父级不再是 space-between（左侧多了一个清除按钮），
+     这里显式推开，保持「时长在右」的原有视觉。 */
+  margin-left: auto;
 }
 
 .caldav-duration-val {

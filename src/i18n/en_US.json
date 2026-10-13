@@ -135,6 +135,7 @@
   "common.yes": "Yes",
   "common.clearDate": "Clear date",
   "common.clearTime": "Clear time",
+  "common.clearDateTime": "Clear date and time",
 
   "detail.type": "Type",
   "detail.calendar": "Calendar",

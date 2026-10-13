@@ -135,6 +135,7 @@
   "common.yes": "是",
   "common.clearDate": "清除日期",
   "common.clearTime": "清除时间",
+  "common.clearDateTime": "清除日期时间",
 
   "detail.type": "类型",
   "detail.calendar": "日历",

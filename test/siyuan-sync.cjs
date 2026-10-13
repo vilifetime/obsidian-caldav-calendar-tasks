@@ -428,6 +428,92 @@ check(
   rafWrong.map((c) => JSON.stringify(c.code.slice(0, 40)) + " 判定为 " + /window\.requestAnimationFrame/.test(c.code) + "，期望 " + c.want).join(" | ")
 );
 
+console.log("\n⑩ 待办默认截止 + 清除日期时间按钮（2026-10-13 雄哥要求）");
+// ① 待办新建时默认截止 = 下一日同一时刻（原先是 undefined「无截止」）
+// ② 默认开始时间落在「下一个整点」——这条由 defaultStartStamp 负责，这里顺带核
+// ③ 全天开关后面加「清除日期时间」按钮，一键清 4 个字段
+const syEditor = fs.existsSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "ui", "editor.ts"))
+  ? fs.readFileSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "ui", "editor.ts"), "utf8")
+  : null;
+const dateSrc = read("core/date.ts");
+
+check(
+  "Ob：待办新建默认截止 = addDays(start, 1)，不再是 undefined",
+  /if \(kind === "todo" && isNew\) it\.end = addDays\(it\.start, 1\)/.test(stripComments(editor)),
+  "默认值改动测试不会失败，必须用断言钉住"
+);
+check(
+  "Ob：代码里不再有待办默认无截止的旧写法",
+  !/kind === "todo" && isNew\) it\.end = undefined/.test(stripComments(editor)),
+  "若还在，说明有人把默认值改回去了"
+);
+check(
+  "Ob：defaultStartStamp 保持「今天 → 下一个整点」",
+  /d\.setHours\(d\.getHours\(\) \+ 1, 0, 0, 0\)/.test(dateSrc),
+  "整点默认值由它负责；非今天仍是 09:00"
+);
+check(
+  "Ob：清除日期时间按钮在天全开关之后",
+  /caldav-all-day-switch[\s\S]*?data-clear-datetime[\s\S]*?caldav-duration-row/.test(stripComments(editor)),
+  "按钮必须位于全天开关与持续时长之间"
+);
+check(
+  "Ob：按钮文案走 i18n（中英齐备）",
+  !!zh["common.clearDateTime"] && !!en["common.clearDateTime"] &&
+    zh["common.clearDateTime"] === "清除日期时间" &&
+    /[A-Za-z]/.test(en["common.clearDateTime"]),
+  "按钮上的文字与 tooltip 用同一个 key"
+);
+check(
+  "Ob：点击清 4 个字段（startDate/startTime/endDate/endTime）",
+  /for \(const name of \["startDate", "startTime", "endDate", "endTime"\]\)/.test(stripComments(editor)),
+  "漏一个字段就等于没清干净"
+);
+check(
+  "Ob：CSS 有 all-day-clear 按钮样式与 svg 尺寸",
+  /\.caldav-all-day-clear \{/.test(css) && /\.caldav-all-day-clear svg \{ width:/.test(css),
+  "DOM 加了但 CSS 没跟上，按钮会完全没样式"
+);
+check(
+  "Ob：all-day-row 不再用 space-between（三个子元素会被均铺）",
+  (() => {
+    const m = css.match(/^\.caldav-all-day-row \{([\s\S]*?)\}/m);
+    return m ? !/justify-content:\s*space-between/.test(m[1]) : false;
+  })(),
+  "加按钮后仍是 space-between，开关和按钮会被拉开"
+);
+check(
+  "Ob：持续时长靠 margin-left:auto 推到行尾",
+  (() => {
+    const m = css.match(/^\.caldav-duration-row--inline \{([\s\S]*?)\}/m);
+    return m ? /margin-left:\s*auto/.test(m[1]) : false;
+  })(),
+  "不加会被清除按钮挤到中间"
+);
+if (syEditor) {
+  check(
+    "思源：默认截止 / 按钮 / 事件绑定 / CSS 四项同步",
+    /kind === "todo" && isNew\) it\.end = addDays\(it\.start, 1\)/.test(syEditor) &&
+      /data-clear-datetime/.test(syEditor) &&
+      /for \(const name of \["startDate", "startTime", "endDate", "endTime"\]\)/.test(syEditor) &&
+      /\.caldav-all-day-clear \{/.test(fs.readFileSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "index.css"), "utf8")),
+    "四项中有一项没同步，两边行为就会不一致"
+  );
+} else {
+  console.log("  [SKIP] 思源侧源码不在预期路径，跳过一致性断言");
+}
+// 判据自测：确认「默认截止」判据能分辨 undefined 旧写法。
+const DUE = [
+  { code: 'if (kind === "todo" && isNew) it.end = addDays(it.start, 1);', want: true },
+  { code: 'if (kind === "todo" && isNew) it.end = undefined;', want: false },
+];
+const dueWrong = DUE.filter((c) => /it\.end = addDays\(it\.start, 1\)/.test(c.code) !== c.want);
+check(
+  "默认截止判据自测通过（2 个用例）",
+  dueWrong.length === 0,
+  dueWrong.map((c) => c.code + " 判定为 " + /it\.end = addDays\(it\.start, 1\)/.test(c.code)).join(" | ")
+);
+
 console.log(
   failed === 0 ? "\n✓ 思源侧同步回归测试通过" : `\n✗ ${failed} 个用例失败`
 );
