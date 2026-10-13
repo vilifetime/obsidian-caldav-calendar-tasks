@@ -1490,7 +1490,21 @@
 }
 textarea.caldav-input { resize: vertical; font-family: inherit; line-height: 1.5; }
 textarea.caldav-input.caldav-textarea { min-height: 120px; padding: 12px; }
-select.caldav-input { cursor: pointer; appearance: none; -webkit-appearance: none; color-scheme: light; }
+/* ⚠️ select 必须**显式给 height**，不能只靠 padding 撑。
+ * `select` 的固有高度由 option 的行高决定，与 input 的文本行高不一致；
+ * 在 `box-sizing: border-box` 下 Obsidian 宿主又给它定了 height，
+ * 两者叠加后**文字被裁**（2026-10-13 雄哥截图：优先级下拉框的「无」字显示不全）。
+ * 36px 与普通输入框对齐：padding 8×2 + border 1×2 + 行高 13×1.4 ≈ 36。
+ * 同类坑 .cal-task-filter 已踩过一次（见上方注释），此处一并补齐。
+ * 右侧 28px 给自绘的 chevron 箭头留位（appearance:none 后原生箭头消失）。 */
+select.caldav-input {
+  height: 36px;
+  padding-right: 28px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: light;
+}
 .theme-dark select.caldav-input { color-scheme: dark; }
 /* 下拉弹出列表跟随主题变量（原为固定暖色浅底，现跟随思源深浅色） */
 select.caldav-input option {

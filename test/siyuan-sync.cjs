@@ -337,6 +337,59 @@ check(
   "去掉属性后，原先靠属性兜底的容器必须补 CSS 尺寸"
 );
 
+console.log("\n⑧ select 必须显式给 height（否则裁字）");
+// 2026-10-13 雄哥截图：新建待办时「优先级」下拉框高度不够，「无」字被裁。
+// 根因：`select` 的固有高度由 option 行高决定，与 input 的文本行高不一致；
+// 在 box-sizing:border-box 下 Obsidian 宿主又给它定 height，两者叠加就裁字。
+// .cal-task-filter 已因此栽过一次（见 styles.css 里那条长注释），
+// 但编辑器里 4 处 select.caldav-input 一直没补 —— 这次一并修。
+// 取「独立的 select.caldav-input 规则块」。
+// ⚠️ 不能简单用 /select\.caldav-input \{([^}]*)\}/ —— 文件里更早有一行
+// `.caldav-field-icon select.caldav-input { padding-right: 28px; }`，
+// 它会抢先匹配，把结果截成只剩 padding-right，height 判据永远 FAIL。
+// 故要求选择器**单独成行**（行首即 select，前面只有空白）。
+const selectBlockOf = (text) => {
+  const m = text.match(/^select\.caldav-input \{([\s\S]*?)\}/m);
+  return m ? m[1] : "";
+};
+const selectRule = selectBlockOf(css);
+check(
+  "select.caldav-input 有显式 height",
+  /height:\s*36px/.test(selectRule),
+  "当前规则：" + selectRule.replace(/\s+/g, " ").trim().slice(0, 80)
+);
+check(
+  "select 右侧留出箭头位（padding-right）",
+  /padding-right:\s*28px/.test(selectRule),
+  "appearance:none 后原生箭头消失，靠自绘 chevron，不留位会压在文字上"
+);
+check(
+  "编辑器里 4 处 select 都在（提醒/频率/结束模式/优先级）",
+  ["data-alarm", 'data-f="freq"', 'data-f="endMode"', 'data-f="priority"'].every((k) =>
+    new RegExp("<select class=\"caldav-input\"[^>]*" + k.replace(/"/g, '\\"')).test(editor)
+  ),
+  "漏一处那个下拉就还裁字"
+);
+check(
+  "思源侧同样补了 height（两边实现一字不差）",
+  (() => {
+    const sy = path.join(ROOT, "..", "SiYuanCalDAV", "src", "index.css");
+    if (!fs.existsSync(sy)) return true;
+    return /height:\s*36px/.test(selectBlockOf(fs.readFileSync(sy, "utf8")));
+  })(),
+  "思源侧 select.caldav-input 仍无 height"
+);
+// 判据自测：确认它抓的是独立规则块，不会被子选择器那一行抢先。
+const SELFB = [
+  { name: "能抓到独立规则块里的 height", in: "select.caldav-input {\n  height: 36px;\n}", want: true },
+  { name: "不被 .caldav-field-icon 前缀行抢先", in: ".caldav-field-icon select.caldav-input { padding-right: 28px; }\nselect.caldav-input {\n  height: 36px;\n}", want: true },
+  { name: "没有 height 时报 FAIL", in: "select.caldav-input {\n  cursor: pointer;\n}", want: false },
+];
+for (const c of SELFB) {
+  const got = /height:\s*36px/.test(selectBlockOf(c.in));
+  check("select 规则块判据自测：" + c.name, got === c.want, "判定为 " + got + "，期望 " + c.want);
+}
+
 console.log(
   failed === 0 ? "\n✓ 思源侧同步回归测试通过" : `\n✗ ${failed} 个用例失败`
 );
