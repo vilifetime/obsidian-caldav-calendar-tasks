@@ -685,8 +685,13 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
         if (a) c.scrollTop = Math.max(0, a.offsetTop - c.offsetTop);
       });
     };
-    if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(pos);
-    else pos();
+    // ⚠️ 必须走 window.requestAnimationFrame 而非裸 requestAnimationFrame：
+    // Obsidian 的 popout 窗口是独立的 window 对象，裸调用绑的是**主窗口**的 rAF，
+    // 主窗口不可见时它不执行 —— 弹层在新窗口里就打不开、选中项定位失效。
+    // （社区审核 0.4.10 报了这一条；reminder-toast.ts 的 nextFrame 同理。）
+    // 少数 WebView / 测试环境没有 rAF，退化到宏任务。
+    if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(pos);
+    else window.setTimeout(pos, 0);
   }
 
   /** "YYYY-MM-DDTHH:mm" 加一小时，返回同格式（跨天会进位到次日） */

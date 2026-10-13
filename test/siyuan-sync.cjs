@@ -188,9 +188,10 @@ check(
   + "本项目已因「自查命中自己写的注释」栽过（check-report 的 globalThis 项）"
 );
 check(
-  "滚动计算包了 rAF（弹层刚渲染完才有布局）",
-  /requestAnimationFrame\(pos\)/.test(editor) && /typeof requestAnimationFrame !== "undefined"/.test(editor),
-  "渲染与定位同一帧会拿到旧布局；typeof 防御是移动端兼容"
+  "滚动计算包了 rAF（弹层刚渲染完才有布局），且走 window. 前缀",
+  /window\.requestAnimationFrame\(pos\)/.test(editor) &&
+    /typeof window\.requestAnimationFrame/.test(editor),
+  "渲染与定位同一帧会拿到旧布局；裸 requestAnimationFrame 会绑错窗口（见 ⑨ 组）"
 );
 check(
   "scrollTop 有下限保护（不会出现负值）",
@@ -389,6 +390,43 @@ for (const c of SELFB) {
   const got = /height:\s*36px/.test(selectBlockOf(c.in));
   check("select 规则块判据自测：" + c.name, got === c.want, "判定为 " + got + "，期望 " + c.want);
 }
+
+console.log("\n⑨ rAF 必须走 window.（popout 窗口兼容）");
+// 社区审核 0.4.10 报的：src/ui/editor.ts:688 用了裸 requestAnimationFrame()。
+// Obsidian 的 popout 窗口是**独立的 window 对象**，裸调用绑的是主窗口的 rAF，
+// 主窗口不可见时它不执行 —— 弹层在新窗口里打不开、选中项定位失效。
+// 项目里 reminder-toast.ts 早就是 window.requestAnimationFrame（写法正确），
+// 只有 editor.ts 这一处漏了，故这里做**跨文件互查**：两边都要带 window. 前缀。
+const reminder = read("ui/reminder-toast.ts");
+check(
+  "editor.ts 用 window.requestAnimationFrame",
+  /window\.requestAnimationFrame/.test(stripComments(editor)) &&
+    !/(^|[^.])\brequestAnimationFrame\s*\(/.test(stripComments(editor).replace(/window\.requestAnimationFrame/g, "")),
+  "editor.ts 仍有裸 requestAnimationFrame 调用"
+);
+check(
+  "reminder-toast.ts 保持 window. 前缀（参照物不能退化）",
+  /window\.requestAnimationFrame/.test(stripComments(reminder)),
+  "这处本来就是对的，别被顺手改回裸调用"
+);
+check(
+  "降级路径用 window.setTimeout（同属该 window）",
+  /window\.setTimeout\(pos, 0\)/.test(stripComments(editor)),
+  "退化到 setTimeout 也要走 window.，否则同样绑错窗口"
+);
+// 判据自测：确认它能分辨带前缀与不带前缀的两种写法。
+const RAF = [
+  { code: "if (typeof window.requestAnimationFrame === \"function\") window.requestAnimationFrame(pos);", want: true },
+  { code: "if (typeof requestAnimationFrame !== \"undefined\") requestAnimationFrame(pos);", want: false },
+  { code: "const nextFrame = (cb) => window.requestAnimationFrame(cb);", want: true },
+  { code: "window.setTimeout(pos, 0);", want: false },
+];
+const rafWrong = RAF.filter((c) => /window\.requestAnimationFrame/.test(c.code) !== c.want);
+check(
+  "rAF 判据自测通过（" + RAF.length + " 个用例）",
+  rafWrong.length === 0,
+  rafWrong.map((c) => JSON.stringify(c.code.slice(0, 40)) + " 判定为 " + /window\.requestAnimationFrame/.test(c.code) + "，期望 " + c.want).join(" | ")
+);
 
 console.log(
   failed === 0 ? "\n✓ 思源侧同步回归测试通过" : `\n✗ ${failed} 个用例失败`
