@@ -263,14 +263,14 @@ check(
   "当前 " + cssSize(css, ".caldav-title-action svg") + "px"
 );
 check(
-  "Ob：清除按钮图标 ≥ 24px（原 14px）",
-  (cssSize(css, ".caldav-input-clear svg") || 0) >= 24,
+  "Ob：清除按钮图标 ≥ 28px（原 14px，雄哥三次反馈后定）",
+  (cssSize(css, ".caldav-input-clear svg") || 0) >= 28,
   "当前 " + cssSize(css, ".caldav-input-clear svg") + "px"
 );
 check(
   "Ob：两个按钮本身也放大了（图标大但按钮小会顶到边框）",
   (cssSize(css, ".caldav-title-action") || 0) >= 36 &&
-    (cssSize(css, ".caldav-input-clear") || 0) >= 30,
+    (cssSize(css, ".caldav-input-clear") || 0) >= 34,
   "按钮 " + cssSize(css, ".caldav-title-action") + " / " + cssSize(css, ".caldav-input-clear") + "px"
 );
 if (siyuanCss) {

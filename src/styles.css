@@ -2291,14 +2291,14 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .caldav-input-clear {
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 8px;
+  border-radius: 9px;
   background: transparent;
   color: var(--caldav-text-2);
   cursor: pointer;
@@ -2310,11 +2310,11 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   color: var(--caldav-danger);
 }
 
-/* 清除日期/时间的垃圾桶图标：24px（按钮 32px）。原 14px 比输入框内的日历/时钟
+/* 清除日期/时间的垃圾桶图标：28px（按钮 36px）。原 14px 比输入框内的日历/时钟
  * 图标（15px）还小，「该清掉内容」的按钮反而不显眼；且 svg 上的 width="14"
  * 属性会被 Obsidian 宿主全局规则放大生效、盖过这条 CSS，故 icons.ts 已去掉该属性。
- * 2026-10-13 雄哥连续两次反馈图标太小。 */
-.caldav-input-clear svg { width: 24px; height: 24px; }
+ * 2026-10-13 雄哥三次反馈后定在 28px，与火花（26px）视觉重量接近。 */
+.caldav-input-clear svg { width: 28px; height: 28px; }
 
 .caldav-all-day-row {
   display: flex;
