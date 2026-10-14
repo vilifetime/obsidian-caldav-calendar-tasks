@@ -247,6 +247,8 @@
   "cal.yearMonthHead": "跳转到 {m} 月",
   "cal.yearMonthLabel": "{m} 月",
   "cal.yearHead": "{y} 年 · 共 {total} 项日程 / 任务",
+  "cal.dayPopupTitle": "{month}月{day}日",
+  "cal.dayPopupCount": "{count} 项",
   "cal.moreItems": "还有 {count} 项…",
   "cal.fmtMonthDay": "{m}月{d}日",
 
@@ -277,7 +279,7 @@
   "editor.endNever": "永不结束",
   "editor.endCount": "次数",
   "editor.endUntil": "日期",
-  "editor.sectionAlarms": "自定义提醒时间",
+  "editor.sectionAlarms": "提醒设置",
   "editor.alarmEmpty": "未设置提醒时间（到点时不会提醒）",
   "editor.addAlarm": "添加提醒时间",
   "editor.addPreset": "添加预设",

@@ -463,6 +463,23 @@ function editorHtml(
     </div>
 
     <div class="caldav-section caldav-section--card">
+      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.bell}</span>${t("editor.sectionAlarms")}</div>
+      <div class="caldav-alarm-list" data-alarm-list>${alarmRows}</div>
+      <div class="caldav-alarm-empty" data-alarm-empty ${alarmRows ? "hidden" : ""}>${t("editor.alarmEmpty")}</div>
+      <div class="caldav-alarm-actions">
+        <button type="button" class="caldav-add-btn" data-action="add-alarm">${icons.plus} ${t("editor.addAlarm")}</button>
+        <button type="button" class="caldav-add-btn" data-action="add-preset">${icons.layers} ${t("editor.addPreset")}</button>
+        <div class="caldav-alarm-presets" data-alarm-presets hidden>
+          <div class="caldav-alarm-presets-hint">${t("editor.presetHint")}</div>
+          ${ALARM_PRESETS.map(
+            (p, i) =>
+              `<button type="button" class="caldav-alarm-preset" data-preset="${i}">${escape(t(p.label))}<span>${t("editor.presetAddCount", { count: p.values.length })}</span></button>`
+          ).join("")}
+        </div>
+      </div>
+    </div>
+
+    <div class="caldav-section caldav-section--card">
       <div class="caldav-section-title"><span class="caldav-section-icon">${icons.repeat}</span>${t("editor.sectionRepeat")}</div>
       <button type="button" class="caldav-row-btn" data-action="toggle-repeat-detail">
         <span class="caldav-row-btn-text">${repeatSummary(r)}</span>
@@ -497,23 +514,6 @@ function editorHtml(
           </select>
           <input class="caldav-input caldav-num" data-f="count" type="number" min="1" value="${r?.count || 10}" style="display:${r?.count ? "" : "none"}"/>
           <input class="caldav-input" data-f="until" type="date" value="${r?.until ? r.until.slice(0, 10) : ""}" style="display:${r?.until ? "" : "none"}"/>
-        </div>
-      </div>
-    </div>
-
-    <div class="caldav-section caldav-section--card">
-      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.bell}</span>${t("editor.sectionAlarms")}</div>
-      <div class="caldav-alarm-list" data-alarm-list>${alarmRows}</div>
-      <div class="caldav-alarm-empty" data-alarm-empty ${alarmRows ? "hidden" : ""}>${t("editor.alarmEmpty")}</div>
-      <div class="caldav-alarm-actions">
-        <button type="button" class="caldav-add-btn" data-action="add-alarm">${icons.plus} ${t("editor.addAlarm")}</button>
-        <button type="button" class="caldav-add-btn" data-action="add-preset">${icons.layers} ${t("editor.addPreset")}</button>
-        <div class="caldav-alarm-presets" data-alarm-presets hidden>
-          <div class="caldav-alarm-presets-hint">${t("editor.presetHint")}</div>
-          ${ALARM_PRESETS.map(
-            (p, i) =>
-              `<button type="button" class="caldav-alarm-preset" data-preset="${i}">${escape(t(p.label))}<span>${t("editor.presetAddCount", { count: p.values.length })}</span></button>`
-          ).join("")}
         </div>
       </div>
     </div>
@@ -939,7 +939,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
     applyParsed(p);
   });
 
-  // 自定义提醒时间：多行列表 + 常用组合预设
+  // 提醒设置：多行列表 + 常用组合预设
   wireAlarms(el, errEl);
 
   el.querySelector('[data-action="cancel"]')?.addEventListener("click", () => host.close());

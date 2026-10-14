@@ -247,6 +247,8 @@
   "cal.yearMonthHead": "Jump to month {m}",
   "cal.yearMonthLabel": "{m}",
   "cal.yearHead": "{y} · {total} event(s) / task(s)",
+  "cal.dayPopupTitle": "{month}/{day}",
+  "cal.dayPopupCount": "{count}",
   "cal.moreItems": "{count} more…",
   "cal.fmtMonthDay": "{m}/{d}",
 
@@ -277,7 +279,7 @@
   "editor.endNever": "Never ends",
   "editor.endCount": "After N times",
   "editor.endUntil": "On date",
-  "editor.sectionAlarms": "Reminder times",
+  "editor.sectionAlarms": "Reminders",
   "editor.alarmEmpty": "No reminder time set (no notification at start time)",
   "editor.addAlarm": "Add reminder time",
   "editor.addPreset": "Add preset",
