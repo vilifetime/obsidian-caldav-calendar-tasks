@@ -4,6 +4,7 @@ import { monthChipHtml, calColorOf, type ViewArgs } from "./view-common";
 import { setHtml } from "./dom";
 import { t } from "@/i18n";
 import { openMonthDayPopup, closeMonthDayPopup, schedulePopupClose, cancelPopupClose } from "./month-day-popup";
+import type { TimerHandle } from "../constants";
 
 /** 星期表头。存 i18n key 而非译文 —— 模块级常量在 import 时求值完，
  * 用户中途改语言不会重新求值，故在使用处 t()。 */
@@ -99,9 +100,11 @@ export function renderMonthView({ ctx, viewEl, occurrences }: ViewArgs): void {
   //    触摸板双指滚动也会被吃掉。要看全时用浮层，月视图的「整月概览」定位不丢。
   // ⚠️ 也**不做**点击触发：单击会与「右键新建」抢地盘，且再单击既不会关、语义又别扭。
   const HOVER_DELAY = 220; // 掠过时给一点延迟，避免扫过一格就弹浮层
-  let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 定时器句柄。类型用 constants.ts 的 TimerHandle(=number)，见该文件注释里的原因 */
+  let hoverTimer: TimerHandle | null = null;
   const clearHover = (): void => {
-    if (hoverTimer) clearTimeout(hoverTimer);
+    // ⚠️ 必须走 window.clearTimeout（官方要求，弹出窗口兼容性）
+    if (hoverTimer) window.clearTimeout(hoverTimer);
     hoverTimer = null;
   };
   const showFor = (cell: HTMLElement): void => {
@@ -124,7 +127,7 @@ export function renderMonthView({ ctx, viewEl, occurrences }: ViewArgs): void {
       if (Number(cell.dataset.more || "0") <= 0) return; // 全放得下 → 不出浮层
       cancelPopupClose(); // 指针回到格子：取消上一轮倒计时
       clearHover();
-      hoverTimer = setTimeout(() => showFor(cell), HOVER_DELAY);
+      hoverTimer = window.setTimeout(() => showFor(cell), HOVER_DELAY);
     });
     // 移出格子 → 开始倒计时。指针划向紧贴的浮层（间隙 0）期间一旦落到
     // 浮层上（mouseenter）就取消；停在浮层上则一直保留（雄哥定的规则）。

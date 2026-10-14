@@ -428,6 +428,71 @@ check(
   rafWrong.map((c) => JSON.stringify(c.code.slice(0, 40)) + " 判定为 " + /window\.requestAnimationFrame/.test(c.code) + "，期望 " + c.want).join(" | ")
 );
 
+console.log("\n⑪ 定时器必须走 window.（popout 窗口兼容）");
+// 与 ⑨ rAF 同一类问题、同一批原因：Obsidian 的 popout 窗口是**独立的 window 对象**，
+// 裸 setTimeout/clearTimeout/setInterval 绑的是主窗口的定时器。
+// 2026-10-14 社区审核在月视图浮层里报了 4 处：
+//   src/ui/month-day-popup.ts（closeTimer 的 set/clear）
+//   src/ui/view-month.ts（hoverTimer 的 set/clear）
+// ⑨ 组只能盯住 editor/reminder-toast 两个已知文件，新写文件照样会漏 ——
+// 所以这里改成**扫全仓 src/**，任何新文件用裸调用都会被拦住。
+const walkTs = (dir) => {
+  const out = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name === "node_modules") continue;
+      out.push(...walkTs(p));
+    } else if (p.endsWith(".ts")) out.push(p);
+  }
+  return out;
+};
+const bareTimers = [];
+for (const f of walkTs(path.join(SRC, ".."))) {
+  // ⚠️ 必须剥注释：说明文字里会写「裸 setTimeout 会绑错窗口」，不剥会自己命中自己
+  const code = stripComments(fs.readFileSync(f, "utf8"));
+  code.split(/\r?\n/).forEach((line, i) => {
+    // 前缀不是 `.`（排除 foo.setTimeout）也不是 `window.`，即裸调用
+    if (/(^|[^\w.$])(set|clear)(Timeout|Interval)\s*\(/.test(line)) {
+      bareTimers.push(path.relative(SRC, f) + ":" + (i + 1) + "  " + line.trim().slice(0, 60));
+    }
+  });
+}
+check(
+  "全仓 src/ 无裸定时器调用（setTimeout/clearTimeout/setInterval/clearInterval）",
+  bareTimers.length === 0,
+  bareTimers.join(" | ")
+);
+// 判据自测：确认它真的能分辨带前缀与不带前缀
+const TIMERS = [
+  { code: "closeTimer = window.setTimeout(fn, 600);", want: false },
+  { code: "closeTimer = setTimeout(fn, 600);", want: true },
+  { code: "window.clearTimeout(t);", want: false },
+  { code: "if (t) clearTimeout(t);", want: true },
+  { code: "obj.setTimeout(x, 1);", want: false },
+  { code: "this.foo.setInterval(fn, 1);", want: false },
+  { code: "const h = ReturnType<typeof setTimeout>;", want: false }, // 类型位置不算调用
+];
+const timerWrong = TIMERS.filter((c) => {
+  const hit = /(^|[^\w.$])(set|clear)(Timeout|Interval)\s*\(/.test(c.code);
+  return hit !== c.want;
+});
+check(
+  "定时器判据自测通过（" + TIMERS.length + " 个用例）",
+  timerWrong.length === 0,
+  timerWrong.map((c) => JSON.stringify(c.code) + " 判定为 " + /(^|[^\w.$])(set|clear)(Timeout|Interval)\s*\(/.test(c.code) + "，期望 " + c.want).join(" | ")
+);
+// 句柄类型：官方要求 window.setTimeout，而 @types/node 会把全局 setTimeout
+// 解析成返回 NodeJS.Timeout —— 必须用 constants.ts 的 TimerHandle(=number)，
+// 见该文件注释（历史上 14 处一起炸过）。
+for (const f of ["ui/month-day-popup.ts", "ui/view-month.ts"]) {
+  check(
+    f + " 用 TimerHandle 而非 ReturnType<typeof setTimeout>",
+    /TimerHandle/.test(stripComments(read(f))),
+    f + " 的定时器句柄类型应从 ../constants 引入 TimerHandle(=number)"
+  );
+}
+
 console.log("\n⑩ 待办默认截止 + 清除日期时间按钮（2026-10-13 雄哥要求）");
 // ① 待办新建时默认截止 = 下一日同一时刻（原先是 undefined「无截止」）
 // ② 默认开始时间落在「下一个整点」——这条由 defaultStartStamp 负责，这里顺带核

@@ -24,6 +24,7 @@ import { monthChipHtml, calColorOf, keyOfItem } from "./view-common";
 import { setHtml } from "./dom";
 import { t } from "@/i18n";
 import type { CalItem } from "../core/types";
+import type { TimerHandle } from "../constants";
 
 export interface MonthDayEntry {
   it: CalItem;
@@ -48,7 +49,8 @@ let opened: HTMLElement | null = null;
  * 期间落在浮层上就取消收起；停在浮层上就一直保留。
  */
 let hoverZone: HTMLElement | null = null;
-let closeTimer: ReturnType<typeof setTimeout> | null = null;
+/** 定时器句柄。类型用 constants.ts 的 TimerHandle(=number)，见该文件注释里的原因 */
+let closeTimer: TimerHandle | null = null;
 
 /** 指针是否落在「触发格子 ∪ 浮层」内 */
 function pointerInsideZone(e: MouseEvent): boolean {
@@ -61,7 +63,8 @@ function pointerInsideZone(e: MouseEvent): boolean {
 
 /** 取消待收起（指针进入格子或浮层时调用） */
 export function cancelPopupClose(): void {
-  if (closeTimer) clearTimeout(closeTimer);
+  // ⚠️ 必须走 window.clearTimeout（官方要求，弹出窗口兼容性）
+  if (closeTimer) window.clearTimeout(closeTimer);
   closeTimer = null;
 }
 
@@ -74,7 +77,7 @@ export function cancelPopupClose(): void {
  */
 export function schedulePopupClose(delay = CLOSE_DELAY): void {
   cancelPopupClose();
-  closeTimer = setTimeout(() => {
+  closeTimer = window.setTimeout(() => {
     closeTimer = null;
     closeMonthDayPopup();
   }, delay);
