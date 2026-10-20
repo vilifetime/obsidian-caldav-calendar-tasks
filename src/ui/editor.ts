@@ -3,10 +3,11 @@
  */
 import { Modal, Notice } from "obsidian";
 import { isMobile } from "@/obs/platform";
-import type { Alarm, CalCalendar, CalItem, CalKind, CategoryDef, Recurrence } from "../core/types";
+import type { Alarm, CalAttachment, CalCalendar, CalItem, CalKind, CategoryDef, Recurrence } from "../core/types";
 import { DEFAULT_CATEGORIES, calEventColor } from "../core/types";
 import { keyOf } from "../core/store";
 import { addDays, defaultStartStamp, isDateOnly, parseLocalStamp, stampOfMs, todayStamp } from "../core/date";
+import { attachSizeMaxBytes } from "../core/ics";
 import type { PanelCtx } from "./panel-ctx";
 import { escape } from "./view-common";
 import { icons } from "./icons";
@@ -57,10 +58,9 @@ export function openEditor(ctx: PanelCtx, preset: EditorPreset): void {
         percent: 0,
         createdAt: todayStamp() + "T" + new Date().toTimeString().slice(0, 8)
       };
-  // 待办新建时的默认截止：**下一日的同一时刻**（2026-10-13 雄哥要求）。
-  // 原先是不给截止（undefined），用户每次都得自己补；现在默认跨一天，
-  // 时间沿用开始时间（本身就是「下一个整点」）。用户仍可清空或自行修改。
-  if (kind === "todo" && isNew) it.end = addDays(it.start, 1);
+  // 待办新建时的默认截止：**开始时间 + 8 小时**（2026-10-21 雄哥要求，取代原先的「次日」；与 SiYuan 侧一致）。
+  // 定时待办：截止 = 开始 + 8h；全天待办（默认均为定时，极少走到）沿用次日，避免 end=start 的无效值。用户仍可清空或自行修改。
+  if (kind === "todo" && isNew) it.end = it.allDay ? addDays(it.start, 1) : addHoursStr(it.start, 8);
 
   // 移动端竖屏（375~430px）放不下 520/560px 定宽弹窗，改为占满视口
   const mobile = isMobile();
@@ -154,7 +154,8 @@ class EditorModal extends Modal {
         this.cals,
         cats,
         !!this.ctx.store.settings.categoryMulti,
-        this.isNew
+        this.isNew,
+        attachSizeMaxBytes(this.ctx.store.settings)
       )
     );
     bindEvents(this.ctx, this, wrap, this.it, this.isNew);
@@ -185,6 +186,196 @@ function genUid(): string {
 /** 编辑器里的「日历身份色」= 该日历的日程默认色（拿不到就中性灰） */
 function calColorOf(cals: CalCalendar[], selected: string): string {
   return calEventColor(cals.find((c) => c.url === selected));
+}
+
+// ---------- 附件（2026-10-20 从思源同构移植） ----------
+
+/**
+ * 软确认阈值：超过 800KB 先跟用户确认（建议口吻），不是错误。
+ * 硬上限走设置项 attachSizeMaxMB（默认 5MB），超过直接拒。
+ */
+export const ATTACH_SIZE_WARN = 800 * 1024;
+
+/** 从 URI 取文件名（附件行显示用；与 ics.ts 的 attachmentName 同口径） */
+function nameOfUri(uri: string): string {
+  const last = uri.split(/[?#]/)[0].split("/").filter(Boolean).pop();
+  return last ? decodeURIComponent(last) : "附件";
+}
+
+/** base64 载荷的原始字节数（用于界面显示大小；不含折行空白） */
+function b64Bytes(b64: string): number {
+  const s = b64.replace(/\s+/g, "");
+  const pad = s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((s.length * 3) / 4) - pad);
+}
+
+/** 字节数 → 人话（1024 进制） */
+function sizeText(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * ArrayBuffer → base64。
+ *
+ *  必须分块拼字符串：`String.fromCharCode(...bytes)` 一次展开几十万个参数会爆栈
+ *  （RangeError: Maximum call stack size exceeded），几百 KB 的文件就够触发。
+ */
+async function arrayBufferToBase64(buf: ArrayBuffer): Promise<string> {
+  const bytes = new Uint8Array(buf);
+  const CHUNK = 0x8000; // 32K，远低于各引擎的展开上限
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
+/** base64 → 字节数组（附件下载用；与 arrayBufferToBase64 互逆）。 */
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64.replace(/\s+/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/** 下载文件名净化：路径分隔符/通配符/控制字符换成下划线。
+ *  附件名可能来自服务端任意客户端（甚至手改过的 ICS），带 "/" 时 a.download
+ *  在部分平台上直接保存失败。 */
+function safeAttachName(name: string): string {
+  return (name || "附件").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim() || "附件";
+}
+
+/** 把内联二进制附件下载回本地文件（编辑器附件取回）。
+ *
+ *  机制与任务视图的 downloadAttachment 完全一致（atob → Blob →
+ *  a[download]），反馈用行内 setMsg，不用 alert。 */
+function downloadAttachment(a: CalAttachment): void {
+  const bytes = base64ToBytes(a.b64 || "");
+  // bytes 是 base64ToBytes 里 new Uint8Array(len) 新建的（无 byteOffset），
+  // .buffer 即其全部字节；Obsidian 的 TS lib 要求 BlobPart 为 ArrayBuffer
+  // （Uint8Array<ArrayBufferLike> 不兼容），这里显式收窄。
+  const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: a.fmttype || "application/octet-stream" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = safeAttachName(a.name);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // 马上 revoke 个别浏览器来不及发起下载，留一点时间再收
+  // （Obsidian 规矩：定时器一律 window. 前缀，见 constants.ts 的 TimerHandle）
+  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/**
+ * 附件行的 HTML（2026-10-20 从思源移植）。
+ *
+ * 布局按雄哥示意图：**一行一个输入框 + 右侧「删除」**，下面跟操作按钮。
+ * 刻意**不画「取消」**——删除是即时的行级操作，真要反悔就把链接删掉重新填。
+ *
+ * 两种行：
+ *  - **URI 行**：input 里填外链；
+ *  - **二进制行**：上传的本地文件转成 base64 内联进 ICS，没有可编辑的输入框，
+ *    只显示**小图标 + 文件名 + 大小**（图标 14px），带「下载 / 删除」两个按钮。
+ *
+ * ⚠️ 二进制行的图标尺寸只能靠 CSS（icons.ts 的 svg 一律不写 width/height 属性，
+ * 见该文件顶部「宿主坑 2」）。漏了 `.caldav-attach-bin svg { width/height }`
+ * 时，浏览器把无尺寸的内联 svg 当 100% 宽算 —— 表现就是回形针巨化占满整行。
+ *
+ * 每行都带 `data-attach-i="下标"`。`atts` 数组是唯一事实来源，DOM 只是它的投影，
+ * 增删改之后整份重绘，所以下标永远对得上。
+ *
+ * ⚠️ 二进制行**不能**把 base64 塞进 DOM 属性——800 KB 的文件就是 1 MB 的字符串，
+ * 放进 attribute 会让整个编辑器 DOM 变得难以为继；base64 只活在 `atts` 里。
+ */
+function attachRowHtml(a: CalAttachment, i: number): string {
+  // Obsidian 编辑器惯例：行内小操作用 caldav-alarm-del（图标按钮，hover 转危险色），
+  // 带文字的操作用 caldav-add-btn（与「添加提醒」同款，见 styles.css）。
+  const del = `<button type="button" class="caldav-alarm-del" data-attach-del title="${t("editor.attachDeleteOne")}">${icons.trash}</button>`;
+  if (a.b64) {
+    const dl = `<button type="button" class="caldav-add-btn" data-attach-dl title="${t("editor.attachDownloadTitle")}">${icons.download} ${t("editor.attachDownload")}</button>`;
+    return `<div class="caldav-attach-row caldav-attach-row--bin" data-attach-i="${i}">
+      <span class="caldav-attach-bin">${icons.paperclip}<span class="caldav-attach-bin-name">${escape(a.name || "附件")}</span><span class="caldav-attach-bin-size">${escape(sizeText(b64Bytes(a.b64)))}</span></span>
+      ${dl}${del}
+    </div>`;
+  }
+  return `<div class="caldav-attach-row" data-attach-i="${i}">
+      <input class="caldav-input caldav-attach-input" data-attach-uri value="${escape(a.uri || "")}" placeholder="https://…" />
+      ${del}
+    </div>`;
+}
+
+function attachRowsHtml(list: CalAttachment[]): string {
+  if (!list.length) {
+    return `<div class="caldav-attach-empty">${t("editor.attachEmpty")}</div>`;
+  }
+  return list.map(attachRowHtml).join("");
+}
+
+/**
+ * 附件区顶部提示语。抽成函数是为了**实时刷新**：editorHtml 渲染时的上限是
+ * 开弹窗那一刻的快照，用户在设置里把上限从 5 改到 7 之后，旧弹窗的提示语
+ * 还挂着 5.0 MB，看着就像设置没生效。挑选文件时按当前设置重写一次，
+ * 显示的上限与实际校验的上限就一致。
+ */
+function attachHintHtml(maxBytes: number): string {
+  return (
+    `${t("editor.attachHint1")}` +
+    `${t("editor.attachHint2", { max: sizeText(maxBytes), warn: sizeText(ATTACH_SIZE_WARN) })}`
+  );
+}
+
+/**
+ * 大文件上传前的确认（行内确认栏，**不用 confirm()**）。
+ *
+ * 项目约定不用 confirm()：原生确认框在 Obsidian 里样式割裂、移动端体验也差。
+ * 这里在附件区尾部挂一条确认栏，Promise 等用户点，用完即撤。
+ *
+ * ⚠️ 文件信息和「为什么要确认」**只在本栏说一遍**：挑选 handler 不预发 setMsg，
+ *    确认栏走中性色（--caldav-accent），红色只留给真错误（硬上限拒绝）。
+ *
+ * 返回值的第三种状态：没点确认就又选了一个大文件 → 上一条作废
+ * （resolve("superseded")）。不撤的话旧 Promise 永远悬挂、旧 handler 永远不返回。
+ */
+type ConfirmLargeFileResult = "ok" | "cancel" | "superseded";
+let cancelPendingConfirm: (() => void) | null = null;
+function confirmLargeFile(host: HTMLElement, file: File): Promise<ConfirmLargeFileResult> {
+  return new Promise((resolve) => {
+    cancelPendingConfirm?.(); // 上一次没确认就选了新文件 → 作废上一条
+    host.querySelector("[data-attach-confirm]")?.remove(); // 别叠第二条
+    const bar = document.createElement("div");
+    bar.className = "caldav-attach-confirm";
+    bar.setAttribute("data-attach-confirm", "");
+    const text = document.createElement("span");
+    text.className = "caldav-attach-confirm-text";
+    text.textContent = t("editor.attachConfirm", {
+      name: file.name,
+      size: sizeText(file.size),
+      warn: sizeText(ATTACH_SIZE_WARN)
+    });
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.className = "caldav-add-btn";
+    ok.setAttribute("data-attach-confirm-ok", "");
+    ok.textContent = t("editor.attachConfirmOk");
+    const no = document.createElement("button");
+    no.type = "button";
+    no.className = "caldav-add-btn";
+    no.setAttribute("data-attach-confirm-no", "");
+    no.textContent = t("common.cancel");
+    bar.append(text, ok, no);
+    const done = (r: ConfirmLargeFileResult): void => {
+      cancelPendingConfirm = null;
+      bar.remove();
+      resolve(r);
+    };
+    cancelPendingConfirm = () => done("superseded");
+    ok.addEventListener("click", () => done("ok"));
+    no.addEventListener("click", () => done("cancel"));
+    host.appendChild(bar);
+    ok.focus();
+  });
 }
 
 function computeDurationLabel(start: string, end: string | undefined, allDay: boolean): string {
@@ -342,7 +533,8 @@ function editorHtml(
   cals: CalCalendar[],
   cats: CategoryDef[],
   catMulti: boolean,
-  isNew: boolean
+  isNew: boolean,
+  attachMaxBytes: number
 ): string {
   const isTodo = it.kind === "todo";
   const r = it.rrule;
@@ -584,8 +776,26 @@ function editorHtml(
 
   <div class="caldav-tab-panel" data-panel="note" style="display:none">
     <div class="caldav-section caldav-section--card">
+      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.doc}</span>${t("editor.noteTitle")}</div>
       <textarea class="caldav-input caldav-textarea" data-f="description" rows="8" placeholder="${t("editor.notePlaceholder")}">${escape(it.description || "")}</textarea>
     </div>
+    ${
+      isTodo
+        ? `<div class="caldav-section caldav-section--card caldav-attach" data-attach>
+      <div class="caldav-section-title"><span class="caldav-section-icon">${icons.paperclip}</span>${t("editor.attachTitle")}</div>
+      <div class="caldav-attach-rows" data-attach-rows>
+        ${attachRowsHtml(it.attachments || [])}
+      </div>
+      <div class="caldav-attach-actions">
+        <input type="file" data-attach-file hidden />
+        <button type="button" class="caldav-add-btn" data-attach-upload>${icons.paperclip} ${t("editor.attachUpload")}</button>
+        <button type="button" class="caldav-add-btn" data-attach-add>${icons.plus} ${t("editor.attachAddLink")}</button>
+      </div>
+      <div class="caldav-attach-hint" data-attach-hint>${attachHintHtml(attachMaxBytes)}</div>
+      <div class="caldav-attach-msg" data-attach-msg></div>
+    </div>`
+        : ""
+    }
   </div>
 </div>
 
@@ -616,6 +826,126 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
       });
     });
   });
+
+  // ---- 附件（仅待办：日程没有附件区） ----
+  // 提到外层：保存时（collect）要读它，而附件区只在待办下渲染。
+  // `undefined` = 这次编辑没碰到附件（日程根本没有附件区），别去动 it.attachments。
+  let attachList: CalAttachment[] | undefined;
+  const attachRows = el.querySelector<HTMLElement>("[data-attach-rows]");
+  if (attachRows) {
+    const fileInput = el.querySelector<HTMLInputElement>("[data-attach-file]");
+    const msgEl = el.querySelector<HTMLElement>("[data-attach-msg]");
+    const hintEl = el.querySelector<HTMLElement>("[data-attach-hint]");
+    // 提示语实时刷新：开弹窗后的上限快照会过期（设置里改大后旧弹窗仍显示老数字），
+    // 每次挑选文件时按当前设置重写，保证显示与校验一致。
+    const refreshHint = (): void => {
+      if (hintEl) setHtml(hintEl, attachHintHtml(attachSizeMaxBytes(ctx.store.settings)));
+    };
+    const setMsg = (text: string, isErr = false): void => {
+      if (!msgEl) return;
+      msgEl.textContent = text;
+      msgEl.classList.toggle("is-error", isErr);
+    };
+    /**
+     * 附件列表：**唯一事实来源**。DOM 只是它的投影（见 attachRowHtml）。
+     * 初始值来自条目本身；之后所有增删改都改这个数组再整份重绘。
+     */
+    let atts: CalAttachment[] = (it.attachments || []).map((a) => ({ ...a }));
+    attachList = atts;
+    const redraw = (): void => {
+      setHtml(attachRows, attachRowsHtml(atts));
+    };
+
+    // 输入即时同步回 atts（保存时直接读数组，不再从 DOM 反推）
+    attachRows.addEventListener("input", (e) => {
+      const inp = e.target as HTMLInputElement;
+      if (!inp.matches("[data-attach-uri]")) return;
+      const row = inp.closest<HTMLElement>("[data-attach-i]");
+      const i = row ? Number(row.dataset.attachI) : -1;
+      if (i < 0 || i >= atts.length) return;
+      const uri = inp.value.trim();
+      // 保留 fmttype / b64，只换 uri；文件名跟着 URI 变（用户贴的链接可能就是文件名）
+      atts[i] = { ...atts[i], uri, name: uri ? nameOfUri(uri) : atts[i].name };
+    });
+
+    // 下载：二进制行专用（外链行没有可下载的内容，用户自己复制链接打开）
+    attachRows.addEventListener("click", (e) => {
+      const dlBtn = (e.target as HTMLElement).closest<HTMLElement>("[data-attach-dl]");
+      if (dlBtn) {
+        const row = dlBtn.closest<HTMLElement>("[data-attach-i]");
+        const i = row ? Number(row.dataset.attachI) : -1;
+        const a = i >= 0 && i < atts.length ? atts[i] : undefined;
+        if (a?.b64) {
+          try {
+            downloadAttachment(a);
+            setMsg(t("editor.attachDownloaded", { name: a.name || "附件" }));
+          } catch (err) {
+            setMsg(errMessage(err), true);
+          }
+        }
+        return;
+      }
+      // 删除：行级即时操作，不需要确认（删错了可以再加回来）
+      const btn = (e.target as HTMLElement).closest<HTMLElement>("[data-attach-del]");
+      if (!btn) return;
+      const row = btn.closest<HTMLElement>("[data-attach-i]");
+      const i = row ? Number(row.dataset.attachI) : -1;
+      if (i >= 0 && i < atts.length) atts.splice(i, 1);
+      redraw();
+      setMsg("");
+    });
+
+    // 手工加一行空链接（服务端已有链接、或用户想贴外链）
+    el.querySelector("[data-attach-add]")?.addEventListener("click", () => {
+      atts.push({ uri: "", name: "附件" });
+      redraw();
+      const last = attachRows.querySelectorAll<HTMLInputElement>("[data-attach-uri]");
+      last[last.length - 1]?.focus();
+    });
+
+    // 上传：读本地文件 → base64 → 内联进条目（不再单独 HTTP 上传）
+    el.querySelector("[data-attach-upload]")?.addEventListener("click", () => fileInput?.click());
+    fileInput?.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      fileInput.value = ""; // 允许连续选同一个文件
+      if (!file) return;
+      // 硬上限：超过直接拒绝，连确认都不给。服务端普遍限制单条日历数据大小
+      // （Radicale 默认 10MB、PHP 默认 post_max_size 8MB），base64 还要涨 1/3 ——
+      // 放进去的结果只有一个：这个待办永远 413 同步不过。上限取自设置
+      // （附件大小限制），老数据缺省回默认 5MB。
+      //
+      // ⚠️ 提示语在这里**实时重算**：editorHtml 渲染时的上限是开弹窗那一刻的
+      //    快照，用户在设置里改大上限后，旧弹窗的提示语还挂着老数字，看着就像
+      //    设置没生效。挑选这一刻按当前设置重写提示语，保证「显示的上限」与
+      //    「实际校验的上限」永远一致。
+      const maxBytes = attachSizeMaxBytes(ctx.store.settings);
+      refreshHint();
+      if (file.size > maxBytes) {
+        setMsg(t("editor.attachTooLarge", { name: file.name, size: sizeText(file.size), max: sizeText(maxBytes) }), true);
+        return;
+      }
+      // 大文件先确认：内联后体积涨 1/3，且每次编辑都会把整份 ICS（含这个 base64）
+      // 重传一遍。小文件无所谓，大的必须让用户知情。
+      // ⚠️ 只由确认栏说话：这里不再预发 setMsg，文件信息连报两遍还把普通确认
+      //     渲染成了报错的样子；说明文全部并进确认栏，红色只留给上面的硬上限拒绝。
+      if (file.size > ATTACH_SIZE_WARN) {
+        setMsg(""); // 上一条提示别和确认栏同时在场
+        const host = attachRows.closest<HTMLElement>(".caldav-attach") || attachRows;
+        const r = await confirmLargeFile(host, file);
+        if (r === "cancel") setMsg(t("editor.attachCancelled"));
+        if (r !== "ok") return;
+      }
+      setMsg(t("editor.attachReading", { name: file.name }));
+      try {
+        const b64 = await arrayBufferToBase64(await file.arrayBuffer());
+        atts.push({ b64, name: file.name, fmttype: file.type || undefined });
+        redraw();
+        setMsg(t("editor.attachAdded", { name: file.name }));
+      } catch (err) {
+        setMsg(errMessage(err), true);
+      }
+    });
+  }
 
   // 日历自定义下拉：图标颜色随所选日历，弹层为暖色浅底（原生 select 弹层无法去除系统蓝高亮）
   const calInput = f("calendar");
@@ -997,8 +1327,17 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
   }
   el.querySelector('[data-action="save"]')?.addEventListener("click", () => {
     try {
-      const saved = collect(ctx, el, it);
-      void (isNew ? ctx.sync.createItem(saved) : ctx.sync.updateItem(saved)).then(() => host.close());
+      const saved = collect(ctx, el, it, attachList);
+      // 本地保存（putAndEmit → emit 内含 400ms 防抖 persist）随即落盘，上传走
+      // 后台。⚠️ 曾经在这里 await 上传成功才关窗 —— 附件 base64 内联进 ICS 后
+      // 动辄数 MB，家用 NAS 上行慢时窗口假死一分钟以上，用户以为还在传大附件
+      // （2026-10-20 雄哥实测：编辑完附件点保存，窗口关不掉）。上传结果走页脚
+      // 状态条（lastNote/lastError），不阻塞编辑窗。与思源侧 2026-10-15 的
+      // 假死修复同构。
+      void (isNew ? ctx.sync.createItem(saved) : ctx.sync.updateItem(saved)).catch((e) => {
+        console.warn("[caldav] 保存后的后台上传失败:", e);
+      });
+      host.close();
     } catch (e: unknown) {
       errEl.textContent = errMessage(e) || String(e);
     }
@@ -1022,7 +1361,7 @@ function collectRepeat(el: HTMLElement): Recurrence {
   return r;
 }
 
-function collect(ctx: PanelCtx, el: HTMLElement, it: CalItem): CalItem {
+function collect(ctx: PanelCtx, el: HTMLElement, it: CalItem, attachList?: CalAttachment[]): CalItem {
   const f = (name: string) => el.querySelector(`[data-f="${name}"]`) as HTMLInputElement;
   const v = (name: string) => f(name).value.trim();
 
@@ -1081,6 +1420,9 @@ function collect(ctx: PanelCtx, el: HTMLElement, it: CalItem): CalItem {
     ? v("categories").split(/[,，]/).map((s) => s.trim()).filter(Boolean)
     : undefined;
   it.description = v("description") || undefined;
+  // 附件（仅待办有附件区；日程编辑时 attachList 为 undefined，别动 it.attachments）。
+  // 过滤掉既没 uri 又没 b64 的空行——「添加链接」后不填内容就保存会留下空壳附件。
+  if (attachList) it.attachments = attachList.filter((a) => (a.uri || "").trim() || (a.b64 || "").trim());
   if (it.kind === "todo") {
     it.priority = +f("priority").value || 0;
     it.percent = Math.min(100, Math.max(0, +f("percent").value || 0));

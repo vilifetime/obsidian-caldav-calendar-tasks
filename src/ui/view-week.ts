@@ -7,6 +7,21 @@ import { setHtml } from "./dom";
 import { t } from "@/i18n";
 
 const HOUR_H = 44; // 每小时像素
+// 顶部全天栏行高由 styles.css 的 .cal-wk-allday-cells min/max-height 决定（44px），
+// DOM 里只写类名、不写内联高度，避免两处硬编码打架。
+
+// 文字行数分档阈值（像素高）：矮块少显示几行，避免内容被裁。
+// 必须与 styles.css 里 .cal-wk-block.wk-h-* 的说明保持一致，改一处要改两处。
+const TIER_XS_MAX = 34; // < 34px（约 46 分钟以内）→ 只显示标题
+const TIER_S_MAX = 54; // < 54px（约 73 分钟以内）→ 标题 + 时间，再高才显示地点
+
+/** 按块的实际像素高度算出文字行数档位 class（空串 = 全显示） */
+function tierClassOf(heightPct: number): string {
+  const px = (heightPct / 100) * 24 * HOUR_H;
+  if (px < TIER_XS_MAX) return " wk-h-xs";
+  if (px < TIER_S_MAX) return " wk-h-s";
+  return "";
+}
 
 interface Block {
   it: import("../core/types").CalItem;
@@ -40,9 +55,26 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
         const timeRe = /T(\d{2}):(\d{2}):\d{2}$/;
         const startMatch = timeRe.exec(occ);
         const startMin = startMatch ? +startMatch[1] * 60 + +startMatch[2] : 0;
-        const end = it.end || occ;
-        const endMatch = timeRe.exec(end) || startMatch;
-        const endMin = Math.max(startMin + 15, endMatch ? +endMatch[1] * 60 + +endMatch[2] : startMin + 60);
+        // 结束分钟算法（2026-10-20 从思源侧终版同构移植，两步都别合并回去）：
+        // ① 待办：occ 就是到期日本身，end 也是到期日 → 时长恒 0，只取 end 的时分
+        //    （与开始同一时刻），真实时长保底交给渲染层的 floorMin（待办 1 小时）。
+        // ② 事件：按「开始 + 原时长」算，绝不直接取 end 的时分/日期——
+        //    - 非重复跨午夜（23:00→次日 00:00）：只取时分会把「次日 00:00」解析成
+        //      0 分钟，Math.max(startMin+15, 0) 把 1 小时的日程压成 15 分钟小条；
+        //    - 重复条目：it.end 属于首个实例，月度例会的 it.end 比当前 occ 早整整
+        //      一个月（base 9-17、occ 10-17），拿它算天数差得负数，同样被
+        //      Math.max(startMin+15, …) 压成 15 分钟小条。
+        //    原时长平移到当前 occ 后一步都对，再由 Math.min(…, 1440) 收在 24:00 线。
+        let endMin: number;
+        if (it.kind === "todo") {
+          const end = it.end || occ;
+          const endMatch = timeRe.exec(end) || startMatch;
+          endMin = Math.max(startMin + 15, endMatch ? +endMatch[1] * 60 + +endMatch[2] : startMin + 60);
+        } else {
+          const durMs = it.start && it.end ? parseLocalStamp(it.end).getTime() - parseLocalStamp(it.start).getTime() : 0;
+          const durMin = Number.isFinite(durMs) && durMs > 0 ? Math.round(durMs / 60000) : 15;
+          endMin = startMin + durMin;
+        }
         blocks.push({ it, occ, day, startMin, endMin: Math.min(endMin, 1440) });
       }
     }
@@ -92,13 +124,28 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
         .map((b) => {
           const k = keyOfItem(b.it);
           const top = (b.startMin / 1440) * 100;
-          const height = Math.max(((b.endMin - b.startMin) / 1440) * 100, 4);
+          // 极短事件（不足 15 分钟）保底 15px 高，保证还能看见、点得到。
+          // ⚠️ 下限必须用绝对像素换算，不能写百分比：Obsidian 侧原先是
+          // Math.max(…, 4) 的 4% ≈ 42px ≈ 57 分钟，会把所有 42 分钟以内的事件都撑到
+          // 42px —— 色块直接超出真实时段（与 padding 那 4px 同类问题）。
+          //
+          // 待办另有一档保底：待办没有「时段」可言 —— occ 取到期日（DUE），end 也是 DUE，
+          // 算出来恒 0 分钟，只靠事件地板兜底 → 塞不下「标题行 + 上下各 2px padding」，
+          // 文字溢出成一小条（思源侧 2026-10-19 雄哥截图：周/日视图待办「行高太小」）。
+          // 按 1 小时保底 → 44px，落进 wk-h-s 档位，标题 + 到期时间都显示得下；
+          // 真有时长的待办仍按真实时长（max 取大者）。
+          const floorMin = b.it.kind === "todo" ? 60 : 15;
+          let height = Math.max(((b.endMin - b.startMin) / 1440) * 100, (floorMin / 1440) * 100);
+          // 贴底收口：保底后块底越出 24:00 网格线时压低高度（深夜到期的待办必然触发，
+          // 23:30 到期会溢出约 21px）。再兜一层 15px 地板：23:45 之后到期的待办
+          // 也不至于比事件地板还矮。
+          if (top + height > 100) height = Math.max(100 - top, (15 / 1440) * 100);
           const startLabel = `${String(b.startMin / 60 | 0).padStart(2, "0")}:${String(b.startMin % 60).padStart(2, "0")}`;
           const done = b.it.kind === "todo" && b.it.percent === 100;
           const check = b.it.kind === "todo"
             ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">${done ? "✓" : ""}</button>`
             : "";
-          return `<div class="cal-wk-block ${b.it.kind === "todo" ? "cal-wk-block-todo" : ""} ${done ? "is-done" : ""}" data-open="${k}"
+          return `<div class="cal-wk-block ${b.it.kind === "todo" ? "cal-wk-block-todo" : ""} ${done ? "is-done" : ""}${tierClassOf(height)}" data-open="${k}"
             style="--cal-color:${calColorOf(ctx, b.it)};top:${top}%;height:${height}%">
             <div class="cal-wk-block-head">${check}<div class="cal-wk-block-title">${repeatMark(b.it)}${escape(b.it.summary || t("chip.noTitle"))}${b.it.location ? `<span class="cal-wk-block-loc-inline">📍 ${escape(b.it.location)}</span>` : ""}</div></div>
             <div class="cal-wk-block-time">${startLabel}</div>

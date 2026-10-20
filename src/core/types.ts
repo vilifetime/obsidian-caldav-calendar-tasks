@@ -20,6 +20,29 @@ export interface Alarm {
   minutesBefore: number; // 提前分钟数
 }
 
+/**
+ * 附件（iCalendar ATTACH，2026-10-14 从思源侧同构移植）。
+ *
+ * Radicale 日历目录只收 iCalendar，传 .txt/.pdf 一律 400（服务端日志
+ * `Failed to parse line`），所以附件不能单独放文件，只能内联进条目本身、
+ * 跟着 ICS 一起同步（RFC 5545 标准形式，任何客户端都能读）。
+ */
+export interface CalAttachment {
+  /**
+   * URI 形式（外链）。与 `b64` **二选一**，两者都空 = 无效条目（保存时忽略）。
+   */
+  uri?: string;
+  /**
+   * 二进制内联形式：base64 载荷（**未折行**，折行由序列化时统一做）。
+   * 对应 RFC 5545 的 `ATTACH;VALUE=BINARY;ENCODING=BASE64:…`。
+   */
+  b64?: string;
+  /** 文件名：URI 形式取末段，二进制件用上传时的文件名 */
+  name: string;
+  /** MIME 类型（FMTTYPE / FBTYPE 参数），可能为空 */
+  fmttype?: string;
+}
+
 /** 本地缓存的一条日历条目（事件或待办） */
 export interface CalItem {
   uid: string;
@@ -43,6 +66,14 @@ export interface CalItem {
   recurId?: LocalStamp;
   exdates?: LocalStamp[];
   alarms?: Alarm[];
+  /**
+   * 附件：URI 形式（外链）与二进制内联形式（`b64`，见 CalAttachment）并存。
+   *
+   * ⚠️ 这个字段**就是权威来源** —— 解析时把所有 ATTACH 都收进来，编辑时按它重写。
+   * 唯一的例外：字段为 `undefined` 时（老数据，解析发生在本次改动之前），
+   * `rebuildComponent` 仍会把原文里的二进制件原样带回，避免升级后第一次编辑就丢附件。
+   */
+  attachments?: CalAttachment[];
   /** 待办：0 无 9 低 5 中 3 高 1 紧急 */
   priority?: number;
   /** 待办状态：needs-action / in-process / completed */
@@ -177,6 +208,20 @@ export interface CalSettings {
    * 2026-10-12 从思源侧同步回来（见思源 CalSettings.includeOverdueTodos）。
    */
   includeOverdueTodos?: boolean;
+  /**
+   * 单个内联附件的硬上限（MB），超过在挑选时直接拒绝、不给确认机会。默认 5。
+   *
+   * 附件以 base64 内联进 ICS 同步，体积会涨约 1/3；服务端普遍限制单条日历数据
+   * 大小（Radicale 默认 10MB、PHP 默认 post_max_size 8MB），超了必然 413。
+   */
+  attachSizeMaxMB?: number;
+  /**
+   * 整份 ICS（含全部 base64 附件）的硬上限（MB），超过拒绝保存/上传。默认 10。
+   *
+   * 单文件上限挡不住「多个 4MB 凑 12MB」，所以按真实序列化结果卡总账。
+   * 自己的服务器上限更大就把这里调大（报错文案里的数字也取此值）。
+   */
+  icsSizeMaxMB?: number;
 }
 
 export const DEFAULT_SETTINGS: CalSettings = {
@@ -194,7 +239,9 @@ export const DEFAULT_SETTINGS: CalSettings = {
   showTodosInCalendar: true,
   categories: DEFAULT_CATEGORIES,
   categoryMulti: false,
-  includeOverdueTodos: false
+  includeOverdueTodos: false,
+  attachSizeMaxMB: 5,
+  icsSizeMaxMB: 10
 };
 
 export interface SyncState {
@@ -209,15 +256,19 @@ export interface SyncState {
    */
   lastNote?: string;
   /**
-   * 自上次全量同步以来，**即时推送**（新建/编辑/删除单条）累计的上传数。
+   * 自上次全量同步以来，**即时推送**（新建/编辑/删除单条）累计成功的条目 key。
    *
    * 为什么要有这个：单条编辑走 `pushAndPersist()` 立刻上云，它的计数原先被
    * 整个丢弃。用户随后点全量同步时会看到「上传 0 · 删除 0」，以为改动没同步
    * （2026-10-10 实测）。故这里先攒着，等下一轮 syncAll 合并进报告再清零。
+   *
+   * **按 key 而非按条数**：同一条目被编辑 N 次会推 N 次，按轮次累加会让
+   * 同步报告虚报「上传 N 条」（2026-10-19 雄哥实测「操作几次就报上传几次」）。
+   * 合并时与本轮 uploadedKeys 取 Set 并集去重，同一条目只计一条。
    */
-  pendingUploaded?: number;
-  /** 同上，即时推送累计的删除数 */
-  pendingDeleted?: number;
+  pendingUploadedKeys?: string[];
+  /** 同上，即时推送累计成功的删除条目 key */
+  pendingDeletedKeys?: string[];
 }
 
 export interface PersistData {

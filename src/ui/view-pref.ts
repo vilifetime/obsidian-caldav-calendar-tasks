@@ -22,8 +22,21 @@ import type { ViewMode } from "@/ui/panel-ctx";
 
 const KEY = "caldav-view-mode";
 
+/**
+ * 「上次使用的日历视图」专用键（只记年/月/周/日，**不记 task**）。
+ *
+ * 与 `KEY`（当前视图，含 task）分开的原因：从任务视图切回日历视图时，要回到
+ * 「进任务视图之前的那个日历视图」。如果只有一个键，进入 task 时的那次写入
+ * 会把日历视图记录覆盖成 "task"，切回来读到的还是 task，死循环。
+ * （2026-10-20 雄哥要求：从任务视图切换回日历视图时不要默认到月视图。）
+ */
+const KEY_CALENDAR = "caldav-calendar-view";
+
 /** 全部合法视图。读回的值不在其中 → 视为无记录。 */
 const VALID: readonly ViewMode[] = ["year", "month", "week", "day", "task"] as const;
+
+/** 只记日历视图（年/月/周/日）。 */
+const VALID_CALENDAR: readonly ViewMode[] = ["year", "month", "week", "day"] as const;
 
 /** 无记录时的初值：日历月视图（与面板原本的默认一致） */
 export const DEFAULT_VIEW: ViewMode = "month";
@@ -49,6 +62,33 @@ export function saveViewMode(mode: ViewMode): void {
     window.localStorage?.setItem(KEY, mode);
   } catch {
     /* 忽略 */
+  }
+}
+
+/**
+ * 记下「上次使用的日历视图」。仅在 `mode` 是日历视图（年/月/周/日）时有意义，
+ * task 不该覆盖它 —— 调用方负责过滤，这里也兜一层。
+ */
+export function saveCalendarView(mode: ViewMode): void {
+  if (!VALID_CALENDAR.includes(mode)) return;
+  try {
+    window.localStorage?.setItem(KEY_CALENDAR, mode);
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/**
+ * 读上次使用的日历视图（从任务视图返回时用）。
+ * @returns 记录存在且合法则返回它，否则 `null`（调用方回落默认月视图）。
+ */
+export function loadCalendarView(): ViewMode | null {
+  try {
+    const raw = window.localStorage?.getItem(KEY_CALENDAR);
+    if (!raw) return null;
+    return VALID_CALENDAR.includes(raw as ViewMode) ? (raw as ViewMode) : null;
+  } catch {
+    return null;
   }
 }
 

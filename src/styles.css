@@ -358,10 +358,11 @@
 .cal-month-cell:nth-child(7n) { border-right: none; }
 .cal-month-cell:hover { background: var(--caldav-bg-2); }
 .cal-month-cell.is-out { opacity: 0.45; }
-/* 今日单元格：加深底色 + 内描边加粗（用 inset 阴影避免挤动网格布局） */
+/* 今日单元格：只留背景色，不要框线（2026-10-20 雄哥要求）。
+   原实现是「底色 + inset 2px 描边」，描边在密集格子里的视觉噪声大于收益，
+   且与年视图今日格（纯底色）语言不一致。三端（年/月/周）统一为淡 accent 底。 */
 .cal-month-cell.is-today {
   background: color-mix(in srgb, var(--caldav-accent) 14%, transparent);
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--caldav-accent) 70%, transparent);
 }
 .cal-month-cell.is-today:hover {
   background: color-mix(in srgb, var(--caldav-accent) 20%, transparent);
@@ -650,10 +651,15 @@
   cursor: default;
 }
 
+/* 今日表头：与月视图今日格同款淡 accent 底；日期数字用文字色强调，
+   不再用实心圆点（2026-10-20 雄哥要求「只要背景色，不要框线」——
+   圆点是实心块，与描边同属框线状标记，一并去掉）。 */
+.cal-wk-dayhead.is-today {
+  background: color-mix(in srgb, var(--caldav-accent) 14%, transparent);
+}
 .cal-wk-dayhead.is-today .cal-wk-num {
-  background: var(--caldav-accent);
-  color: #fff;
-  border-radius: 50%;
+  color: var(--caldav-accent);
+  font-weight: 700;
 }
 
 .cal-wk-wd { color: var(--caldav-text-2); font-size: 11px; }
@@ -769,9 +775,28 @@
   font-size: 11px;
   line-height: 1.4;
   z-index: 1;
+  /* ⚠️ 本文件无全局 border-box：height 百分比默认是「内容高」，加上上下各 2px padding
+     会让色块总高比声明的时段多 4px，底部越出结束时刻的小时线（观感上「色彩框超过时间段边框」）。
+     显式声明后 top/height 百分比含 padding，色块首尾严格贴住起止时刻 —— view-week.ts 的
+     floorMin 保底（15/60 分钟）也是按这个前提换算的，少了它 44px 保底名不符实。
+     （2026-10-20 从思源侧同构移植。） */
+  box-sizing: border-box;
 }
 
 .cal-wk-block:hover { filter: brightness(0.96); z-index: 2; }
+
+/* ---- 高度分档：文字行数按块高自适应，不再每条都固定占三行 ----
+   view-week.ts 按块的实际像素高度打档位 class（阈值必须与那边一致）：
+     wk-h-xs  高 < 34px（约 46 分钟以内）→ 只留标题
+     wk-h-s   34 ≤ 高 < 54px（约 73 分钟以内）→ 标题 + 时间
+     无档位   高 ≥ 54px → 标题 + 时间 + 地点（原样）
+   矮块里把标题垂直居中，免得只露半行字。
+   与触摸端既有规则（.caldav-touch .cal-wk-block-time 整条隐藏等）方向一致，不冲突；
+   待办 1 小时保底（44px）落 wk-h-s，标题 + 到期时间都显示得下。 */
+.cal-wk-block.wk-h-xs .cal-wk-block-time,
+.cal-wk-block.wk-h-xs .cal-wk-block-loc { display: none; }
+.cal-wk-block.wk-h-s .cal-wk-block-loc { display: none; }
+.cal-wk-block.wk-h-xs { display: flex; flex-direction: column; justify-content: center; }
 
 /* 标题行：圆圈（待办）+ 标题，与月视图第一行风格一致 */
 .cal-wk-block-head {
@@ -1474,6 +1499,12 @@
   color: var(--caldav-text-2);
   pointer-events: none;
   z-index: 1;
+  /* ⚠️ 本文件无全局 border-box：height 百分比默认是「内容高」，加上上下各 2px padding
+     会让色块总高比声明的时段多 4px，底部越出结束时刻的小时线（观感上「色彩框超过时间段边框」）。
+     显式声明后 top/height 百分比含 padding，色块首尾严格贴住起止时刻 —— view-week.ts 的
+     floorMin 保底（15/60 分钟）也是按这个前提换算的，少了它 44px 保底名不符实。
+     （2026-10-20 从思源侧同构移植。） */
+  box-sizing: border-box;
 }
 .caldav-input-icon svg { width: 15px; height: 15px; }
 .caldav-input-icon--static { color: var(--caldav-text-2); }
@@ -1488,6 +1519,12 @@
   color: var(--caldav-text-2);
   pointer-events: none;
   z-index: 1;
+  /* ⚠️ 本文件无全局 border-box：height 百分比默认是「内容高」，加上上下各 2px padding
+     会让色块总高比声明的时段多 4px，底部越出结束时刻的小时线（观感上「色彩框超过时间段边框」）。
+     显式声明后 top/height 百分比含 padding，色块首尾严格贴住起止时刻 —— view-week.ts 的
+     floorMin 保底（15/60 分钟）也是按这个前提换算的，少了它 44px 保底名不符实。
+     （2026-10-20 从思源侧同构移植。） */
+  box-sizing: border-box;
 }
 .caldav-input-suffix svg { width: 13px; height: 13px; }
 
@@ -2149,6 +2186,74 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   background: color-mix(in srgb, var(--caldav-accent) 8%, var(--caldav-bg));
 }
 .caldav-add-btn svg { width: 13px; height: 13px; }
+
+/* ===== 附件（2026-10-20 从思源同构移植；仅待办编辑器的「备注附件」标签页） ===== */
+
+.caldav-attach { display: flex; flex-direction: column; gap: 8px; }
+.caldav-attach-rows { display: flex; flex-direction: column; gap: 6px; }
+.caldav-attach-empty { font-size: 12px; color: var(--caldav-text-2); }
+.caldav-attach-row { display: flex; align-items: center; gap: 6px; }
+.caldav-attach-input { flex: 1 1 auto; min-width: 0; }
+.caldav-attach-actions { display: flex; align-items: center; gap: 8px; }
+.caldav-attach-hint { font-size: 11px; color: var(--caldav-text-2); line-height: 1.5; }
+.caldav-attach-msg { font-size: 12px; color: var(--caldav-text-2); min-height: 0; }
+.caldav-attach-msg:empty { display: none; }
+.caldav-attach-msg.is-error { color: var(--caldav-danger); }
+
+/* 二进制内联附件的行：没有输入框，只有文件名 + 大小 + 下载/删除 */
+.caldav-attach-row--bin {
+  padding: 4px 8px;
+  border: 1px solid var(--caldav-border);
+  border-radius: 6px;
+  background: var(--caldav-bg-2);
+}
+.caldav-attach-bin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+}
+/* ⚠️ icons.ts 的 svg 一律不写 width/height 属性（宿主坑 2），尺寸全靠这里。
+ * 漏了这条规则时浏览器把无尺寸内联 svg 当 100% 宽算 —— 回形针巨化占满整行。 */
+.caldav-attach-bin svg { flex: 0 0 auto; width: 14px; height: 14px; }
+.caldav-attach-bin-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.caldav-attach-bin-size {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--caldav-text-2);
+}
+/* 二进制行里的按钮比提醒行矮一档（正文才 12px，34px 方块会撑高整行） */
+.caldav-attach-row--bin .caldav-alarm-del { width: 26px; height: 26px; border-radius: 6px; }
+.caldav-attach-row--bin .caldav-alarm-del svg { width: 12px; height: 12px; }
+.caldav-attach-row--bin .caldav-add-btn { padding: 4px 9px; font-size: 11px; }
+.caldav-attach-row--bin .caldav-add-btn svg { width: 12px; height: 12px; }
+
+/**
+ * 大文件上传前的行内确认栏（替代 confirm()）。
+ *
+ * ⚠️ 左边框用 **accent 中性色**，不用 danger：超过 800KB 只是「事前跟你确认
+ *    一声」，是常规确认不是错误。红色只留给真错误（超过单文件硬上限的拒绝，
+ *    见 .caldav-attach-msg.is-error）。
+ */
+.caldav-attach-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--caldav-border);
+  border-left: 3px solid var(--caldav-accent);
+  border-radius: 6px;
+  background: var(--caldav-bg-2);
+  font-size: 12px;
+}
+.caldav-attach-confirm-text { flex: 1 1 100%; line-height: 1.5; }
 
 /* 进度 */
 .caldav-progress-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
@@ -4279,6 +4384,12 @@ body > .caldav-reminder-layer {
   background: color-mix(in srgb, var(--caldav-accent) 12%, transparent);
   pointer-events: none; /* 不能挡住底下条目的点击 / 双击 */
   z-index: 1;
+  /* ⚠️ 本文件无全局 border-box：height 百分比默认是「内容高」，加上上下各 2px padding
+     会让色块总高比声明的时段多 4px，底部越出结束时刻的小时线（观感上「色彩框超过时间段边框」）。
+     显式声明后 top/height 百分比含 padding，色块首尾严格贴住起止时刻 —— view-week.ts 的
+     floorMin 保底（15/60 分钟）也是按这个前提换算的，少了它 44px 保底名不符实。
+     （2026-10-20 从思源侧同构移植。） */
+  box-sizing: border-box;
 }
 
 /* ---- 条目详情（右击条目 → 右侧栏展示该条目的全部信息）----

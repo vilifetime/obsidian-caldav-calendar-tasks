@@ -258,7 +258,9 @@ t("applied 只在真写入时 ++（same 判定跳过的条目不能算拉取）"
   const body = storeSrc.slice(storeSrc.indexOf("mergeServerItems(incoming"));
   const iSet = body.indexOf("this.items.set(keyOf(inc)");
   const iApplied = body.indexOf("applied++");
-  const iSame = body.indexOf("if (same) continue;");
+  // ⚠️ 判据只取 "if (same)"，不要写 "if (same) continue;" —— 2026-10-14 给 same
+  // 分支加了 adoptRaw 自愈后它变成块结构，绑死单行会让这条断言假红。
+  const iSame = body.indexOf("if (same)");
   assert.ok(iSame > 0 && iSame < iSet, "same 判定要在写入之前（自环条目靠它挡掉）");
   assert.ok(iApplied > iSet, "applied++ 要紧跟在真写入之后");
 });
@@ -275,7 +277,7 @@ t("etag 相同即跳过写入（挡住自环回显的关键判据）", () => {
   assert.ok(iEtag < iSet, "etag 判定必须排在写入之前");
   // 逐字段比对里不能再拿 raw 当判据 —— 服务端规范化后几乎必然不等
   const iSameBlock = body.indexOf("const same =");
-  const sameBlock = body.slice(iSameBlock, body.indexOf("if (same) continue;"));
+  const sameBlock = body.slice(iSameBlock, body.indexOf("if (same)"));
   assert.ok(!/cur\.raw === inc\.raw/.test(sameBlock), "raw 不能参与比对（服务端规范化后必然不等）");
 });
 
@@ -333,21 +335,37 @@ t("UI 层：状态栏与横幅对 lastNote 用中性样式，不用 is-error", (
 
 // ---- 2026-10-10 第二轮：即时推送（新建/编辑/删除单条）的计数被整个丢弃，
 //      用户随后点全量同步看到「上传 0 · 删除 0」，以为改动没同步 ----
+// 2026-10-19 第三轮：改成按 key 去重攒（同一事件操作几次就报上传几次是虚胖） ----
 
-t("即时推送的 uploaded/deleted 要攒进 pending，不能丢", () => {
+t("即时推送的成功要按 key 攒进 pending，不能丢", () => {
   const body = syncSrc.slice(syncSrc.indexOf("private async pushAndPersist"));
-  assert.ok(/pendingUploaded \+= report\.uploaded/.test(body), "上传数要攒进 pendingUploaded");
-  assert.ok(/pendingDeleted \+= report\.deleted/.test(body), "删除数要攒进 pendingDeleted");
-  assert.ok(/report\.uploaded \+= this\.store\.pendingUploaded/.test(syncSrc), "syncAll 要并进报告");
-  assert.ok(/report\.deleted \+= this\.store\.pendingDeleted/.test(syncSrc), "syncAll 要并进报告");
+  assert.ok(
+    /for \(const k of report\.uploadedKeys \?\? \[\]\) this\.store\.markUploaded\(k\)/.test(body),
+    "上传要按 key 攒进 pendingUploadedKeys"
+  );
+  assert.ok(
+    /for \(const k of report\.deletedKeys \?\? \[\]\) this\.store\.markDeleted\(k\)/.test(body),
+    "删除要按 key 攒进 pendingDeletedKeys"
+  );
+  assert.ok(!/pendingUploaded \+=/.test(syncSrc), "绝不许再按轮次累加计数（虚胖的根因）");
+  // 攒了不合并 = 白攒
+  assert.ok(/this\.store\.pendingUploadedKeys/.test(syncSrc), "syncAll 要消费 pendingUploadedKeys");
+  assert.ok(/this\.store\.pendingDeletedKeys/.test(syncSrc), "syncAll 要消费 pendingDeletedKeys");
+  // pushDirty 的成功分支必须记 key，否则 pending 永远是空的
+  assert.ok(
+    /report\.uploaded\+\+;[\s\S]{0,80}report\.uploadedKeys\?\.push\(keyOf\(item\)\)/.test(syncSrc),
+    "推送成功要记 uploadedKeys"
+  );
 });
 
-t("pending 合并后必须清零（否则下一轮重复计数）", () => {
-  const i = syncSrc.indexOf("report.uploaded += this.store.pendingUploaded");
+t("pending 合并后必须清零（否则下一轮重复计数、key 越滚越多）", () => {
+  const i = syncSrc.indexOf("this.store.pendingUploadedKeys = []");
   assert.ok(i > 0, "先找到合并点");
-  const body = syncSrc.slice(i, i + 400);
-  assert.ok(/pendingUploaded = 0/.test(body), "合并后 pendingUploaded 要清零");
-  assert.ok(/pendingDeleted = 0/.test(body), "合并后 pendingDeleted 要清零");
+  const body = syncSrc.slice(i, i + 500);
+  assert.ok(/pendingUploadedKeys = \[\]/.test(body), "合并后 pendingUploadedKeys 要清零");
+  assert.ok(/pendingDeletedKeys = \[\]/.test(body), "合并后 pendingDeletedKeys 要清零");
+  // 合并口径是 Set 并集去重，不是数字相加
+  assert.ok(/new Set\(\[\.\.\.\(report\.uploadedKeys \?\? \[\]\), \.\.\.this\.store\.pendingUploadedKeys\]\)/.test(syncSrc), "上传要按 key 取并集");
 });
 
 t("即时推送后立刻给反馈（用户点完删除要看得到「已上云」）", () => {
@@ -359,10 +377,14 @@ t("即时推送后立刻给反馈（用户点完删除要看得到「已上云�
 t("pending 有完整的存取盘链路（重启就丢 = 计数凭空消失）", () => {
   const storeSrc2 = readSrc("src/core/store.ts");
   const typesSrc2 = readSrc("src/core/types.ts");
-  assert.ok(/pendingUploaded\?: number/.test(typesSrc2), "SyncState 要有 pendingUploaded");
-  assert.ok(/pendingDeleted\?: number/.test(typesSrc2), "SyncState 要有 pendingDeleted");
-  assert.ok(/this\.pendingUploaded = data\.sync\?\.pendingUploaded/.test(storeSrc2), "load 要读 pending");
-  assert.ok(/pendingUploaded: this\.pendingUploaded/.test(storeSrc2), "persist 要写 pending");
+  assert.ok(/pendingUploadedKeys\?: string\[\]/.test(typesSrc2), "SyncState 要有 pendingUploadedKeys");
+  assert.ok(/pendingDeletedKeys\?: string\[\]/.test(typesSrc2), "SyncState 要有 pendingDeletedKeys");
+  assert.ok(
+    /this\.pendingUploadedKeys = Array\.isArray\(data\.sync\?\.pendingUploadedKeys\)/.test(storeSrc2),
+    "load 要读 pending keys"
+  );
+  assert.ok(/pendingUploadedKeys: this\.pendingUploadedKeys/.test(storeSrc2), "persist 要写 pending keys");
+  assert.ok(/markUploaded\(key: string\)/.test(storeSrc2), "store 要有 markUploaded 去重入口");
 });
 
 console.log(failed ? `\n[reconcile] ${failed} 项失败` : "\n[reconcile] 全部通过");

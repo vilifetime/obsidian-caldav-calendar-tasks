@@ -1,7 +1,7 @@
 /**
  * 本地存储与条目仓库：插件私有数据读写 + 内存索引 + 订阅
  */
-import type { CalItem, CalSettings, PersistData } from "./types";
+import type { CalAttachment, CalItem, CalSettings, PersistData } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import { deepCopy } from "./errors";
 import type { TimerHandle } from "../constants";
@@ -15,6 +15,7 @@ import {
 } from "./secret";
 import { t } from "../i18n";
 import { mergeBackupSettings } from "./config-backup";
+import { sanitizeEtag } from "./caldav";
 
 /**
  * 宿主提供的持久化接口。
@@ -34,9 +35,10 @@ export class CalStore {
   lastError?: string;
   /** 上次同步的中性提示（对账自愈等），**不是错误**，见 types.ts 的 SyncState */
   lastNote?: string;
-  /** 即时推送累计的上传/删除数，下一轮 syncAll 合并进报告后清零（见 types.ts） */
-  pendingUploaded = 0;
-  pendingDeleted = 0;
+  /** 即时推送累计成功的条目 key（上传/删除分列），下一轮 syncAll 合并进报告后清零。
+   *  按 key 而非按条数：同一条目推 N 次只计一条（2026-10-19 修「操作几次就报上传几次」）。 */
+  pendingUploadedKeys: string[] = [];
+  pendingDeletedKeys: string[] = [];
   /** 密码解密失败（本地密钥丢失/损坏），需要用户重新输入密码 */
   secretBroken = false;
   /** 密钥尚未就绪导致的「暂时解不开」——不是密码损坏，稍后可重试 */
@@ -54,12 +56,21 @@ export class CalStore {
     const data = (await this.env.loadData()) as PersistData | undefined;
     if (data) {
       this.settings = { ...deepCopy(DEFAULT_SETTINGS), ...data.settings };
-      this.items = new Map((data.items || []).map((it) => [keyOf(it), it]));
+      this.items = new Map(
+        (data.items || []).map((it) => {
+          // 幂等自愈：历史上拉取回来的 etag 被服务端 XML 转义成 &quot;xxxx&quot; 残留在本地
+          // （见 core/caldav.ts 的 parseMultistatus 修复），这里加载时还原，避免 If-Match 永远 412。
+          if (it && typeof it.etag === "string" && /&(quot|amp|lt|gt|apos);/.test(it.etag)) {
+            it.etag = sanitizeEtag(it.etag);
+          }
+          return [keyOf(it), it];
+        })
+      );
       this.lastSync = data.sync?.lastSync;
       this.lastError = data.sync?.lastError;
       this.lastNote = data.sync?.lastNote;
-      this.pendingUploaded = data.sync?.pendingUploaded ?? 0;
-      this.pendingDeleted = data.sync?.pendingDeleted ?? 0;
+      this.pendingUploadedKeys = Array.isArray(data.sync?.pendingUploadedKeys) ? data.sync.pendingUploadedKeys : [];
+      this.pendingDeletedKeys = Array.isArray(data.sync?.pendingDeletedKeys) ? data.sync.pendingDeletedKeys : [];
       this.keyring = data.keyring || "";
     }
     // 先注入主密钥再解密：密钥的权威副本随数据走，新生成的由 sink 回写持久化
@@ -155,8 +166,8 @@ export class CalStore {
         lastSync: this.lastSync,
         lastError: this.lastError,
         lastNote: this.lastNote,
-        pendingUploaded: this.pendingUploaded,
-        pendingDeleted: this.pendingDeleted
+        pendingUploadedKeys: this.pendingUploadedKeys,
+        pendingDeletedKeys: this.pendingDeletedKeys
       }
     });
   }
@@ -266,6 +277,21 @@ export class CalStore {
     // 不能用 incoming.length，否则自己刚推上去的条目被服务端当变更推回时，
     // 会被重复计入拉取（自环回显，2026-10-10 实测：新建一条显示「上传1 拉取1」）。
     let applied = 0;
+    // 老数据自愈：2026-10-14 之前的版本**从不在拉取时保存 ICS 原文**，本地 store 里
+    // 一大批条目的 `raw` 是 undefined。这些条目一旦被编辑就会走 `itemToNewICS` 整份重拼，
+    // 服务端的 ATTACH / ORGANIZER / ATTENDEE / VTIMEZONE 全部被抹掉（实测数据丢失）。
+    // 服务端内容没变（etag 相同 / 字段全同）时顺手把原文补上：数据上一个字节都没变，
+    // 所以**不计入 `applied`**（否则「拉取 N 条」会虚增），只标 changed 让它落盘。
+    const adoptRaw = (cur: CalItem, inc: CalItem): void => {
+      if (cur.raw || !inc.raw) return;
+      cur.raw = inc.raw;
+      changed = true;
+    };
+    // ⚠️ 附件要按「空 ≡ 没有」归一化（2026-10-20 第一批附件移植时补上）：
+    //    编辑器删光附件时写的是 `[]`，而解析器在无 ATTACH 时留 `undefined`。
+    //    直接比会把这两者判成「有变化」，于是删完附件的条目每轮同步都被拉回一次
+    //    （自环回显的变种）。
+    const attKey = (a?: CalAttachment[]): string => (a && a.length ? JSON.stringify(a) : "");
     for (const inc of incoming) {
       // 本地脏数据优先：等上传后再被服务端确认覆盖
       const existing = this.items.get(keyOf(inc));
@@ -279,7 +305,10 @@ export class CalStore {
         // `raw`：本地是生成的 ICS 原文，服务端返回的是它规范化过的版本（换行、
         // 属性顺序、补 PRODID/DTSTAMP 等），几乎必然不等，于是自己刚推上去的
         // 条目每轮都被判成「有变化」，拉取永远虚增 1（2026-10-10 实测）。
-        if (cur.etag && inc.etag && cur.etag === inc.etag) continue;
+        if (cur.etag && inc.etag && cur.etag === inc.etag) {
+          adoptRaw(cur, inc);
+          continue;
+        }
         // etag 缺失（老数据 / 服务端不返回）时才退回逐字段比对
         const same =
           cur.summary === inc.summary &&
@@ -293,8 +322,28 @@ export class CalStore {
           JSON.stringify(cur.rrule || null) === JSON.stringify(inc.rrule || null) &&
           JSON.stringify(cur.alarms || null) === JSON.stringify(inc.alarms || null) &&
           JSON.stringify(cur.categories || null) === JSON.stringify(inc.categories || null) &&
+          // 附件按 attKey 归一化比对（空数组 ≡ undefined）：服务端增删附件必须判得出
+          // 「有变化」，否则本地一直用旧附件列表；删光的也不能每轮被拉回。
+          attKey(cur.attachments) === attKey(inc.attachments) &&
           JSON.stringify(cur.exdates || null) === JSON.stringify(inc.exdates || null);
-        if (same) continue;
+        if (same) {
+          adoptRaw(cur, inc);
+          // 服务端 etag 变了但受管字段没变（多端改了 DTSTAMP/ATTENDEE/ORGANIZER 等
+          // 插件不管的字段、或服务器重算指纹）：必须把新 etag 回写，否则本地 etag 一直
+          // 滞后，下一次编辑 PUT 带着旧 etag 发 If-Match，必被服务端 412、又按「服务端
+          // 优先」把用户的改动静默丢掉（2026-10-19 雄哥实测：打勾完成即报「服务端已变更，
+          // 本地改动已按策略丢弃」，根因就是这里漏了回写——单端不触发，多端/服务器重算才触发）。
+          if (inc.etag && cur.etag !== inc.etag) {
+            cur.etag = inc.etag;
+            changed = true;
+          }
+          // 服务端 etag 变了但受管字段没变（多端改了 DTSTAMP/ATTENDEE/ORGANIZER 等
+          // 插件不管的字段、或服务器重算指纹）：必须把新 etag 回写，否则本地 etag 一直
+          // 滞后，下一次编辑 PUT 带着旧 etag 发 If-Match，必被服务端 412、又按「服务端
+          // 优先」把用户的改动静默丢掉（2026-10-19 雄哥实测：打勾完成即报「服务端已变更，
+          // 本地改动已按策略丢弃」，根因就是这里漏了回写——单端不触发，多端/服务器重算才触发）。
+          continue;
+        }
       }
       this.items.set(keyOf(inc), { ...inc, dirty: false, deleted: false });
       changed = true;
@@ -316,6 +365,16 @@ export class CalStore {
     }
     if (changed) this.emit();
     return { changed, removed, applied };
+  }
+
+  /** 记录一条即时推送成功的条目 key（按 key 去重，防「操作几次就报上传几次」） */
+  markUploaded(key: string): void {
+    if (!this.pendingUploadedKeys.includes(key)) this.pendingUploadedKeys.push(key);
+  }
+
+  /** 同 markUploaded，删除口径 */
+  markDeleted(key: string): void {
+    if (!this.pendingDeletedKeys.includes(key)) this.pendingDeletedKeys.push(key);
   }
 
   /** 待上传的脏条目 */

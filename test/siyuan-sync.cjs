@@ -494,7 +494,7 @@ for (const f of ["ui/month-day-popup.ts", "ui/view-month.ts"]) {
 }
 
 console.log("\n⑩ 待办默认截止 + 清除日期时间按钮（2026-10-13 雄哥要求）");
-// ① 待办新建时默认截止 = 下一日同一时刻（原先是 undefined「无截止」）
+// ① 待办新建时默认截止 = 开始时间 + 8 小时（取代原先的「次日」；2026-10-21 雄哥要求）
 // ② 默认开始时间落在「下一个整点」——这条由 defaultStartStamp 负责，这里顺带核
 // ③ 全天开关后面加「清除日期时间」按钮，一键清 4 个字段
 const syEditor = fs.existsSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "ui", "editor.ts"))
@@ -503,8 +503,8 @@ const syEditor = fs.existsSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "ui"
 const dateSrc = read("core/date.ts");
 
 check(
-  "Ob：待办新建默认截止 = addDays(start, 1)，不再是 undefined",
-  /if \(kind === "todo" && isNew\) it\.end = addDays\(it\.start, 1\)/.test(stripComments(editor)),
+  "Ob：待办新建默认截止 = 开始时间 + 8 小时（addHoursStr(start, 8)），不再是 undefined",
+  /if \(kind === "todo" && isNew\) it\.end = .*addHoursStr\(it\.start, 8\)/.test(stripComments(editor)),
   "默认值改动测试不会失败，必须用断言钉住"
 );
 check(
@@ -558,7 +558,7 @@ check(
 if (syEditor) {
   check(
     "思源：默认截止 / 按钮 / 事件绑定 / CSS 四项同步",
-    /kind === "todo" && isNew\) it\.end = addDays\(it\.start, 1\)/.test(syEditor) &&
+    /kind === "todo" && isNew\) it\.end = .*addHoursStr\(it\.start, 8\)/.test(syEditor) &&
       /data-clear-datetime/.test(syEditor) &&
       /for \(const name of \["startDate", "startTime", "endDate", "endTime"\]\)/.test(syEditor) &&
       /\.caldav-all-day-clear \{/.test(fs.readFileSync(path.join(ROOT, "..", "SiYuanCalDAV", "src", "index.css"), "utf8")),
@@ -569,10 +569,10 @@ if (syEditor) {
 }
 // 判据自测：确认「默认截止」判据能分辨 undefined 旧写法。
 const DUE = [
-  { code: 'if (kind === "todo" && isNew) it.end = addDays(it.start, 1);', want: true },
+  { code: 'if (kind === "todo" && isNew) it.end = it.allDay ? addDays(it.start, 1) : addHoursStr(it.start, 8);', want: true },
   { code: 'if (kind === "todo" && isNew) it.end = undefined;', want: false },
 ];
-const dueWrong = DUE.filter((c) => /it\.end = addDays\(it\.start, 1\)/.test(c.code) !== c.want);
+const dueWrong = DUE.filter((c) => /it\.end = .*addHoursStr\(it\.start, 8\)/.test(c.code) !== c.want);
 check(
   "默认截止判据自测通过（2 个用例）",
   dueWrong.length === 0,

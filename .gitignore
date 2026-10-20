@@ -32,3 +32,16 @@ _*.cjs
 _*.js
 _*.html
 .test-task-search/
+
+# tsc 临时编译目录（ics-raw.cjs / attach-ics.cjs 测试用，每次跑完重建）
+.test-icsraw/
+.test-attachics/
+.test-upload/
+.test-synccore/
+.test-digest/
+.test-allday/
+.test-wkreplica/
+
+# 周视图几何复刻诊断工具（replica-wk.cjs）的产物，工具本身保留
+replica-wk.html
+replica-wk.png

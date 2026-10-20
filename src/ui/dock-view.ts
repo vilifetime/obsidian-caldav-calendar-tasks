@@ -28,6 +28,7 @@ export class CalDavDockView extends ItemView {
     isDefaultState: () => boolean;
     isScopedState: () => boolean;
     isDetailState: () => boolean;
+    detailKey: () => string | null;
   } | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: CalDavPlugin) {
@@ -96,5 +97,10 @@ export class CalDavDockView extends ItemView {
   /** 是否处于条目详情态（右击条目后展示的那张详情卡） */
   isDetailState(): boolean {
     return this.dock?.isDetailState() ?? false;
+  }
+
+  /** 当前详情卡展示的条目 key（非详情态为 null）—— 单击条目的三态决策用 */
+  detailKey(): string | null {
+    return this.dock?.detailKey() ?? null;
   }
 }

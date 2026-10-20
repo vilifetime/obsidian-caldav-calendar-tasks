@@ -36,11 +36,13 @@ import { isMobile } from "@/obs/platform";
 import { initLocale, t } from "@/i18n";
 import { CalDavView } from "@/ui/main-view";
 import { CalDavDockView } from "@/ui/dock-view";
+import { openEditor } from "@/ui/editor";
 import {
   notifyDockAllUndone,
   notifyDockExitDetail,
   notifyDockItemDetail,
   notifyDockScope,
+  DOCK_ITEM_CLICK_EVENT,
   TOGGLE_DOCK_EVENT,
   TOGGLE_DOCK_ITEM_EVENT,
   type FocusScope,
@@ -331,6 +333,14 @@ export default class CalDavPlugin extends Plugin {
     };
     document.addEventListener(TOGGLE_DOCK_ITEM_EVENT, onToggleDockItem);
     this.register(() => document.removeEventListener(TOGGLE_DOCK_ITEM_EVENT, onToggleDockItem));
+
+    /** 单击条目 → 按右侧栏状态三态决策（见 handleDockItemClick） */
+    const onDockItemClick = (e: Event): void => {
+      const key = (e as CustomEvent).detail as string;
+      if (key) this.handleDockItemClick(key);
+    };
+    document.addEventListener(DOCK_ITEM_CLICK_EVENT, onDockItemClick);
+    this.register(() => document.removeEventListener(DOCK_ITEM_CLICK_EVENT, onDockItemClick));
   }
 
   onunload(): void {
@@ -680,6 +690,43 @@ export default class CalDavPlugin extends Plugin {
       // 折叠不可用则退回关闭视图，至少保证能收起
       leaves[0].detach();
     }
+  }
+
+  /**
+   * 单击条目 → 按右侧栏状态三态决策（行为表 2026-10-21 雄哥修订，仅 Obsidian）：
+   *
+   *   ① 右侧栏隐藏             → 弹出编辑界面（原先侧栏关着时单击是无效点击）
+   *   ② 已打开、未聚焦该条目   → 右侧栏显示该条目的所有详细信息（不改变开合状态）
+   *   ③ 已打开、已聚焦该条目   → 右侧栏恢复之前显示内容（不改变开合状态）
+   *
+   * 「聚焦该条目」＝详情卡当前正展示这条（Dock 的 detailKey === key）。
+   * ③ 的「恢复之前显示内容」复用退出详情的既有语义（notifyDockExitDetail）：只清
+   * detailKey，focusDate / 清单筛选一律不动，用户看到的就是进详情前的那份清单。
+   *
+   * 与 toggleDockItem（右击条目）的区别：右击管开合，单击在已开时只切内容。
+   */
+  private handleDockItemClick(key: string): void {
+    const { workspace } = this.app;
+    const rightSplit = workspace.rightSplit;
+    const isCollapsed = !!rightSplit?.collapsed;
+    const leaves = workspace.getLeavesOfType(DOCK_VIEW_TYPE);
+
+    // ① 右侧栏隐藏（视图不存在 / 已折叠）→ 弹出编辑界面
+    if (leaves.length === 0 || isCollapsed) {
+      const item = this.mainCtx.store.get(key);
+      if (item) openEditor(this.mainCtx, { item });
+      return;
+    }
+
+    // ②③ 已打开：按 Dock 当前聚焦的条目分流
+    const view = leaves[0].view;
+    if (view instanceof CalDavDockView && view.detailKey() === key) {
+      // ③ 已聚焦该条目 → 退出详情，恢复之前的清单内容
+      notifyDockExitDetail();
+      return;
+    }
+    // ② 未聚焦该条目（含正在展示另一条的详情）→ 切到本条详情
+    notifyDockItemDetail(key);
   }
 
   /**

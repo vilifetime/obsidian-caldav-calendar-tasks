@@ -26,6 +26,7 @@ import { Notice, PluginSettingTab, Setting, type App, type SettingDefinitionItem
 import type CalDavPlugin from "@/main";
 import type { HostSettings } from "@/main";
 import { describeNetworkError, discoverCalendars, testConnection } from "@/core/caldav";
+import { clearAuthCache } from "@/core/http";
 import { calEventColor, calTodoColor, type CalCalendar } from "@/core/types";
 import { t, currentLang } from "@/i18n";
 
@@ -226,6 +227,20 @@ export class CalDavSettingTab extends PluginSettingTab {
             options: { server: t("settings.conflictServer"), local: t("settings.conflictLocal") },
           },
           aliases: ["冲突", "conflict", "优先级"],
+        },
+        {
+          // 附件/ICS 体积上限（2026-10-20 从思源移植）。改动经 store.saveSettings
+          // 持久化；编辑器上传时的硬闸门与提示语都读这里的值。
+          name: t("settings.attachLimit"),
+          desc: t("settings.attachLimitDesc"),
+          control: num("attachSizeMaxMB", 5),
+          aliases: ["附件", "大小", "上限", "attach", "limit", "size"],
+        },
+        {
+          name: t("settings.icsLimit"),
+          desc: t("settings.icsLimitDesc"),
+          control: num("icsSizeMaxMB", 10),
+          aliases: ["ICS", "单个文件", "上限", "ics", "limit"],
         },
         {
           name: t("settings.range"),
@@ -474,6 +489,10 @@ export class CalDavSettingTab extends PluginSettingTab {
     // 存盘只是让下次启动能保持该选择。
     this.plugin.applyLanguage();
     this.plugin.store.saveSettings();
+    // 凭据或服务器地址可能刚被改过：丢掉 Digest 协商缓存，
+    // 否则下次请求会拿着旧 nonce/旧密码重发，白挨一次 401
+    // （2026-10-20 从思源侧同构移植）
+    clearAuthCache();
     await this.plugin.store.persist();
   }
 }

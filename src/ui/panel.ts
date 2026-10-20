@@ -19,7 +19,7 @@ import { renderWeekView } from "./view-week";
 import { renderTaskView } from "./view-task";
 import { renderYearView } from "./view-year";
 import { todoDueOccurrences } from "./view-common";
-import { saveViewMode } from "./view-pref";
+import { saveViewMode, saveCalendarView, loadCalendarView, DEFAULT_VIEW } from "./view-pref";
 import { askDiaryRange } from "./diary-range-modal";
 import { setHtml } from "./dom";
 import { t } from "@/i18n";
@@ -601,19 +601,16 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       ev.stopPropagation();
       return;
     }
-    // 条目：单击 → 右侧栏显示**该条目的详细信息**。
+    // 条目：单击 → 由入口按右侧栏状态三态决策（notifyDockItemClick，见事件定义处）。
     //
     // ⚠️ 这里**只管单击**，双击一律交给下面的 dblclick 处理器。
     // 早先的实现用 `ev.detail >= 2` 在 click 里判双击并打开编辑器，后来改成监听
     // `dblclick` 事件时，那个分支忘了删 —— 结果一次双击被两条路径各处理一次，
     // **弹出两个编辑器**，点一次「取消」只关掉上面那个，用户就得点两次（实测反馈）。
     //
-    // 行为（雄哥明确）：显示本条目详情，**不改变右侧栏的打开 / 隐藏状态**。
-    // 若侧栏此刻正显示着另一个条目的详情，就换成当前这条的详情。
-    //
-    //⚠️ 侧栏关闭时点条目**什么也不发生** —— 严格遵守「不改变开合状态」，
-    // 此时它就是一次无效点击。DOM 未挂载时 detailKey 设了也没有承载者，
-    // 强行打开侧栏会违背这条约定，故不做。
+    // 行为表（2026-10-21 雄哥修订）：右侧栏隐藏时单击条目 = 弹编辑界面（原先
+    // 侧栏关闭时这里什么都不做）；已打开时按「是否已聚焦该条目」切详情 / 恢复清单。
+    // 具体决策在入口（main.ts 的 handleDockItemClick），主面板只广播。
     const openEl = t0.closest<HTMLElement>("[data-open]");
     if (openEl && app.contains(openEl)) {
       const item = ctx.store.get(openEl.dataset.open!);
@@ -623,7 +620,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
         clickTimer = window.setTimeout(() => {
           clickTimer = null;
           if (destroyed) return;
-          notifyDockItemDetail(openEl.dataset.open!);
+          notifyDockItemClick(openEl.dataset.open!);
         }, 250);
       }
       return;
@@ -676,8 +673,10 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     }
     const action = target.dataset.action;
     if (action === "toggle-view") {
-      // 日历视图（年/月/周/日）↔ 任务视图 互切；从任务视图返回时统一落回月视图
-      ctx.viewMode = ctx.viewMode === "task" ? "month" : "task";
+      // 日历视图（年/月/周/日）↔ 任务视图 互切；从任务视图返回时回到
+      // 上次使用的日历视图（2026-10-20 雄哥要求，原来是硬编码落回月视图）。
+      // 读不到记录（含隐私模式 localStorage 不可用）才回落默认月视图。
+      ctx.viewMode = ctx.viewMode === "task" ? loadCalendarView() ?? DEFAULT_VIEW : "task";
       notifyViewChange(ctx.viewMode);
       renderAll();
       return;
@@ -813,6 +812,9 @@ export function notifyViewChange(mode: ViewMode): void {
   // 选这里是因为它是三处视图切换（navigate / segBtn / toggleBtn）**唯一的汇聚点** ——
   // 在别处写都会漏掉某条路径。
   saveViewMode(mode);
+  // 日历视图单独记一份（2026-10-20）：从任务视图返回时要回到进任务视图之前
+  // 的那个日历视图，而不是统一落回月视图。task 不覆盖它。
+  saveCalendarView(mode);
   document.dispatchEvent(new CustomEvent(VIEW_CHANGE_EVENT, { detail: mode }));
 }
 
@@ -875,6 +877,23 @@ export const DOCK_ITEM_DETAIL_EVENT = "caldav-dock-item-detail";
 
 export function notifyDockItemDetail(key: string): void {
   document.dispatchEvent(new CustomEvent(DOCK_ITEM_DETAIL_EVENT, { detail: key }));
+}
+
+/**
+ * 主面板「单击条目」广播：主面板发出，由入口（main.ts）按右侧栏状态做三态决策。
+ *
+ * 行为表（2026-10-21 雄哥修订，仅 Obsidian）对「单击条目」的规定：
+ *   ① 右侧栏隐藏                       → 弹出编辑界面
+ *   ② 已打开、未聚焦该条目             → 显示该条目的所有详细信息（不改变开合状态）
+ *   ③ 已打开、已聚焦该条目             → 右侧栏恢复之前显示内容（不改变开合状态）
+ *
+ * 为什么只广播不决策：①③ 需要 workspace 的开合状态、② 需要 Dock 当前的聚焦条目，
+ * 这些都住在承载层（main.ts / Dock 实例），主面板无从预知 —— 与 toggleDock 同一套路。
+ */
+export const DOCK_ITEM_CLICK_EVENT = "caldav-dock-item-click";
+
+export function notifyDockItemClick(key: string): void {
+  document.dispatchEvent(new CustomEvent(DOCK_ITEM_CLICK_EVENT, { detail: key }));
 }
 
 /**
@@ -973,6 +992,8 @@ export function renderDockPanel(
   isDefaultState: () => boolean;
   isScopedState: () => boolean;
   isDetailState: () => boolean;
+  /** 当前详情卡展示的条目 key（非详情态为 null）—— 入口据此判「已聚焦该条目」 */
+  detailKey: () => string | null;
 } {
   root.classList.add("caldav-dock");
   root.classList.toggle("caldav-touch", isMobile());
@@ -1931,6 +1952,8 @@ export function renderDockPanel(
      * 是否处于条目详情态（右击条目后展示的那张详情卡）—— 见 isDetailState 的说明。
      */
     isDetailState,
+    /** 当前详情卡展示的条目 key —— 单击条目的三态决策用（见 handleDockItemClick） */
+    detailKey: () => detailKey,
     destroy() {
       destroyed = true;
       // 先摘掉挂在容器自身上的监听：容器可能被复用（移动端 Dock），
