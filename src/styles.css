@@ -4389,7 +4389,6 @@ body > .caldav-reminder-layer {
      显式声明后 top/height 百分比含 padding，色块首尾严格贴住起止时刻 —— view-week.ts 的
      floorMin 保底（15/60 分钟）也是按这个前提换算的，少了它 44px 保底名不符实。
      （2026-10-20 从思源侧同构移植。） */
-  box-sizing: border-box;
 }
 
 /* ---- 条目详情（右击条目 → 右侧栏展示该条目的全部信息）----
