@@ -163,8 +163,7 @@ export function openMonthDayPopup(
   // 保持区 = 触发它的那一个格子（**不是整个视图容器**，见 hoverZone 注释）
   hoverZone = cell || null;
 
-  const pop = document.createElement("div");
-  pop.className = "caldav-month-pop";
+  const pop = createEl("div", { cls: "caldav-month-pop" });
   const [, m, d] = day.split("-");
   // ⚠️ 用 setHtml 而不是 `pop.innerHTML =`：社区审核明确点名 innerHTML
   // （它会连带丢弃已绑定的监听）。dom.ts 的 setHtml 走 DOMParser，是项目既定替代。

@@ -244,6 +244,7 @@ function base64ToBytes(b64: string): Uint8Array {
  *  附件名可能来自服务端任意客户端（甚至手改过的 ICS），带 "/" 时 a.download
  *  在部分平台上直接保存失败。 */
 function safeAttachName(name: string): string {
+  // eslint-disable-next-line no-control-regex -- 文件名可能含控制字符，需剔除
   return (name || "附件").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim() || "附件";
 }
 
@@ -257,7 +258,7 @@ function downloadAttachment(a: CalAttachment): void {
   // .buffer 即其全部字节；Obsidian 的 TS lib 要求 BlobPart 为 ArrayBuffer
   // （Uint8Array<ArrayBufferLike> 不兼容），这里显式收窄。
   const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: a.fmttype || "application/octet-stream" }));
-  const link = document.createElement("a");
+  const link = createEl("a");
   link.href = url;
   link.download = safeAttachName(a.name);
   document.body.appendChild(link);
@@ -344,26 +345,18 @@ function confirmLargeFile(host: HTMLElement, file: File): Promise<ConfirmLargeFi
   return new Promise((resolve) => {
     cancelPendingConfirm?.(); // 上一次没确认就选了新文件 → 作废上一条
     host.querySelector("[data-attach-confirm]")?.remove(); // 别叠第二条
-    const bar = document.createElement("div");
-    bar.className = "caldav-attach-confirm";
+    const bar = createEl("div", { cls: "caldav-attach-confirm" });
     bar.setAttribute("data-attach-confirm", "");
-    const text = document.createElement("span");
-    text.className = "caldav-attach-confirm-text";
-    text.textContent = t("editor.attachConfirm", {
-      name: file.name,
-      size: sizeText(file.size),
-      warn: sizeText(ATTACH_SIZE_WARN)
+    const text = createEl("span", {
+      cls: "caldav-attach-confirm-text",
+      text: t("editor.attachConfirm", { name: file.name, size: sizeText(file.size), warn: sizeText(ATTACH_SIZE_WARN) })
     });
-    const ok = document.createElement("button");
+    const ok = createEl("button", { cls: "caldav-add-btn", text: t("editor.attachConfirmOk") });
     ok.type = "button";
-    ok.className = "caldav-add-btn";
     ok.setAttribute("data-attach-confirm-ok", "");
-    ok.textContent = t("editor.attachConfirmOk");
-    const no = document.createElement("button");
+    const no = createEl("button", { cls: "caldav-add-btn", text: t("common.cancel") });
     no.type = "button";
-    no.className = "caldav-add-btn";
     no.setAttribute("data-attach-confirm-no", "");
-    no.textContent = t("common.cancel");
     bar.append(text, ok, no);
     const done = (r: ConfirmLargeFileResult): void => {
       cancelPendingConfirm = null;
@@ -905,45 +898,47 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
 
     // 上传：读本地文件 → base64 → 内联进条目（不再单独 HTTP 上传）
     el.querySelector("[data-attach-upload]")?.addEventListener("click", () => fileInput?.click());
-    fileInput?.addEventListener("change", async () => {
-      const file = fileInput.files?.[0];
-      fileInput.value = ""; // 允许连续选同一个文件
-      if (!file) return;
-      // 硬上限：超过直接拒绝，连确认都不给。服务端普遍限制单条日历数据大小
-      // （Radicale 默认 10MB、PHP 默认 post_max_size 8MB），base64 还要涨 1/3 ——
-      // 放进去的结果只有一个：这个待办永远 413 同步不过。上限取自设置
-      // （附件大小限制），老数据缺省回默认 5MB。
-      //
-      // ⚠️ 提示语在这里**实时重算**：editorHtml 渲染时的上限是开弹窗那一刻的
-      //    快照，用户在设置里改大上限后，旧弹窗的提示语还挂着老数字，看着就像
-      //    设置没生效。挑选这一刻按当前设置重写提示语，保证「显示的上限」与
-      //    「实际校验的上限」永远一致。
-      const maxBytes = attachSizeMaxBytes(ctx.store.settings);
-      refreshHint();
-      if (file.size > maxBytes) {
-        setMsg(t("editor.attachTooLarge", { name: file.name, size: sizeText(file.size), max: sizeText(maxBytes) }), true);
-        return;
-      }
-      // 大文件先确认：内联后体积涨 1/3，且每次编辑都会把整份 ICS（含这个 base64）
-      // 重传一遍。小文件无所谓，大的必须让用户知情。
-      // ⚠️ 只由确认栏说话：这里不再预发 setMsg，文件信息连报两遍还把普通确认
-      //     渲染成了报错的样子；说明文全部并进确认栏，红色只留给上面的硬上限拒绝。
-      if (file.size > ATTACH_SIZE_WARN) {
-        setMsg(""); // 上一条提示别和确认栏同时在场
-        const host = attachRows.closest<HTMLElement>(".caldav-attach") || attachRows;
-        const r = await confirmLargeFile(host, file);
-        if (r === "cancel") setMsg(t("editor.attachCancelled"));
-        if (r !== "ok") return;
-      }
-      setMsg(t("editor.attachReading", { name: file.name }));
-      try {
-        const b64 = await arrayBufferToBase64(await file.arrayBuffer());
-        atts.push({ b64, name: file.name, fmttype: file.type || undefined });
-        redraw();
-        setMsg(t("editor.attachAdded", { name: file.name }));
-      } catch (err) {
-        setMsg(errMessage(err), true);
-      }
+    fileInput?.addEventListener("change", () => {
+      void (async () => {
+        const file = fileInput.files?.[0];
+        fileInput.value = ""; // 允许连续选同一个文件
+        if (!file) return;
+        // 硬上限：超过直接拒绝，连确认都不给。服务端普遍限制单条日历数据大小
+        // （Radicale 默认 10MB、PHP 默认 post_max_size 8MB），base64 还要涨 1/3 ——
+        // 放进去的结果只有一个：这个待办永远 413 同步不过。上限取自设置
+        // （附件大小限制），老数据缺省回默认 5MB。
+        //
+        // ⚠️ 提示语在这里**实时重算**：editorHtml 渲染时的上限是开弹窗那一刻的
+        //    快照，用户在设置里改大上限后，旧弹窗的提示语还挂着老数字，看着就像
+        //    设置没生效。挑选这一刻按当前设置重写提示语，保证「显示的上限」与
+        //    「实际校验的上限」永远一致。
+        const maxBytes = attachSizeMaxBytes(ctx.store.settings);
+        refreshHint();
+        if (file.size > maxBytes) {
+          setMsg(t("editor.attachTooLarge", { name: file.name, size: sizeText(file.size), max: sizeText(maxBytes) }), true);
+          return;
+        }
+        // 大文件先确认：内联后体积涨 1/3，且每次编辑都会把整份 ICS（含这个 base64）
+        // 重传一遍。小文件无所谓，大的必须让用户知情。
+        // ⚠️ 只由确认栏说话：这里不再预发 setMsg，文件信息连报两遍还把普通确认
+        //     渲染成了报错的样子；说明文全部并进确认栏，红色只留给上面的硬上限拒绝。
+        if (file.size > ATTACH_SIZE_WARN) {
+          setMsg(""); // 上一条提示别和确认栏同时在场
+          const host = attachRows.closest<HTMLElement>(".caldav-attach") || attachRows;
+          const r = await confirmLargeFile(host, file);
+          if (r === "cancel") setMsg(t("editor.attachCancelled"));
+          if (r !== "ok") return;
+        }
+        setMsg(t("editor.attachReading", { name: file.name }));
+        try {
+          const b64 = await arrayBufferToBase64(await file.arrayBuffer());
+          atts.push({ b64, name: file.name, fmttype: file.type || undefined });
+          redraw();
+          setMsg(t("editor.attachAdded", { name: file.name }));
+        } catch (err) {
+          setMsg(errMessage(err), true);
+        }
+      })();
     });
   }
 

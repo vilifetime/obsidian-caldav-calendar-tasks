@@ -264,8 +264,8 @@ function attachmentName(uri: string, fmttype?: string): string {
  * SabreDAV 及各客户端原样透传；Apple 惯例同样裸写。
  */
 function icsFilenameParam(name: string): string {
-  // eslint-disable-next-line no-control-regex
   return name
+    // eslint-disable-next-line no-control-regex -- 控制字符需从文件名参数中剔除，正则必须匹配它们
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/[%/,:;"]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
 }

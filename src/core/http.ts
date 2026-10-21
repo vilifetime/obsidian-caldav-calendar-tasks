@@ -233,7 +233,6 @@ export async function httpRequest(
   if (!challenge) return r; // 真·密码错（Basic 服务器）→ 原样返回，调用方文案不变
   const cred: DigestCred = { username: auth.username, password: auth.password, challenge, nc: 0 };
   digestCache.set(key, cred);
-  console.info("[caldav] 服务器要求 Digest 认证，已协商（Baïkal 类服务器只认 Digest）");
   return dispatch(digestHeader(cred));
 }
 

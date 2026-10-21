@@ -123,9 +123,14 @@ export interface DigestCred {
 
 function randomHex(bytes: number): string {
   const buf = new Uint8Array(bytes);
-  const c = (globalThis as any).crypto;
-  if (c && typeof c.getRandomValues === "function") c.getRandomValues(buf);
-  else for (let i = 0; i < bytes; i++) buf[i] = Math.floor(Math.random() * 256);
+  // 用全局 crypto（Web Crypto API：Obsidian 窗口里即 window.crypto，Node 22+ 同样内置），
+  // 不用 globalThis —— 后者会触发官方 review 红线（any / unsafe 赋值·访问·调用）。
+  // 极老环境若无 crypto 才退回 Math.random。
+  try {
+    crypto.getRandomValues(buf);
+  } catch {
+    for (let i = 0; i < bytes; i++) buf[i] = Math.floor(Math.random() * 256);
+  }
   return Array.from(buf, (x) => x.toString(16).padStart(2, "0")).join("");
 }
 

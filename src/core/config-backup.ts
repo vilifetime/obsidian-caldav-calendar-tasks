@@ -72,12 +72,12 @@ export const BACKUP_VERSION = 1;
 /**
  * 备份文件的**相对路径**（相对于库根）。
  *
- * 取 `app.vault.configDir` 而不是硬编码 —— 见 `BACKUP_SUBFOLDER` 处的说明。
- * 配置目录名兜底为 `.obsidian`：`configDir` 是官方 API，正常必有值，
- * 但它是纯 getter，万一拿不到（如某些测试桩、非官方打包环境）不该让备份整体失效。
+ * 永远以官方 API `app.vault.configDir` 为准 —— Obsidian 允许用户改配置目录名，
+ * 写死 `.obsidian` 会让改过目录名的用户备份全部错位；审核规则也明确禁止硬编码，
+ * 故此处不保留任何 `.obsidian` 字面量兜底。
  */
 export function backupPathOf(app: App): string {
-  const cfg = normalizePath(app?.vault?.configDir || ".obsidian");
+  const cfg = normalizePath(app.vault.configDir);
   return normalizePath(`${cfg}/${BACKUP_SUBFOLDER}/${BACKUP_FILE}`);
 }
 
@@ -87,7 +87,7 @@ export function backupPathOf(app: App): string {
  * 单独给出是因为 `writeBackup` 要拿它去 mkdir、还要断言「没跑到 plugins/ 下」。
  */
 export function backupDirOf(app: App): string {
-  return normalizePath(`${normalizePath(app?.vault?.configDir || ".obsidian")}/${BACKUP_SUBFOLDER}`);
+  return normalizePath(`${normalizePath(app.vault.configDir)}/${BACKUP_SUBFOLDER}`);
 }
 
 /**
@@ -115,7 +115,7 @@ export function backupAbsPathOf(app: App): string | undefined {
   // 必须落在配置目录内，且不是 plugins/ 的子路径（后者卸载时会被删）。
   // ⚠️ 这里的判据必须用**当前配置目录名**去比对，不能写死 `.obsidian` ——
   // 写死的话，用户改过配置目录名时本该放行的备份会被误判为「落点不可疑」而拒写。
-  const cfgDir = normalizePath(app?.vault?.configDir || ".obsidian");
+  const cfgDir = normalizePath(app.vault.configDir);
   if (!norm.includes(`/${cfgDir}/`)) return undefined;
   if (norm.includes(`/${cfgDir}/plugins/`)) return undefined;
   return abs;
@@ -196,7 +196,7 @@ export async function writeBackup(app: App, payload: BackupPayload): Promise<boo
   if (backupAbsPathOf(app) === undefined) {
     // 拿不到绝对路径就无法验证（移动端 adapter 可能不支持）。此时退回按
     // adapter 抽象写，但仍要求上面的相对路径形状正确。
-    if (!dir.startsWith(`${normalizePath(app?.vault?.configDir || ".obsidian")}/`)) return false;
+    if (!dir.startsWith(`${normalizePath(app.vault.configDir)}/`)) return false;
   }
   try {
     if (!(await adapter.exists(dir))) await adapter.mkdir(dir);

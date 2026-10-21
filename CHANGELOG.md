@@ -6,6 +6,12 @@
 格式约定：每版一个 `## [版本] - 日期` 段落，段内用 `### 新增` / `### 修复` /
 `### 变更` 小标题分类条目。
 
+## [未发布]
+
+### 修复
+
+- **消除 Obsidian 社区审核告警（代码质量）**：`config-backup.ts` 改用 `app.vault.configDir` 取代硬编码 `.obsidian`；`digest.ts` 去除 `globalThis` 与 `any`，改用全局 `crypto`；`http.ts` 移除多余 `console.info`；`editor.ts` / `month-day-popup.ts` 的 `document.createElement` 全部改为 Obsidian 的 `createEl`；`ics.ts` 控制字符正则补 `eslint-disable` 描述并修正注释位置。
+
 ## [0.4.13] - 2026-10-21
 
 ### 新增

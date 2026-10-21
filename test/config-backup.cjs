@@ -190,10 +190,10 @@ const ok = (m) => console.log("  ✓ " + m);
   // 反向：默认库里不能因为兼容兜底而偏移
   assert.strictEqual(B.backupPathOf({ vault: { configDir: ".obsidian", adapter: {} } }),
     ".obsidian/caldav-calendar-tasks/backup.json", "默认配置目录不受影响");
-  // configDir 拿不到时兜底 .obsidian（官方 API 是纯 getter，但桩/非官方环境可能没有）
-  assert.strictEqual(B.backupPathOf({ vault: {} }), ".obsidian/caldav-calendar-tasks/backup.json",
-    "拿不到 configDir 时应兜底 .obsidian，而不是抛异常或返回 undefined");
-  ok("备份路径跟随 vault.configDir；configDir 缺失时兜底 .obsidian");
+  // configDir 缺失场景：真实 Obsidian 中 vault.configDir 永远有值（官方 API 保证），
+  // 故不再兜底写死 `.obsidian` —— 这正是官方 review 规则 no-hardcoded-config-dir 明确反对的写法
+  // （写死会让改名用户备份全错位）。该场景仅在极少数非官方桩环境出现，交由上层调用方处理。
+  ok("备份路径跟随 vault.configDir（不再硬编码兜底 .obsidian，符合官方 review 规则）");
 }
 
 /* ── 7. 描述文案：解析不出时间就用兜底，不露出 Invalid Date ── */
@@ -387,9 +387,11 @@ const ok = (m) => console.log("  ✓ " + m);
   // 但 plugins/ 这条安全约束必须还在（卸载会删），不能被 configDir 化顺手删掉
   assert.ok(/plugins\//.test(backupCode),
     "仍必须保留「不在 plugins/ 下」的校验（卸载会删掉那个目录）");
-  // configDir 缺失时兜底，而不是抛异常
-  assert.ok(/\|\|\s*["']\.obsidian["']/.test(backupCode),
-    "configDir 拿不到时应兜底 .obsidian，不该抛异常或返回 undefined");
+  // configDir 缺失场景：真实 Obsidian 中 vault.configDir 永远有值（官方 API 保证），
+  // 故不再兜底写死 `.obsidian` —— 这正是官方 review 规则 no-hardcoded-config-dir 明确反对的写法
+  // （写死会让改名用户备份全错位；改名用户的 configDir 已是正确目录名，无需兜底）。
+  assert.ok(!/\|\|\s*["']\.obsidian["']/.test(backupCode),
+    "不得用硬编码 .obsidian 兜底（官方 review：配置目录名用户可改，写死会让改名用户备份全错位）");
 
   // onload 里必须先取原始数据再判新装（loadData 只能调一次）
   assert.ok(/const rawLoaded = \(await this\.loadData\(\)\)/.test(main),
