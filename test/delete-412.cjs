@@ -165,8 +165,8 @@ check("删除 412 + 服务端优先 → 撤销删除三件套，条目留在本�
   assert.strictEqual(cur.dirty, false, "必须清 dirty（否则每轮同步重发）");
   assert.strictEqual(cur.etag, undefined, "必须清 etag（否则下一轮拉取写不回服务端版本）");
   assert.ok(
-    store.lastError && store.lastError.includes("服务端已变更") && store.lastError.includes("本地优先"),
-    `必须给出可操作的说明（含改冲突策略的提示），lastError=${store.lastError}`
+    store.lastNote && store.lastNote.includes("服务端已变更") && store.lastNote.includes("本地优先"),
+    `冲突说明要走中性 lastNote（非 lastError），含改冲突策略提示，lastNote=${store.lastNote}`
   );
 });
 

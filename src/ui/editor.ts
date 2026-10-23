@@ -155,7 +155,8 @@ class EditorModal extends Modal {
         cats,
         !!this.ctx.store.settings.categoryMulti,
         this.isNew,
-        attachSizeMaxBytes(this.ctx.store.settings)
+        attachSizeMaxBytes(this.ctx.store.settings),
+        this.ctx.store.settings.serverType === "icloud"
       )
     );
     bindEvents(this.ctx, this, wrap, this.it, this.isNew);
@@ -269,6 +270,18 @@ function downloadAttachment(a: CalAttachment): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+/** 把已取回的字节（托管附件下载）落盘为本地文件，与 downloadAttachment 同款交互。 */
+function downloadBytes(bytes: Uint8Array, a: CalAttachment): void {
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: a.fmttype || "application/octet-stream" }));
+  const link = createEl("a");
+  link.href = url;
+  link.download = safeAttachName(a.name);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 /**
  * 附件行的 HTML（2026-10-20 从思源移植）。
  *
@@ -291,9 +304,9 @@ function downloadAttachment(a: CalAttachment): void {
  * 放进 attribute 会让整个编辑器 DOM 变得难以为继；base64 只活在 `atts` 里。
  */
 function attachRowHtml(a: CalAttachment, i: number): string {
-  // Obsidian 编辑器惯例：行内小操作用 caldav-alarm-del（图标按钮，hover 转危险色），
-  // 带文字的操作用 caldav-add-btn（与「添加提醒」同款，见 styles.css）。
-  const del = `<button type="button" class="caldav-alarm-del" data-attach-del title="${t("editor.attachDeleteOne")}">${icons.trash}</button>`;
+  // 删除按钮带文字（2026-10-23 雄哥要求：纯图标不够直观），与「下载」同款
+  // caldav-add-btn 版式、danger 色区分；caldav-add-btn 自带 white-space: nowrap。
+  const del = `<button type="button" class="caldav-add-btn caldav-attach-del" data-attach-del title="${t("editor.attachDeleteOne")}">${icons.trash} ${t("editor.attachDelete")}</button>`;
   if (a.b64) {
     const dl = `<button type="button" class="caldav-add-btn" data-attach-dl title="${t("editor.attachDownloadTitle")}">${icons.download} ${t("editor.attachDownload")}</button>`;
     return `<div class="caldav-attach-row caldav-attach-row--bin" data-attach-i="${i}">
@@ -301,9 +314,13 @@ function attachRowHtml(a: CalAttachment, i: number): string {
       ${dl}${del}
     </div>`;
   }
+  // 托管附件（iCloud 等带 MANAGED-ID）：能在插件内取回字节下载；纯外链则留链接让用户自行打开。
+  const dl = a.managedId
+    ? `<button type="button" class="caldav-add-btn" data-attach-dl title="${t("editor.attachDownloadTitle")}">${icons.download} ${t("editor.attachDownload")}</button>`
+    : "";
   return `<div class="caldav-attach-row" data-attach-i="${i}">
       <input class="caldav-input caldav-attach-input" data-attach-uri value="${escape(a.uri || "")}" placeholder="https://…" />
-      ${del}
+      ${dl}${del}
     </div>`;
 }
 
@@ -320,7 +337,8 @@ function attachRowsHtml(list: CalAttachment[]): string {
  * 还挂着 5.0 MB，看着就像设置没生效。挑选文件时按当前设置重写一次，
  * 显示的上限与实际校验的上限就一致。
  */
-function attachHintHtml(maxBytes: number): string {
+function attachHintHtml(maxBytes: number, isIcloud?: boolean): string {
+  if (isIcloud) return t("editor.attachHintIcloud");
   return (
     `${t("editor.attachHint1")}` +
     `${t("editor.attachHint2", { max: sizeText(maxBytes), warn: sizeText(ATTACH_SIZE_WARN) })}`
@@ -341,15 +359,16 @@ function attachHintHtml(maxBytes: number): string {
  */
 type ConfirmLargeFileResult = "ok" | "cancel" | "superseded";
 let cancelPendingConfirm: (() => void) | null = null;
-function confirmLargeFile(host: HTMLElement, file: File): Promise<ConfirmLargeFileResult> {
+function confirmLargeFile(host: HTMLElement, file: File, isIcloud = false): Promise<ConfirmLargeFileResult> {
   return new Promise((resolve) => {
     cancelPendingConfirm?.(); // 上一次没确认就选了新文件 → 作废上一条
     host.querySelector("[data-attach-confirm]")?.remove(); // 别叠第二条
     const bar = createEl("div", { cls: "caldav-attach-confirm" });
     bar.setAttribute("data-attach-confirm", "");
+    const textKey = isIcloud ? "editor.attachConfirmIcloud" : "editor.attachConfirm";
     const text = createEl("span", {
       cls: "caldav-attach-confirm-text",
-      text: t("editor.attachConfirm", { name: file.name, size: sizeText(file.size), warn: sizeText(ATTACH_SIZE_WARN) })
+      text: t(textKey, { name: file.name, size: sizeText(file.size), warn: sizeText(ATTACH_SIZE_WARN) })
     });
     const ok = createEl("button", { cls: "caldav-add-btn", text: t("editor.attachConfirmOk") });
     ok.type = "button";
@@ -527,7 +546,8 @@ function editorHtml(
   cats: CategoryDef[],
   catMulti: boolean,
   isNew: boolean,
-  attachMaxBytes: number
+  attachMaxBytes: number,
+  isIcloud: boolean
 ): string {
   const isTodo = it.kind === "todo";
   const r = it.rrule;
@@ -784,7 +804,7 @@ function editorHtml(
         <button type="button" class="caldav-add-btn" data-attach-upload>${icons.paperclip} ${t("editor.attachUpload")}</button>
         <button type="button" class="caldav-add-btn" data-attach-add>${icons.plus} ${t("editor.attachAddLink")}</button>
       </div>
-      <div class="caldav-attach-hint" data-attach-hint>${attachHintHtml(attachMaxBytes)}</div>
+      <div class="caldav-attach-hint" data-attach-hint>${attachHintHtml(attachMaxBytes, isIcloud)}</div>
       <div class="caldav-attach-msg" data-attach-msg></div>
     </div>`
         : ""
@@ -826,13 +846,14 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
   let attachList: CalAttachment[] | undefined;
   const attachRows = el.querySelector<HTMLElement>("[data-attach-rows]");
   if (attachRows) {
+    const isIcloud = ctx.store.settings.serverType === "icloud";
     const fileInput = el.querySelector<HTMLInputElement>("[data-attach-file]");
     const msgEl = el.querySelector<HTMLElement>("[data-attach-msg]");
     const hintEl = el.querySelector<HTMLElement>("[data-attach-hint]");
     // 提示语实时刷新：开弹窗后的上限快照会过期（设置里改大后旧弹窗仍显示老数字），
     // 每次挑选文件时按当前设置重写，保证显示与校验一致。
     const refreshHint = (): void => {
-      if (hintEl) setHtml(hintEl, attachHintHtml(attachSizeMaxBytes(ctx.store.settings)));
+      if (hintEl) setHtml(hintEl, attachHintHtml(attachSizeMaxBytes(ctx.store.settings), ctx.store.settings.serverType === "icloud"));
     };
     const setMsg = (text: string, isErr = false): void => {
       if (!msgEl) return;
@@ -861,8 +882,8 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
       atts[i] = { ...atts[i], uri, name: uri ? nameOfUri(uri) : atts[i].name };
     });
 
-    // 下载：二进制行专用（外链行没有可下载的内容，用户自己复制链接打开）
-    attachRows.addEventListener("click", (e) => {
+    // 下载：二进制行（内联件）专用；托管附件行（iCloud 等）走 fetchAttachmentBytes 取回字节。
+    attachRows.addEventListener("click", async (e) => {
       const dlBtn = (e.target as HTMLElement).closest<HTMLElement>("[data-attach-dl]");
       if (dlBtn) {
         const row = dlBtn.closest<HTMLElement>("[data-attach-i]");
@@ -871,6 +892,16 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
         if (a?.b64) {
           try {
             downloadAttachment(a);
+            setMsg(t("editor.attachDownloaded", { name: a.name || "附件" }));
+          } catch (err) {
+            setMsg(errMessage(err), true);
+          }
+        } else if (a?.uri) {
+          // 托管附件（iCloud 等）：从服务端取回原始字节再落盘。需要鉴权，走同步层。
+          try {
+            setMsg(t("editor.attachDownloading", { name: a.name || "附件" }));
+            const bytes = await ctx.sync.fetchAttachmentBytes(a.uri);
+            downloadBytes(bytes, a);
             setMsg(t("editor.attachDownloaded", { name: a.name || "附件" }));
           } catch (err) {
             setMsg(errMessage(err), true);
@@ -925,7 +956,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
         if (file.size > ATTACH_SIZE_WARN) {
           setMsg(""); // 上一条提示别和确认栏同时在场
           const host = attachRows.closest<HTMLElement>(".caldav-attach") || attachRows;
-          const r = await confirmLargeFile(host, file);
+          const r = await confirmLargeFile(host, file, isIcloud);
           if (r === "cancel") setMsg(t("editor.attachCancelled"));
           if (r !== "ok") return;
         }
@@ -1417,7 +1448,12 @@ function collect(ctx: PanelCtx, el: HTMLElement, it: CalItem, attachList?: CalAt
   it.description = v("description") || undefined;
   // 附件（仅待办有附件区；日程编辑时 attachList 为 undefined，别动 it.attachments）。
   // 过滤掉既没 uri 又没 b64 的空行——「添加链接」后不填内容就保存会留下空壳附件。
-  if (attachList) it.attachments = attachList.filter((a) => (a.uri || "").trim() || (a.b64 || "").trim());
+  if (attachList) {
+    // iCloud 的附件走托管上传：界面收集到的内联 b64 不再在此剥掉，交给同步层
+    // uploadIcloudAttachments 逐个上传到 iCloud 托管存储、改写成托管 URI 后再 PUT。
+    // 任何服务器都只保留「有 uri 或有 b64」的附件行，空壳行（链接/内容都没填）丢弃。
+    it.attachments = attachList.filter((a) => (a.uri || "").trim() || (a.b64 || "").trim());
+  }
   if (it.kind === "todo") {
     it.priority = +f("priority").value || 0;
     it.percent = Math.min(100, Math.max(0, +f("percent").value || 0));

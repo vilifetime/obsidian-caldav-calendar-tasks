@@ -209,6 +209,26 @@ console.log("\n附件接管语义：undefined 原样带回，空数组 = 删光"
   check("新增附件带 X-FILENAME", out.includes("X-FILENAME=new.png"));
 }
 
+{
+  // dropBinary：iCloud 等不支持内联 base64 的服务器，上传时剥掉二进制内联附件、
+  // 只保留 URI 外链（否则 iCloud 拒收、返回 507）。注意这**只**影响序列化输出，
+  // 不改 item.attachments 本身（本地仍可显示，待下一轮拉取由服务端为准清理）。
+  const it = parse(
+    wrap([
+      "ATTACH:https://example.com/a.pdf",
+      `ATTACH;VALUE=BINARY;ENCODING=BASE64;X-FILENAME=b.bin:${B64_SHORT}`
+    ])
+  );
+  it.attachments.push({ uri: "https://example.com/c.xlsx", name: "c.xlsx", fmttype: "application/vnd.ms-excel" });
+  const keepLines = flat(ics.itemToEditedICS(it, true)).split(/\r?\n/).filter((l) => l.startsWith("ATTACH"));
+  check("dropBinary=true：URI 外链仍保留", keepLines.some((l) => l.includes("c.xlsx")) && keepLines.some((l) => l.includes("a.pdf")));
+  check("dropBinary=true：二进制内联被剥掉", !keepLines.some((l) => l.includes("VALUE=BINARY")));
+  check("dropBinary=true：仅剩 URI 外链（a.pdf + c.xlsx）", keepLines.length === 2, "实际 " + keepLines.length);
+  const allLines = flat(ics.itemToEditedICS(it, false)).split(/\r?\n/).filter((l) => l.startsWith("ATTACH"));
+  check("dropBinary=false：二进制内联仍在", allLines.some((l) => l.includes("VALUE=BINARY")));
+  check("dropBinary=false：共 3 条 ATTACH", allLines.length === 3, "实际 " + allLines.length);
+}
+
 console.log("\nunescapeText：单遍扫描，字面反斜杠+n 不是换行");
 
 {

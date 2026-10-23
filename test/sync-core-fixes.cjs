@@ -180,7 +180,7 @@ check("412 服务端优先分支 dirty=false 与 etag=undefined 成对", () => {
 check("412 本地优先分支保留原有强制覆盖逻辑（没被误伤）", () => {
   const src = read("src/core/sync.ts");
   assert.ok(/item\.etag = r\.etag \|\| keep;/.test(src), "本地优先重试成功后要恢复 etag");
-  assert.ok(/item\.etag = undefined;[\s\S]{0,400}item\.etag = r\.etag \|\| keep;/.test(src), "先清后恢的顺序不能反");
+  assert.ok(/item\.etag = undefined;[\s\S]{0,600}item\.etag = r\.etag \|\| keep;/.test(src), "先清后恢的顺序不能反");
 });
 
 /* ── 计数去重（行为层 + 源码层） ────────────────────────────── */

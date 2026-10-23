@@ -285,7 +285,7 @@ console.log("\n数据丢失回归：源码防漂移");
   );
   check(
     "pushDirty 有原文才走增量改写",
-    /const ics = item\.raw \? itemToEditedICS\(item\) : itemToNewICS\(item\);/.test(read("src/core/sync.ts"))
+    /const ics = item\.raw \? itemToEditedICS\(item, dropBinary\) : itemToNewICS\(item, dropBinary\);/.test(read("src/core/sync.ts"))
   );
 }
 

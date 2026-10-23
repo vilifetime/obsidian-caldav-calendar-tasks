@@ -2229,10 +2229,22 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   color: var(--caldav-text-2);
 }
 /* 二进制行里的按钮比提醒行矮一档（正文才 12px，34px 方块会撑高整行） */
-.caldav-attach-row--bin .caldav-alarm-del { width: 26px; height: 26px; border-radius: 6px; }
-.caldav-attach-row--bin .caldav-alarm-del svg { width: 12px; height: 12px; }
-.caldav-attach-row--bin .caldav-add-btn { padding: 4px 9px; font-size: 11px; }
-.caldav-attach-row--bin .caldav-add-btn svg { width: 12px; height: 12px; }
+/* 附件删除按钮：文字版（caldav-add-btn 版式）+ 危险色（与思源 caldav-btn--danger 同口径） */
+.caldav-attach-del { color: var(--caldav-danger); }
+.caldav-attach-del:hover {
+  border-color: var(--caldav-danger);
+  color: var(--caldav-danger);
+  background: color-mix(in srgb, var(--caldav-danger) 8%, var(--caldav-bg));
+}
+/* 链接行：按钮与输入框**等高**、图标同比例放大（2026-10-23 同思源）。
+ * 输入框显式 36px（8px padding + 13px 行高 + 2px 边框），按钮提到 36px、图标 13 → 16px。 */
+.caldav-attach-row .caldav-attach-input { height: 36px; padding-top: 0; padding-bottom: 0; }
+.caldav-attach-row .caldav-add-btn { height: 36px; padding-top: 0; padding-bottom: 0; }
+.caldav-attach-row .caldav-add-btn svg { width: 16px; height: 16px; }
+.caldav-attach-row--bin .caldav-add-btn,
+.caldav-attach-row--bin .caldav-attach-del { height: 26px; padding: 0 9px; font-size: 11px; }
+.caldav-attach-row--bin .caldav-add-btn svg,
+.caldav-attach-row--bin .caldav-attach-del svg { width: 12px; height: 12px; }
 
 /**
  * 大文件上传前的行内确认栏（替代 confirm()）。

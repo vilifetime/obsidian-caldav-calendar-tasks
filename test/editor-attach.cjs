@@ -104,7 +104,7 @@ check("软确认只由确认栏说话，挑选侧不预发 setMsg 文件信息",
 check("挑选文件时刷新提示语（按当前设置）", () => {
   assert.ok(editor.includes("const maxBytes = attachSizeMaxBytes(ctx.store.settings);"));
   assert.ok(editor.includes("refreshHint();"));
-  assert.ok(/const refreshHint = \(\): void => \{[\s\S]{0,200}attachHintHtml\(attachSizeMaxBytes\(ctx\.store\.settings\)\)/.test(editor));
+  assert.ok(/const refreshHint = \(\): void => \{[\s\S]{0,200}attachHintHtml\(attachSizeMaxBytes\(ctx\.store\.settings\)(?:, ctx\.store\.settings\.serverType === "icloud")?\)/.test(editor));
 });
 
 /* ── ⑥ 确认栏「建议」口吻 ─────────────────────────────────────
@@ -135,8 +135,14 @@ check("确认栏左边框走 accent 中性色，不用 danger", () => {
 /* ── ⑦ collect 写回语义 ─────────────────────────────────────── */
 check("保存时过滤空行（既没 uri 又没 b64）", () => {
   assert.ok(
-    /if \(attachList\) it\.attachments = attachList\.filter\(\(a\) => \(a\.uri \|\| ""\)\.trim\(\) \|\| \(a\.b64 \|\| ""\)\.trim\(\)\);/.test(editor),
+    /if \(attachList\) \{[\s\S]*?it\.attachments = attachList[\s\S]*?\.filter\(\(a\) => \(a\.uri \|\| ""\)\.trim\(\) \|\| \(a\.b64 \|\| ""\)\.trim\(\)\);/.test(editor),
     "「添加链接」后不填内容就保存会留空壳附件"
+  );
+});
+check("iCloud 内联件不在 collect 剥掉（交同步层托管上传）", () => {
+  assert.ok(
+    !/!\(isIcloud && a\.b64\)/.test(editor),
+    "collect 不能再按 isIcloud 剥 b64：iCloud 托管上传依赖同步层收到内联件再上传改写成托管 URI"
   );
 });
 check("attachList 为 undefined（日程）时不碰 it.attachments", () => {
@@ -186,8 +192,18 @@ check("新图标同样不写 width/height 属性（宿主坑 2）", () => {
 check("bin 行配了 svg 尺寸（14px）", () => {
   assert.ok(/\.caldav-attach-bin svg \{ flex: 0 0 auto; width: 14px; height: 14px; \}/.test(css));
 });
-check("bin 行按钮小一档（正文才 12px，34px 方块会撑高整行）", () => {
-  assert.ok(/\.caldav-attach-row--bin \.caldav-alarm-del \{ width: 26px; height: 26px;/.test(css));
+check("bin 行按钮小一档（正文才 12px，36px 会撑高整行）", () => {
+  assert.ok(/\.caldav-attach-row--bin \.caldav-add-btn,\r?\n\.caldav-attach-row--bin \.caldav-attach-del \{ height: 26px; padding: 0 9px;/.test(css));
+});
+check("链接行按钮与输入框等高 36px、图标 16px（2026-10-23 雄哥截图）", () => {
+  assert.ok(/\.caldav-attach-row \.caldav-attach-input \{ height: 36px;/.test(css));
+  assert.ok(/\.caldav-attach-row \.caldav-add-btn \{ height: 36px;/.test(css));
+  assert.ok(/\.caldav-attach-row \.caldav-add-btn svg \{ width: 16px; height: 16px; \}/.test(css));
+});
+check("删除按钮带文字且走危险色（2026-10-23 雄哥要求，不再纯图标）", () => {
+  assert.ok(/caldav-add-btn caldav-attach-del/.test(editor), "editor.ts 删除按钮要用 add-btn 版式 + attach-del 类");
+  assert.ok(editor.includes('${t("editor.attachDelete")}'), "删除按钮要有文字");
+  assert.ok(/\.caldav-attach-del \{ color: var\(--caldav-danger\); \}/.test(css), "删除按钮要配危险色规则");
 });
 for (const rule of [".caldav-attach {", ".caldav-attach-rows {", ".caldav-attach-row--bin {", ".caldav-attach-hint {", ".caldav-attach-msg.is-error {"]) {
   check(`CSS 规则 ${rule} 存在`, () => assert.ok(css.includes(rule), `styles.css 里找不到 ${rule}`));
@@ -219,7 +235,7 @@ check("types.ts 仍有 CalAttachment 与两个设置字段（防回退）", () =
  * 套件里有 i18n-dict.cjs 做全量校验，这里只钉本批新增键。 */
 const attachKeys = [
   "editor.noteTitle", "editor.attachTitle", "editor.attachUpload", "editor.attachAddLink",
-  "editor.attachDownload", "editor.attachDownloadTitle", "editor.attachDeleteOne",
+  "editor.attachDownload", "editor.attachDownloadTitle", "editor.attachDelete", "editor.attachDeleteOne",
   "editor.attachEmpty", "editor.attachHint1", "editor.attachHint2", "editor.attachConfirm",
   "editor.attachConfirmOk", "editor.attachReading", "editor.attachAdded",
   "editor.attachCancelled", "editor.attachDownloaded", "editor.attachTooLarge",

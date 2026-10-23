@@ -37,6 +37,15 @@ export function mbToBytes(mb: number | undefined, fallbackMB: number): number {
   return v * 1024 * 1024;
 }
 
+/** base64 → 字节数组（iCloud 托管附件：上传前把界面收集到的内联件解码回原始字节）。 */
+export function base64ToBytes(b64: string): Uint8Array {
+  const clean = (b64 || "").replace(/\s+/g, "");
+  const bin = atob(clean);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
 /** 生效的单附件上限（字节）——设置里可改，老数据缺省回默认 5MB */
 export function attachSizeMaxBytes(s?: CalSettings | null): number {
   return mbToBytes(s?.attachSizeMaxMB, ATTACH_SIZE_MAX_MB);
@@ -247,6 +256,85 @@ function attachmentName(uri: string, fmttype?: string): string {
 }
 
 /**
+ * 拆一条 ATTACH 属性行 → 参数表 + 值（URI）。
+ *
+ * 为什么不能正则一把梭（2026-10-23 iCloud 真机实测驱动）：服务端写的托管附件行形如
+ *   ATTACH;FMTTYPE=image/jpeg;SIZE=256;FILENAME="南坞古道.jpg";MANAGED-ID=uuid:https://…
+ * 参数值可被引号包裹、内含任意字符（含 `:`），「第一个不在引号内的 `:`」才是属性名与
+ * 值的分界；用 `[^:]*` 的正则会被 FILENAME 里的冒号截断 URI。
+ */
+export function parseAttachLine(line: string): { params: Record<string, string>; value: string } | null {
+  let inQuotes = false;
+  let splitAt = -1;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') inQuotes = !inQuotes;
+    else if (c === ":" && !inQuotes) {
+      splitAt = i;
+      break;
+    }
+  }
+  if (splitAt < 0) return null;
+  const value = line.slice(splitAt + 1).trim();
+  const head = line.slice(0, splitAt);
+  const params: Record<string, string> = {};
+  let cur = "";
+  let q = false;
+  const segs: string[] = [];
+  for (let i = 0; i < head.length; i++) {
+    const c = head[i];
+    if (c === '"') {
+      q = !q;
+      cur += c;
+    } else if (c === ";" && !q) {
+      segs.push(cur);
+      cur = "";
+    } else cur += c;
+  }
+  segs.push(cur);
+  for (const seg of segs) {
+    const eq = seg.indexOf("=");
+    if (eq < 0) continue; // 第一段是属性名 "ATTACH"，没有 =
+    const k = seg.slice(0, eq).trim().toUpperCase();
+    let v = seg.slice(eq + 1).trim();
+    if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+    params[k] = v;
+  }
+  return { params, value };
+}
+
+/**
+ * 还原服务端文件名被传输编码弄坏的情况（2026-10-23 iCloud 真机实测驱动，与思源同构）：
+ *  ① `UTF-8''%E5…` 字面量 —— 服务端没解析 RFC 5987 的 filename*，连前缀一起存进 FILENAME；
+ *  ② Latin-1 双重编码 —— HTTP 头按 Latin-1 解析，UTF-8 字节被逐字符放大
+ *     （"南"=E5 8D 97 → "å\u008d\u0097"）。特征：全部字符 ≤U+00FF 且含高位字符——
+ *     正常的中文/日文等 UTF-8 文本必含 >U+00FF 的字符，不会误伤；解不出合法 UTF-8
+ *     序列就原样返回（宁可显示怪名字，也不能把怪名字「修」成更怪的）。
+ */
+export function recoverServerFilename(name: string): string {
+  if (!name) return name;
+  const star = /^UTF-8''([\s\S]+)$/i.exec(name.trim());
+  if (star) {
+    try {
+      const dec = decodeURIComponent(star[1]);
+      if (dec) return dec;
+    } catch {
+      /* percent 序列不合法，往下试 */
+    }
+  }
+  if (/[\u0080-\u00ff]/.test(name) && !/[\u0100-\uffff]/.test(name)) {
+    try {
+      const bytes = Uint8Array.from(name, (c) => c.charCodeAt(0) & 0xff);
+      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      if (decoded) return decoded;
+    } catch {
+      /* 不是合法 UTF-8 序列，保持原样 */
+    }
+  }
+  return name;
+}
+
+/**
  * 二进制附件的文件名 → X-FILENAME 参数值。
  *
  * **裸写优先**（2026-10-19 从思源侧同构移植，含当晚的修正）：X-FILENAME 是 Apple 系
@@ -263,11 +351,32 @@ function attachmentName(uri: string, fmttype?: string): string {
  * 控制字符直接剔除。中文等非 ASCII **裸写**：ICS 文件本身 UTF-8，Radicale /
  * SabreDAV 及各客户端原样透传；Apple 惯例同样裸写。
  */
-function icsFilenameParam(name: string): string {
+export function icsFilenameParam(name: string): string {
   return name
     // eslint-disable-next-line no-control-regex -- 控制字符需从文件名参数中剔除，正则必须匹配它们
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/[%/,:;"]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
+}
+
+/**
+ * 托管附件（iCloud MANAGED-ID 形态）的 FILENAME 参数值（2026-10-23 从思源侧同构移植）。
+ *
+ * 托管分支原先只写 MANAGED-ID/FMTTYPE，服务端 ICS 是**无名氏**——换设备 / 本地数据
+ * 丢失后从服务端重拉，解析端只能按 URI 末段（签名 token）推个乱名。形态与 iCloud
+ * 自身写出的一致（探针回读证实）：纯 ASCII 裸写，非 ASCII 走 RFC 5987 的
+ * `UTF-8''`+percent 形式；recoverServerFilename 两形态都认，往返无损。
+ *
+ * ⚠️ 2026-10-23 固化（思源侧同构）：含 ICS 结构字符（`, ; : " % /`）的 ASCII 名也走 `UTF-8''`
+ * 形态——它们在 Windows 文件名里合法（`a,b;c.jpg`），裸写进 ATTACH 行会撕碎
+ * 结构（第一个 `:` 之后全被当 URI、`;` 拆出假参数），服务端直接 PUT 400。
+ * encodeURIComponent 会编码它们，recoverServerFilename 的 UTF-8'' 分支还原。
+ */
+export function managedAttachFilenameParam(name: string): string {
+  // eslint-disable-next-line no-control-regex -- 控制字符需从文件名参数中剔除，正则必须匹配它们
+  const safe = (name || "").replace(/[\u0000-\u001f\u007f]/g, "");
+  if (!safe) return "";
+  if (!/[^\x20-\x7e]/.test(safe) && !/[%/,:;"]/.test(safe)) return safe;
+  return "UTF-8''" + encodeURIComponent(safe);
 }
 
 /** X-FILENAME 参数值 → 文件名。防御性解码：别的客户端可能写了非 %XX 的怪值（如裸 `50%.pdf`），
@@ -350,7 +459,21 @@ function itemFromComponent(
     }
     const uri = unescapeText(p.value || "").trim();
     if (!uri) continue;
-    atts.push({ uri, name: attachmentName(uri, fmttype), fmttype });
+    // iCloud 托管附件（RFC 8607）会带 MANAGED-ID 参数；原样带回，序列化时再写回去。
+    const managedId = p.params["MANAGED-ID"];
+    // 名字优先取服务端的 FILENAME 参数（iCloud 托管附件带它），取不到再按 URI 末段推。
+    // ⚠️ 两者都可能被传输编码弄坏（HTTP 头按 Latin-1 解析导致双重编码 / filename*
+    //    字面量），统一过 recoverServerFilename 还原（2026-10-23 真机实测）。
+    const fnameParam = p.params["FILENAME"] || p.params["X-APPLE-FILENAME"];
+    // 同 SiYuan：托管附件无 FILENAME 时，URI 末段是 iCloud 签名 token，不能当文件名；
+    // 改用「附件」+扩展名兜底（2026-10-23）。
+    const fallback = managedId && !fnameParam ? attachmentName("", fmttype) : attachmentName(uri, fmttype);
+    atts.push({
+      uri,
+      name: recoverServerFilename(fnameParam || fallback),
+      fmttype,
+      managedId
+    });
   }
   if (atts.length) item.attachments = atts;
   if (kind === "event") {
@@ -485,8 +608,10 @@ const MANAGED = new Set([
   "ATTACH"
 ]);
 
-/** 重建目标组件的属性列表：保留未管理属性，重写受管理属性 */
-function rebuildComponent(comp: IcsComponent, item: CalItem): IcsComponent {
+/** 重建目标组件的属性列表：保留未管理属性，重写受管理属性
+ * @param dropBinary iCloud 等不支持内联 base64 附件的服务器：为 true 时只保留 URI 外链附件，
+ *                    剥掉二进制内联附件（否则服务端拒收，iCloud 返回 507）。 */
+function rebuildComponent(comp: IcsComponent, item: CalItem, dropBinary?: boolean): IcsComponent {
   const kept = comp.props.filter((p) => !MANAGED.has(p.name));
   const props: IcsProp[] = [];
   const push = (name: string, value: string, params: Record<string, string> = {}) => {
@@ -533,8 +658,16 @@ function rebuildComponent(comp: IcsComponent, item: CalItem): IcsComponent {
     const uri = (a.uri || "").trim();
     const b64 = (a.b64 || "").replace(/\s+/g, "");
     if (uri) {
-      push("ATTACH", escapeText(uri), a.fmttype ? { FMTTYPE: a.fmttype } : {});
-    } else if (b64) {
+      const params: Record<string, string> = {};
+      if (a.fmttype) params.FMTTYPE = a.fmttype;
+      // iCloud 托管附件（RFC 8607）：MANAGED-ID 标记附件由服务器托管，ICS 里只留 URI。
+      // 值里常含 `=`/`/`，按 RFC 5545 参数值规则必须加引号，否则参数非法（序列化器会原样写出）。
+      if (a.managedId) params["MANAGED-ID"] = `"${a.managedId}"`;
+      // 文件名跟着托管引用一起走（2026-10-23 雄哥实测：原先不写，服务端 ICS 是无名氏，
+      // 换设备重拉只能按 URI 末段的签名 token 推乱名）。形态与 iCloud 自身一致。
+      if (a.name) params.FILENAME = managedAttachFilenameParam(a.name);
+      push("ATTACH", escapeText(uri), params);
+    } else if (b64 && !dropBinary) {
       // 二进制内联：base64 不含需转义的字符，直接写；折行由 compToLines 统一做
       push("ATTACH", b64, {
         VALUE: "BINARY",
@@ -578,10 +711,11 @@ function compToLines(comp: IcsComponent): string[] {
 }
 
 /** 生成新建条目的 ICS */
-export function itemToNewICS(item: CalItem): string {
+export function itemToNewICS(item: CalItem, dropBinary?: boolean): string {
   const comp = rebuildComponent(
     { type: item.kind === "event" ? "VEVENT" : "VTODO", props: [], children: [] },
-    item
+    item,
+    dropBinary
   );
   // 新建：无 SEQUENCE 递增需求，重置为 0
   comp.props = comp.props.filter((p) => p.name !== "SEQUENCE");
@@ -622,8 +756,8 @@ function findTargetComponent(comps: IcsComponent[], item: CalItem): IcsComponent
 }
 
 /** 在原 ICS 基础上应用编辑（保留 ORGANIZER / ATTENDEE / VTIMEZONE 等） */
-export function itemToEditedICS(item: CalItem): string {
-  if (!item.raw) return itemToNewICS(item);
+export function itemToEditedICS(item: CalItem, dropBinary?: boolean): string {
+  if (!item.raw) return itemToNewICS(item, dropBinary);
   const root = parseICS(item.raw);
   const target = item.kind === "event" ? "VEVENT" : "VTODO";
   const comps = findComponents(root, target);
@@ -637,12 +771,26 @@ export function itemToEditedICS(item: CalItem): string {
         `已中止写入以免丢失其它属性`
     );
   }
+  // 兜底：原文无 VCALENDAR 信封（被 <![CDATA[ 包裹污染 / 裸组件）→ 直接 emit 吐裸
+  // 组件 → iCloud 判 HTTP 400。用「解析出的 VCALENDAR 组件数」判断（字符串子串
+  // 会漏判，因污染 raw 里仍含 BEGIN:VCALENDAR）。补信封包住目标组件（2026-10-23 双保险）。
+  const hasEnvelope = findComponents(root, "VCALENDAR").length > 0;
+  if (!hasEnvelope) {
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//WorkBuddy//Obsidian CalDAV//CN",
+      ...compToLines(rebuildComponent(match, item, dropBinary)),
+      "END:VCALENDAR"
+    ];
+    return lines.join("\r\n") + "\r\n";
+  }
   const lines: string[] = [];
   // 注意：parseICS 的根是 ROOT，VCALENDAR / VEVENT / VTODO 都在其下多层，
   // 必须递归下钻才能命中目标组件（只遍历 root.children 会永远打不到）。
   const emit = (c: IcsComponent) => {
     if (c === match) {
-      lines.push(...compToLines(rebuildComponent(c, item)));
+      lines.push(...compToLines(rebuildComponent(c, item, dropBinary)));
       return;
     }
     lines.push(`BEGIN:${c.type}`);

@@ -11,13 +11,14 @@ import {
   fetchCalendarItems,
   putItem,
   deleteItem,
+  uploadIcloudAttachment,
   icsRangeIso,
   listResourceNames,
   fileNameOf,
   type DavAuth
 } from "./caldav";
 import { httpRequest } from "./http";
-import { itemToEditedICS, itemToNewICS } from "./ics";
+import { itemToEditedICS, itemToNewICS, base64ToBytes } from "./ics";
 import { dateStampOfMs, stampOfMs } from "./date";
 import type { Channel } from "./http";
 import type { TimerHandle } from "../constants";
@@ -30,6 +31,8 @@ export interface SyncReport {
   uploaded: number;
   deleted: number;
   errors: string[];
+  /** 冲突（412 等正常冲突，已按策略自愈，非失败）：单独计数走中性提示，不计入 errors */
+  conflicts: string[];
   elapsedMs: number;
   /** 对账清掉的「幽灵条目」数（本地有、服务端早已不存在，见 reconcile） */
   reconciled: number;
@@ -131,6 +134,7 @@ export class SyncEngine {
         uploaded: 0,
         deleted: 0,
         errors: [t("sync.inProgress")],
+        conflicts: [],
         elapsedMs: 0,
         reconciled: 0,
         requeued: 0
@@ -143,6 +147,7 @@ export class SyncEngine {
       uploaded: 0,
       deleted: 0,
       errors: [],
+      conflicts: [],
       elapsedMs: 0,
       reconciled: 0,
       requeued: 0,
@@ -273,7 +278,7 @@ export class SyncEngine {
       const notes: string[] = [];
       if (report.reconciled) notes.push(t("sync.reconciledNote", { count: report.reconciled }));
       if (report.requeued) notes.push(t("sync.requeuedNote", { count: report.requeued }));
-      this.store.lastNote = notes.join("; ") || undefined;
+      this.store.lastNote = [...notes, ...report.conflicts].join("; ") || undefined;
       this.store.lastError = report.errors.join("; ") || undefined;
     } catch (e: unknown) {
       // 兜底：try 内部若抛出未捕获的异常（例如 pushDirty 直接抛错），原先会跳过上面两行赋值，
@@ -399,7 +404,15 @@ export class SyncEngine {
     // 新建 / 修改
     for (const item of this.store.dirtyItems()) {
       try {
-        const ics = item.raw ? itemToEditedICS(item) : itemToNewICS(item);
+        // iCloud 托管附件：先把界面收集到的内联 base64 逐个上传到 iCloud 专用存储，
+        // 就地改写成托管 URI（uri + managedId），再序列化（dropBinary 会剥掉任何残留 b64）。
+        // 这一步是「iCloud 待办直接传文件」的关键 —— 绕开内联附件被拒（507）。
+        // 非 iCloud 服务器跳过（putItem 走 base64 内联）。
+        await this.uploadIcloudAttachments(item);
+        // iCloud 不支持把附件以 base64 内联进待办（PUT 会被拒、返回 507），
+        // 故序列化时剥掉二进制内联附件，只保留 URI（托管 URI 或外链）。
+        const dropBinary = this.store.settings.serverType === "icloud";
+        const ics = item.raw ? itemToEditedICS(item, dropBinary) : itemToNewICS(item, dropBinary);
         const r = await putItem(item, ics, this.channel(), this.auth(), this.store.settings.icsSizeMaxMB);
         item.etag = r.etag;
         item.dirty = false;
@@ -415,7 +428,8 @@ export class SyncEngine {
             try {
               // 与上面同一判据：有原文才走增量改写，否则整份重拼会丢掉
               // 服务端的 ATTACH / ORGANIZER / VTIMEZONE 等未管理属性。
-              const ics = item.raw ? itemToEditedICS(item) : itemToNewICS(item);
+              const dropBinary = this.store.settings.serverType === "icloud";
+              const ics = item.raw ? itemToEditedICS(item, dropBinary) : itemToNewICS(item, dropBinary);
               const r = await putItem(item, ics, this.channel(), this.auth(), this.store.settings.icsSizeMaxMB);
               item.etag = r.etag || keep;
               item.dirty = false;
@@ -434,8 +448,14 @@ export class SyncEngine {
             // 打勾完成即报「服务端已变更，本地改动已按策略丢弃」，且界面上的勾是假的）。
             item.dirty = false;
             item.etag = undefined;
-            report.errors.push(t("sync.discardLocal", { title: item.summary }));
+            report.conflicts.push(t("sync.discardLocal", { title: item.summary }));
           }
+        } else if (errStatus(e) === 400) {
+          // 同 SiYuan：400 body 畸形防御，本地序列化既已畸形则按服务端优先清
+          // etag+dirty，下轮 pull 覆盖，避免恒 400 死循环刷屏。
+          item.dirty = false;
+          item.etag = undefined;
+          report.errors.push(`「${item.summary}」上传被服务端拒绝（HTTP 400，疑似本地数据损坏），已按策略用服务端版本覆盖本地`);
         } else {
           report.ok = false;
           report.errors.push(t("sync.uploadItem", { title: item.summary, msg: explainError(e) }));
@@ -475,7 +495,7 @@ export class SyncEngine {
             item.deleted = false;
             item.dirty = false;
             item.etag = undefined;
-            report.errors.push(t("sync.deleteConflictServer", { title: item.summary }));
+            report.conflicts.push(t("sync.deleteConflictServer", { title: item.summary }));
           }
         } else {
           report.ok = false;
@@ -486,6 +506,71 @@ export class SyncEngine {
   }
 
   /** 新建条目（先入本地并标记脏，立即上传） */
+  /**
+   * iCloud 托管附件预上传：把 item.attachments 里仍是内联 base64 的件，逐个 POST 到
+   * iCloud 的 add-attachment 端点，就地改写成托管 URI（uri + managedId）。
+   * 改写后 `pushDirty` 的序列化（dropBinary）会写出 `ATTACH;MANAGED-ID=…:uri`，
+   * ICS 里不再内联二进制，iCloud 不再 507。非 iCloud 服务器直接跳过。
+   *
+   * 新建条目（href 已定但还没有服务端资源、etag 为空）要先建一份不含内联附件的资源，
+   * 拿到 etag，add-attachment 与最终 PUT 才有目标；已存在的条目直接 POST。
+   */
+  private async uploadIcloudAttachments(item: CalItem): Promise<void> {
+    if (this.store.settings.serverType !== "icloud") return;
+    if (!item.attachments?.length) return;
+    const inline = item.attachments.filter((a) => (a.b64 || "").trim());
+    if (!inline.length) return;
+    // 新建条目：服务端还没有资源，add-attachment 没处 POST。先建一份不含内联附件的
+    // 资源（保留 URI 外链），拿到 etag，后续 add-attachment 与最终 PUT 才有目标。
+    if (!item.href || !item.etag) {
+      const ics0 = item.raw ? itemToEditedICS(item, true) : itemToNewICS(item, true);
+      const r0 = await putItem(item, ics0, this.channel(), this.auth(), this.store.settings.icsSizeMaxMB);
+      item.etag = r0.etag;
+      item.raw = item.raw || ics0;
+    }
+    // 上传前就已托管的 MANAGED-ID 集合：iCloud 回 GET 认领「新传的那个」时扣减用；
+    // 每成功传一个就补进集合，多个附件排队上传时不会认领错（见 caldav.ts 扣减法）。
+    const known = new Set(item.attachments.map((a) => a.managedId).filter((v): v is string => !!v));
+    for (const a of inline) {
+      const bytes = base64ToBytes(a.b64!);
+      const r = await uploadIcloudAttachment(
+        item,
+        bytes,
+        a.name || "attachment",
+        a.fmttype || "application/octet-stream",
+        this.channel(),
+        this.auth(),
+        [...known]
+      );
+      a.uri = r.uri;
+      a.managedId = r.managedId;
+      a.b64 = undefined;
+      known.add(r.managedId);
+      // add-attachment 会改变服务端资源的 etag（iCloud 连响应体都不给，只能从
+      // 回 GET 的 ETag 头拿）。不更新的话 pushDirty 随后那次 PUT 带旧 etag 必 412，
+      // 条目永远 dirty、每轮同步重传——2026-10-22 雄哥在思源端实测踩坑后的修复。
+      if (r.etag) item.etag = r.etag;
+    }
+  }
+
+  /** 取回托管附件（iCloud 等）的原始字节，供编辑器下载。走传输层、保留鉴权、二进制不丢。 */
+  async fetchAttachmentBytes(url: string): Promise<Uint8Array> {
+    // iCloud 托管附件的下载 URI 在 gateway.icloud.com（预签名：路径尾部自带
+    // token），**带 Authorization 反而 500**（2026-10-23 真机实测：带 auth 500、
+    // 不带 200 且 256 字节 0x00-0xFF 原样回；直连带 auth 同样 500，与通道无关）。
+    // 同主机的托管附件（自建服务器）才需要 auth，按主机是否相同决定带不带。
+    let crossHost = false;
+    try {
+      crossHost = new URL(url).host !== new URL(this.store.settings.serverUrl).host;
+    } catch {
+      crossHost = false; // URL 解析不了时保守带 auth（自建服务器场景）
+    }
+    const res = await httpRequest(url, { method: "GET" }, this.channel(), crossHost ? undefined : this.auth());
+    if (res.status >= 400) throw new Error(t("net.attachDownloadFailed", { status: res.status }));
+    if (res.bytes && res.bytes.length) return res.bytes;
+    return new TextEncoder().encode(res.body); // 兜底（纯文本类附件）
+  }
+
   async createItem(item: CalItem): Promise<void> {
     item.dirty = true;
     this.store.putAndEmit(item);
@@ -516,6 +601,7 @@ export class SyncEngine {
       uploaded: 0,
       deleted: 0,
       errors: [],
+      conflicts: [],
       elapsedMs: 0,
       reconciled: 0,
       requeued: 0,
@@ -533,7 +619,8 @@ export class SyncEngine {
     const pushed: string[] = [];
     if (report.uploaded) pushed.push(t("sync.pushedUpload", { count: report.uploaded }));
     if (report.deleted) pushed.push(t("sync.pushedDelete", { count: report.deleted }));
-    if (pushed.length) this.store.lastNote = pushed.join("; ");
+    const noteParts = [...pushed, ...report.conflicts];
+    if (noteParts.length) this.store.lastNote = noteParts.join("; ");
     this.store.lastError = report.errors.length ? report.errors.join("; ") : this.store.lastError;
     await this.store.persist();
     this.store.notify();

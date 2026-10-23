@@ -33,6 +33,8 @@ export interface HttpResult {
   status: number;
   headers: Record<string, string>;
   body: string;
+  /** 原始字节（二进制响应用，如托管附件下载）。utf8 解码 body 会破坏二进制，下载走这个字段。 */
+  bytes?: Uint8Array;
   elapsedMs: number;
   /** 保留原字段以兼容调用方：Obsidian 下恒为 "direct" */
   via: "proxy" | "direct";
@@ -41,7 +43,8 @@ export interface HttpResult {
 export interface HttpOptions {
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  /** 文本或原始二进制字节（iCloud 附件上传走 Uint8Array，由传输层原样发出） */
+  body?: string | Uint8Array;
   timeoutMs?: number;
 }
 
@@ -194,8 +197,9 @@ export async function httpRequest(
   // 没显式给超时的带 body 请求（上传类）按 body 大小放宽预算，见 uploadTimeoutMs：
   // 几 MB 的日历数据在家庭宽带上传一分钟以上是常事，固定 30s 等于必然超时。
   // 显式传了 timeoutMs 的调用方（caldav.ts 的 putItem 等）保持原值不动。
-  if (full.timeoutMs === undefined && typeof full.body === "string" && full.body.length > 0) {
-    full.timeoutMs = uploadTimeoutMs(new TextEncoder().encode(full.body).length);
+  if (full.timeoutMs === undefined && full.body) {
+    const bodyLen = typeof full.body === "string" ? new TextEncoder().encode(full.body).length : full.body.length;
+    if (bodyLen > 0) full.timeoutMs = uploadTimeoutMs(bodyLen);
   }
 
   // 单通道派发（Obsidian 的 requestUrl 天然无 CORS，不需要回退逻辑）

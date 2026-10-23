@@ -283,8 +283,8 @@ t("etag 相同即跳过写入（挡住自环回显的关键判据）", () => {
 
 t("对账提示走 lastNote 中性通道，绝不塞进 lastError", () => {
   assert.ok(
-    /this\.store\.lastNote = notes\.join\("; "\) \|\| undefined/.test(syncSrc),
-    "对账提示要写 lastNote"
+    /this\.store\.lastNote = \[\.\.\.notes, \.\.\.report\.conflicts\]\.join\("; "\) \|\| undefined/.test(syncSrc),
+    "对账提示要写 lastNote（含冲突）"
   );
   assert.ok(
     /this\.store\.lastError = report\.errors\.join\("; "\) \|\| undefined/.test(syncSrc),
@@ -308,7 +308,7 @@ t("lastNote 有完整的存取盘链路（加了字段但没存 = 重启即丢�
 t("同步抛异常时要清掉过期 lastNote（否则报错后中性提示一直挂着）", () => {
   // 用 lastNote 赋值点定位 syncAll 的兜底 catch —— 文件里有多处 catch
   // （pushDirty / 每个日历 / reconcile 各一个），按序号数位置会随重构漂移。
-  const iAssign = syncSrc.indexOf("this.store.lastNote = notes.join");
+  const iAssign = syncSrc.indexOf("this.store.lastNote = [...notes");
   assert.ok(iAssign > 0, "先找到正常路径的 lastNote 赋值点");
   const iCatch = syncSrc.indexOf("} catch (e: unknown) {", iAssign);
   assert.ok(iCatch > iAssign, "正常路径之后应紧跟 syncAll 的兜底 catch");
@@ -371,7 +371,7 @@ t("pending 合并后必须清零（否则下一轮重复计数、key 越滚越�
 t("即时推送后立刻给反馈（用户点完删除要看得到「已上云」）", () => {
   const body = syncSrc.slice(syncSrc.indexOf("private async pushAndPersist"));
   assert.ok(/sync\.pushedUpload/.test(body) && /sync\.pushedDelete/.test(body), "要有即时反馈文案");
-  assert.ok(/if \(pushed\.length\) this\.store\.lastNote = pushed\.join/.test(body), "反馈写 lastNote 中性通道");
+  assert.ok(/noteParts\.length\) this\.store\.lastNote = noteParts\.join/.test(body), "反馈写 lastNote 中性通道（含冲突）");
 });
 
 t("pending 有完整的存取盘链路（重启就丢 = 计数凭空消失）", () => {

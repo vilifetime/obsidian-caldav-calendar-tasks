@@ -93,6 +93,12 @@ export class CalDavSettingTab extends PluginSettingTab {
       return;
     }
     setDynamicField(this.s, key, value);
+    // 选 iCloud 时自动填入默认服务器地址，省得用户手敲（2026-10-21）。
+    // 只在 serverUrl 为空时填，避免覆盖用户已填的自定义地址（如 iCloud 节点主机）。
+    if (key === "serverType" && value === "icloud" && !this.s.serverUrl) {
+      this.s.serverUrl = "https://caldav.icloud.com";
+      this.update(); // 让「服务器地址」输入框立即显示新默认值
+    }
     await this.save();
   }
 
@@ -147,6 +153,17 @@ export class CalDavSettingTab extends PluginSettingTab {
     defs.push({ type: "group", heading: t("settings.groupServer"), items: [] });
     const serverGroup = defs[1] as { items: Record<string, unknown>[] };
     serverGroup.items = [
+      {
+        name: t("settings.serverType"),
+        desc: t("settings.serverTypeDesc"),
+        control: {
+          type: "dropdown" as const,
+          key: "serverType",
+          defaultValue: "caldav",
+          options: { caldav: t("settings.serverTypeCaldav"), icloud: t("settings.serverTypeIcloud") },
+        },
+        aliases: ["type", "类型", "icloud", "caldav", "服务器类型", "server type"],
+      },
       {
         name: t("settings.serverUrl"),
         desc: t("settings.serverUrlDesc"),

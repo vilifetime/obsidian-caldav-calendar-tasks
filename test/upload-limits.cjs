@@ -202,7 +202,7 @@ const reset = (status = 201) => {
     check("413 分支存在", !!putFn && /res\.status === 413/.test(putFn[0]) && /net\.tooLarge413/.test(putFn[0]));
     const syncSrc = read("src/core/sync.ts");
     const icsMaxPasses = (syncSrc.match(/this\.store\.settings\.icsSizeMaxMB/g) || []).length;
-    check("sync.ts 两处调用都传 icsSizeMaxMB", icsMaxPasses === 2, "实际 " + icsMaxPasses + " 处 —— 漏传的调用走默认 10MB，设置值不生效");
+    check("sync.ts 三处调用都传 icsSizeMaxMB（pushDirty 正常 + 412 覆盖 + iCloud 预上传建资源）", icsMaxPasses === 3, "实际 " + icsMaxPasses + " 处 —— 漏传的调用走默认 10MB，设置值不生效");
     const httpSrc = read("src/core/http.ts");
     check("http.ts 导出 uploadTimeoutMs", /export function uploadTimeoutMs/.test(httpSrc));
     check("预算参数是 10-16 放宽后的值（60s / 32KB/s / 10min）", /BASE_MS = 60000/.test(httpSrc) && /32 \* 1024/.test(httpSrc) && /CAP_MS = 600000/.test(httpSrc));

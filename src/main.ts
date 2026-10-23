@@ -32,6 +32,7 @@ import {
 import { setTransport } from "@/core/http";
 import { ReminderEngine } from "@/core/reminder";
 import { obsidianTransport } from "@/obs/http-transport";
+import { nodeHttpsTransport } from "@/obs/node-https-transport";
 import { isMobile } from "@/obs/platform";
 import { initLocale, t } from "@/i18n";
 import { CalDavView } from "@/ui/main-view";
@@ -214,7 +215,9 @@ export default class CalDavPlugin extends Plugin {
 
   async onload(): Promise<void> {
     // ① 注入宿主传输实现 —— 必须最先做，core/http.ts 依赖它发请求
-    setTransport(obsidianTransport);
+    // 桌面端走自建 Node https 传输（自行控制重定向、保留跨域 Authorization，
+    // 才能正确完成 iCloud 的根→节点主机重定向发现）；移动端无 Node 环境，退回 requestUrl。
+    setTransport(isMobile() ? obsidianTransport : nodeHttpsTransport);
 
     // ② 数据层：Obsidian 的 loadData/saveData 与思源语义一致（后者多一个文件名参数）
     //    先把原始数据取出来判「是否新装」—— loadData() 只能调一次（缓存了），
@@ -851,6 +854,16 @@ export default class CalDavPlugin extends Plugin {
 
       if (report.errors.length > 0) {
         this.notify(t("sync.doneWithErrors", { count: report.errors.length, first: report.errors[0] ?? "" }), "error");
+      } else if (report.conflicts.length > 0 && manual) {
+        const strategy = this.store.settings.conflict === "local" ? t("settings.conflictLocal") : t("settings.conflictServer");
+        this.notify(
+          t("sync.doneWithConflicts", {
+            count: report.conflicts.length,
+            strategy,
+            first: report.conflicts[0] ?? "",
+          }),
+          "info"
+        );
       } else if (manual) {
         this.notify(
           t("sync.done", {

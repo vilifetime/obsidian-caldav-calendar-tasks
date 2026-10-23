@@ -37,6 +37,8 @@ export interface CalAttachment {
    * 对应 RFC 5545 的 `ATTACH;VALUE=BINARY;ENCODING=BASE64:…`。
    */
   b64?: string;
+  /** iCloud（RFC 8607 managed-attachments）返回的托管附件 ID；重传/删除时带回，避免服务器重复建附件 */
+  managedId?: string;
   /** 文件名：URI 形式取末段，二进制件用上传时的文件名 */
   name: string;
   /** MIME 类型（FMTTYPE / FBTYPE 参数），可能为空 */
@@ -150,6 +152,13 @@ export interface CalSettings {
   serverUrl: string;
   username: string;
   password: string;
+  /**
+   * 服务器类型：icloud / caldav。仅作元数据与默认值驱动，
+   * 发现逻辑本身类型无关（iCloud 与标准 CalDAV 走同一条 principal→home-set→枚举链）。
+   * 选 iCloud 时设置页会自动把 serverUrl 填成 https://caldav.icloud.com。
+   * 2026-10-21 新增（多账户功能第一步）。
+   */
+  serverType: "icloud" | "caldav";
   /** 可选，直接指定日历集合或主目录；空则自动发现 */
   calendarPath: string;
   /** auto：内核代理优先、失败回退直连 */
@@ -228,6 +237,7 @@ export const DEFAULT_SETTINGS: CalSettings = {
   serverUrl: "",
   username: "",
   password: "",
+  serverType: "caldav",
   calendarPath: "",
   channel: "auto",
   syncIntervalMin: 15,
