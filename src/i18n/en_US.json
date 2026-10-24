@@ -262,6 +262,8 @@
 
   "editor.needConfig": "Configure and discover a CalDAV calendar in settings first",
   "editor.newTodo": "New task",
+  "editor.convertToEvent": "Convert to event",
+  "editor.convertToTodo": "Convert to task",
   "editor.newEvent": "New event",
   "editor.editTodo": "Edit task",
   "editor.editEvent": "Edit event",

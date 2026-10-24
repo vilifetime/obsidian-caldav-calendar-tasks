@@ -110,7 +110,7 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
           const k = keyOfItem(it);
           const done = it.kind === "todo" && it.percent === 100;
           const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">${done ? "✓" : ""}</button>` : "";
-          return `<div class="cal-chip cal-chip-allday ${done ? "is-done" : ""}" data-open="${k}" style="--cal-color:${calColorOf(ctx, it)}">${check}<span class="cal-chip-title">${it.rrule ? "↻" : ""}${escape(it.summary || t("chip.noTitle"))}</span></div>`;
+          return `<div class="cal-chip cal-chip-allday ${done ? "is-done" : ""}" data-open="${k}" data-kind="${it.kind}" style="--cal-color:${calColorOf(ctx, it)}">${check}<span class="cal-chip-title">${it.rrule ? "↻" : ""}${escape(it.summary || t("chip.noTitle"))}</span></div>`;
         })
         .join("");
       return `<div class="cal-wk-allday-cell" data-day="${d}">${chips}</div>`;
@@ -145,7 +145,7 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
           const check = b.it.kind === "todo"
             ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? t("dock.markUndone") : t("dock.markDone")}">${done ? "✓" : ""}</button>`
             : "";
-          return `<div class="cal-wk-block ${b.it.kind === "todo" ? "cal-wk-block-todo" : ""} ${done ? "is-done" : ""}${tierClassOf(height)}" data-open="${k}"
+          return `<div class="cal-wk-block ${b.it.kind === "todo" ? "cal-wk-block-todo" : ""} ${done ? "is-done" : ""}${tierClassOf(height)}" data-open="${k}" data-kind="${b.it.kind}"
             style="--cal-color:${calColorOf(ctx, b.it)};top:${top}%;height:${height}%">
             <div class="cal-wk-block-head">${check}<div class="cal-wk-block-title">${repeatMark(b.it)}${escape(b.it.summary || t("chip.noTitle"))}${b.it.location ? `<span class="cal-wk-block-loc-inline">📍 ${escape(b.it.location)}</span>` : ""}</div></div>
             <div class="cal-wk-block-time">${startLabel}</div>

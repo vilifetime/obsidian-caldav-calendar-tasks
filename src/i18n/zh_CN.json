@@ -262,6 +262,8 @@
 
   "editor.needConfig": "请先在设置中配置并发现 CalDAV 日历",
   "editor.newTodo": "新建待办",
+  "editor.convertToEvent": "转为日程",
+  "editor.convertToTodo": "转为待办",
   "editor.newEvent": "新建日程",
   "editor.editTodo": "编辑待办",
   "editor.editEvent": "编辑日程",

@@ -15,6 +15,7 @@ import {
   icsRangeIso,
   listResourceNames,
   fileNameOf,
+  probeCalendarComponents,
   type DavAuth
 } from "./caldav";
 import { httpRequest } from "./http";
@@ -33,6 +34,8 @@ export interface SyncReport {
   errors: string[];
   /** 冲突（412 等正常冲突，已按策略自愈，非失败）：单独计数走中性提示，不计入 errors */
   conflicts: string[];
+  /** 中性提示（如「旧地址那份没删掉，请手动清理」）：不是错误，与 conflicts 一样走 lastNote */
+  notes?: string[];
   elapsedMs: number;
   /** 对账清掉的「幽灵条目」数（本地有、服务端早已不存在，见 reconcile） */
   reconciled: number;
@@ -90,6 +93,21 @@ function explainError(e: unknown): string {
   if (/401/.test(msg)) return t("net.auth401");
   if (/403/.test(msg)) return t("net.forbidden");
   return msg;
+}
+
+/**
+ * 同一集合内的备用资源地址（组件类型变更被拒时换一个新文件名重试）。
+ *
+ * 为什么要换地址而不是硬覆盖：服务端是把组件类型绑在资源上校验的，同 href PUT
+ * 另一种类型会被拒；换文件名等于「新建一份」，通常放行。UID 不变，各客户端仍按
+ * UID 认它是同一条。
+ */
+function altHrefOf(href: string, uid: string): string {
+  const i = href.lastIndexOf("/");
+  const dir = i >= 0 ? href.slice(0, i) : "";
+  const base = (uid || "item").replace(/[^A-Za-z0-9._-]/g, "") || "item";
+  const alt = `${dir}/${base}-${Date.now().toString(36)}.ics`;
+  return alt === href ? `${dir}/${base}-${Date.now().toString(36)}x.ics` : alt;
 }
 
 export class SyncEngine {
@@ -183,6 +201,12 @@ export class SyncEngine {
       const rangeStart = Date.now() - this.store.settings.pastDays * 86400000;
       const rangeEnd = Date.now() + this.store.settings.futureDays * 86400000;
 
+      // 0. 补齐日历能力（supported-calendar-component-set）。老配置里的
+      //    supportsEvent/Todo 是「没问过服务端」时的缺省值（全 true），会把 iCloud
+      //    的提醒事项集合误判成也收 VEVENT。必须在推送**之前**弄清，否则 403 降级
+      //    可能对着一个根本不支持目标类型的集合做删旧建新（2026-10-24 事故）。
+      await this.ensureCalendarCapabilities();
+
       // 1. 先上传本地脏数据（新条目无 etag 直接 PUT；有 etag 带条件）
       await this.pushDirty(report);
 
@@ -275,7 +299,7 @@ export class SyncEngine {
       // 对账是**正常自愈，不是失败**（2026-10-10 实测：原先塞进 lastError，
       // 状态栏显示「同步失败」、面板挂红色报错横幅，把一次成功同步报成失败）。
       // 「本地凭空少了 N 条」仍要让用户看得见，故走独立的中性提示通道。
-      const notes: string[] = [];
+      const notes: string[] = [...(report.notes || [])];
       if (report.reconciled) notes.push(t("sync.reconciledNote", { count: report.reconciled }));
       if (report.requeued) notes.push(t("sync.requeuedNote", { count: report.requeued }));
       this.store.lastNote = [...notes, ...report.conflicts].join("; ") || undefined;
@@ -313,7 +337,7 @@ export class SyncEngine {
     const norm = (u: string) => decodeURIComponent(u).replace(/\/+$/, "");
     for (const it of this.store.getAll()) {
       if (norm(it.href) === norm(href) && it.calendarUrl === calUrl) {
-        return it.recurId ? `${it.uid}|${it.recurId}|${it.kind}` : `${it.uid}|${it.kind}`;
+        return keyOf(it);
       }
     }
     return undefined;
@@ -400,6 +424,50 @@ export class SyncEngine {
     console.warn(`[caldav] ${cal.displayName}: ${t("sync.reconcileCleaned", { count: ghosts.length })}`);
   }
 
+  /**
+   * 补齐尚未探测过的日历能力（`supported-calendar-component-set`）。
+   *
+   * 只在缺 `componentSetProbed` 标记时发一次 Depth-0 PROPFIND，探测失败就保持原值
+   * （宁可当支持，也绝不因为探测失败禁用日历）。探测成功后写标记并落盘设置。
+   */
+  private async ensureCalendarCapabilities(): Promise<void> {
+    const todo = this.store.settings.calendars.filter((c) => c.enabled && !c.componentSetProbed);
+    if (!todo.length) return;
+    let dirty = false;
+    for (const cal of todo) {
+      const r = await probeCalendarComponents(cal, this.channel(), this.auth());
+      if (!r) continue; // 探测失败：保留原值，下轮再试
+      cal.supportsEvent = r.supportsEvent;
+      cal.supportsTodo = r.supportsTodo;
+      cal.componentSetProbed = true;
+      dirty = true;
+    }
+    if (dirty) await this.store.persist();
+  }
+
+  /**
+   * 上传成功后清掉「搬家」留下的旧资源（原日历里的那份）。
+   *
+   * 顺序铁律：**先 PUT 新地址、成功后再删旧地址**（见 pushDirty 403 分支注释）。
+   * 删除失败只记中性提示——条目已安全落在新地址，不该为此把整次同步报成失败。
+   */
+  private async deleteMovedFrom(item: CalItem, report: SyncReport): Promise<void> {
+    const from = item.movedFrom;
+    item.movedFrom = undefined; // 无论成败都清，避免下一轮重复处理
+    if (!from?.href || from.href === item.href) return;
+    try {
+      await deleteItem({ ...item, href: from.href, etag: from.etag }, this.channel(), this.auth());
+    } catch {
+      // If-Match 对不上（旧资源被别处改过）时无条件再删一次；仍失败就只提示
+      try {
+        await deleteItem({ ...item, href: from.href, etag: undefined }, this.channel(), this.auth());
+      } catch {
+        report.notes = report.notes || [];
+        report.notes.push(`「${item.summary}」已保存到新位置，原位置的那份未能删除，请到服务端手动清理`);
+      }
+    }
+  }
+
   private async pushDirty(report: SyncReport): Promise<void> {
     // 新建 / 修改
     for (const item of this.store.dirtyItems()) {
@@ -419,6 +487,7 @@ export class SyncEngine {
         item.raw = item.raw || ics; // 新建后保留原文
         report.uploaded++;
         report.uploadedKeys?.push(keyOf(item));
+        await this.deleteMovedFrom(item, report);
       } catch (e: unknown) {
         if (errStatus(e) === 412) {
           if (this.store.settings.conflict === "local") {
@@ -456,6 +525,62 @@ export class SyncEngine {
           item.dirty = false;
           item.etag = undefined;
           report.errors.push(`「${item.summary}」上传被服务端拒绝（HTTP 400，疑似本地数据损坏），已按策略用服务端版本覆盖本地`);
+        } else if (errStatus(e) === 403) {
+          // 先看是不是「集合根本不接受这个组件类型」——iCloud 的日历只收 VEVENT、
+          // 提醒事项只收 VTODO（RFC 4791 §5.2.3 要求必须拒绝）。这种情形换地址重试
+          // 也是白搭，且**绝不能删服务端旧资源**，只给可操作提示让用户换日历。
+          // ⚠️ 不要求 item.etag：被上一版降级清掉 etag 的条目正是最需要这条提示的场景。
+          // 同 SiYuan：组件类型变更（日程↔待办互转）被服务端拒绝——多数 CalDAV
+          // 服务端把资源组件类型与 href 绑定校验，对已有 VTODO 资源 PUT VEVENT
+          // （或反之）回 403（2026-10-23 雄哥实测同步报错）。
+          //
+          // ⚠️ 降级顺序铁律：**先建新的，成功后再删旧的**。2026-10-24 之前是反的
+          // （先 DELETE 再 PUT），结果 iCloud 提醒事项集合重建 VEVENT 仍被 403 →
+          // 旧待办已被删、新的又建不回来，服务端那条直接没了（雄哥实测「测试任务」）。
+          // 改成先 PUT 同集合下的另一个文件名：新建失败则服务端分毫不动，可安全重试。
+          const cal = this.store.settings.calendars.find((c) => c.url === item.calendarUrl);
+          // 目标类型在该集合根本不被支持（如 iCloud 提醒事项只收 VTODO）→ 换 URI 也
+          // 必败，别白折腾，直接给可操作的错误提示（互转时应在编辑器里换日历）。
+          const targetSupported =
+            item.kind === "event" ? cal?.supportsEvent !== false : cal?.supportsTodo !== false;
+          if (!targetSupported) {
+            report.ok = false;
+            report.errors.push(
+              `「${item.summary}」所在日历不支持${item.kind === "event" ? "日程" : "待办"}，` +
+                `服务端拒绝保存（403）。请在编辑器里把它换到支持该类型的日历再保存`
+            );
+            continue;
+          }
+          // ⚠️ 不看 item.etag 一律走下面的换地址重试：搬家后的条目 etag 本来就是空的，
+          //    而 403 还有一种「URL 归档污染」形态——2026-10-24 实测 iCloud 报
+          //    `invalid attempt to update record from type 'EventArchiveV1' to
+          //    'ReminderArchiveV1'`：同一地址先 DELETE 再 PUT 另一种组件类型后，
+          //    iCloud 会给这个地址留一条旧类型的归档记录，之后向它 PUT 新类型永远
+          //    403（内容相同换任意新文件名都 201）。换地址是非破坏性的，失败再报错。
+          const oldHref = item.href;
+          const altHref = altHrefOf(oldHref, item.uid);
+          try {
+            const ics = item.raw ? itemToEditedICS(item) : itemToNewICS(item);
+            const r = await putItem({ ...item, href: altHref, etag: undefined }, ics, this.channel(), this.auth(), this.store.settings.icsSizeMaxMB);
+            item.href = altHref;
+            item.etag = r.etag;
+            item.dirty = false;
+            item.raw = item.raw || ics;
+            report.uploaded++;
+            report.uploadedKeys?.push(keyOf(item));
+            // 新建成功才删旧的：删不掉只提示，条目本身已安全落在新地址上
+            try {
+              await deleteItem({ ...item, href: oldHref }, this.channel(), this.auth());
+            } catch {
+              report.notes = report.notes || [];
+              report.notes.push(`「${item.summary}」已保存到新地址，旧地址的那份未能删除，请到服务端手动清理`);
+            }
+            // 换地址重试成功同样要清搬家残留（换日历场景 movedFrom 还指着原日历那份）
+            await this.deleteMovedFrom(item, report);
+          } catch (e2: unknown) {
+            report.ok = false;
+            report.errors.push(t("sync.uploadItem", { title: item.summary, msg: explainError(e2) }));
+          }
         } else {
           report.ok = false;
           report.errors.push(t("sync.uploadItem", { title: item.summary, msg: explainError(e) }));

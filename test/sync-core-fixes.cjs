@@ -244,10 +244,12 @@ check("syncAll 合并口径是 Set 并集（复刻 sync.ts 那段算一遍）", 
   assert.ok(/const upKeys = new Set\(\[\.\.\.\(report\.uploadedKeys \?\? \[\]\), \.\.\.this\.store\.pendingUploadedKeys\]\)/.test(read("src/core/sync.ts")), "sync.ts 合并区要用同一算式");
 });
 
-check("pushDirty 成功分支记 key（上传×2 / 删除×2）", () => {
+check("pushDirty 成功分支记 key（上传×3 / 删除×2）", () => {
   const src = read("src/core/sync.ts");
   const pushes = src.match(/report\.uploadedKeys\?\.push\(keyOf\(item\)\)/g) || [];
-  assert.strictEqual(pushes.length, 2, "上传主路径 + 本地优先重试路径都要记");
+  // 3 处：上传主路径 + 本地优先重试路径 + 403 降级重传（2026-10-24「日程↔待办互转」
+  // 新增：服务端拒收同 href 换组件类型时走「删旧资源 → 同 URI 重建」，成功同样要记 key）
+  assert.strictEqual(pushes.length, 3, "上传主路径 + 本地优先重试路径 + 403 降级重传都要记");
   const dels = src.match(/report\.deletedKeys\?\.push\(keyOf\(item\)\)/g) || [];
   assert.strictEqual(dels.length, 2, "删除主路径 + 本地优先强删（412 重试）都要记");
 });

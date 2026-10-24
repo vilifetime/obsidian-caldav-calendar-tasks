@@ -7,7 +7,7 @@ import type { Alarm, CalAttachment, CalCalendar, CalItem, CalKind, CategoryDef, 
 import { DEFAULT_CATEGORIES, calEventColor } from "../core/types";
 import { keyOf } from "../core/store";
 import { addDays, defaultStartStamp, isDateOnly, parseLocalStamp, stampOfMs, todayStamp } from "../core/date";
-import { attachSizeMaxBytes } from "../core/ics";
+import { attachSizeMaxBytes, convertItemKind } from "../core/ics";
 import type { PanelCtx } from "./panel-ctx";
 import { escape } from "./view-common";
 import { icons } from "./icons";
@@ -815,6 +815,7 @@ function editorHtml(
 <div class="caldav-editor-foot">
   <div class="caldav-editor-error" data-error></div>
   ${!isNew ? `<button type="button" class="caldav-foot-btn caldav-foot-btn--danger" data-action="delete">${icons.trash} ${t("common.delete")}</button>` : ""}
+  ${!isNew ? `<button type="button" class="caldav-foot-btn caldav-foot-btn--convert" data-action="convert" title="${it.kind === "todo" ? t("editor.convertToEvent") : t("editor.convertToTodo")}">${it.kind === "todo" ? icons.calendar + " " + t("editor.convertToEvent") : icons.tasks + " " + t("editor.convertToTodo")}</button>` : ""}
   <span class="caldav-flex"></span>
   <button type="button" class="caldav-foot-btn caldav-foot-btn--ghost" data-action="cancel">${icons.close} ${t("common.cancel")}</button>
   <button type="button" class="caldav-foot-btn caldav-foot-btn--primary" data-action="save">${icons.check} ${t("common.save")}</button>
@@ -1300,6 +1301,47 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
 
   el.querySelector('[data-action="cancel"]')?.addEventListener("click", () => host.close());
 
+  // 转换为另一种种类（待办↔日程）：先收集当前表单（保留未保存的编辑），翻 kind 并重渲染编辑器，
+  // 不立即落库，让用户能在保存前再调整字段（时间映射与专属字段处理见 convertItemKind）。
+  // 同 SiYuan 2026-10-23 实现。
+  el.querySelector('[data-action="convert"]')?.addEventListener("click", () => {
+    try {
+      const target: CalKind = it.kind === "todo" ? "event" : "todo";
+      const collected = collect(ctx, el, it, attachList); // 复用收集逻辑，未保存编辑不丢
+      // 目标类型不被当前日历接受时必须换日历（iCloud 的「日历」只收 VEVENT、
+      // 「提醒事项」只收 VTODO，硬转必 403）。UID/附件/重复规则全部保留，只是搬家。
+      const cals = ctx.store.settings.calendars.filter((c) => c.enabled);
+      const cur = cals.find((c) => c.url === collected.calendarUrl);
+      const accepted = (cal2?: CalCalendar): boolean =>
+        !cal2 || (target === "event" ? cal2.supportsEvent !== false : cal2.supportsTodo !== false);
+      if (!accepted(cur)) {
+        const dest = cals.find((c) => accepted(c));
+        if (!dest) {
+          errEl.textContent =
+            target === "event"
+              ? "没有支持日程的日历（当前日历只收待办），请先到设置里启用一个"
+              : "没有支持待办的日历（当前日历只收日程），请先到设置里启用一个";
+          return;
+        }
+        collected.movedFrom = { href: collected.href, calendarUrl: collected.calendarUrl, etag: collected.etag };
+        collected.calendarUrl = dest.url;
+        collected.href = dest.url.replace(/\/+$/, "") + "/" + collected.uid + ".ics";
+        collected.etag = undefined;
+        new Notice(
+          target === "event"
+            ? `当前日历不支持日程，已切换到「${dest.displayName}」；保存后原日历里那一份会被删除`
+            : `当前日历不支持待办，已切换到「${dest.displayName}」；保存后原日历里那一份会被删除`,
+          8000
+        );
+      }
+      const converted = convertItemKind(collected, target);
+      host.close();
+      openEditor(ctx, { item: converted });
+    } catch (e: unknown) {
+      errEl.textContent = errMessage(e) || String(e);
+    }
+  });
+
   // 删除：改为弹窗内二次确认（思源原生 confirm 在本插件 iframe 里点击无响应，
   // 且失败时无法反馈，这里不依赖它，同时保留失败提示）
   const delBtn = el.querySelector<HTMLButtonElement>('[data-action="delete"]');
@@ -1397,6 +1439,9 @@ function collect(ctx: PanelCtx, el: HTMLElement, it: CalItem, attachList?: CalAt
   const cal = ctx.store.settings.calendars.find((c) => c.url === it.calendarUrl);
   // 更换日历 = 移动资源
   if (cal && !it.href.startsWith(cal.url.replace(/\/+$/, ""))) {
+    // 记下原地址：上传成功后要把旧日历里那份删掉，否则服务端留孤儿
+    // （删除顺序是「先建新的、成功再删旧的」，见 sync.ts deleteMovedFrom）。
+    it.movedFrom = { href: it.href, calendarUrl: it.calendarUrl, etag: it.etag };
     it.href = cal.url.replace(/\/+$/, "") + "/" + it.uid + ".ics";
     it.etag = undefined; // 新资源无 etag
   }
