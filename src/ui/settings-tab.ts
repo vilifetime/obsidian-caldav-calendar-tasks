@@ -29,7 +29,8 @@ import { describeNetworkError, discoverCalendars, testConnection } from "@/core/
 import { clearAuthCache } from "@/core/http";
 import { calEventColor, calTodoColor, type CalCalendar } from "@/core/types";
 import { t, currentLang } from "@/i18n";
-
+import { formatTimeText } from "@/core/server-id";
+import type { TimerHandle } from "@/constants";
 /**
  * 按动态键读写设置对象的一个字段。
  *
@@ -100,6 +101,16 @@ export class CalDavSettingTab extends PluginSettingTab {
       this.update(); // 让「服务器地址」输入框立即显示新默认值
     }
     await this.save();
+    // 「切换服务器时清理旧条目」开关刚被打开 → 立刻清一次。
+    //
+    // ⚠️ 为什么这里安全：store.purgeOrphansIfEnabled() 里有守卫 ——
+    //    启用日历必须全部指向当前服务器地址，否则不动。用户刚开开关、
+    //    日历还指着旧服务器时，什么都不会被删；等他「发现日历」后自然会清。
+    if (key === "purgeOtherServerOnSwitch" && value === true) {
+      const n = await this.plugin.store.purgeOrphansIfEnabled();
+      if (n) new Notice(t("settings.purgeDone", { count: String(n) }), 5000);
+      this.update();
+    }
   }
 
   private hostValue(key: string): unknown {
@@ -316,6 +327,27 @@ export class CalDavSettingTab extends PluginSettingTab {
       ],
     });
 
+    // ---- 本地数据 ----
+    defs.push({
+      type: "group",
+      heading: t("settings.groupLocalData"),
+      items: [
+        {
+          name: t("settings.purgeOnSwitch"),
+          desc: t("settings.purgeOnSwitchDesc"),
+          control: { type: "toggle" as const, key: "purgeOtherServerOnSwitch", defaultValue: false },
+          aliases: ["清理", "旧服务器", "孤儿", "purge", "orphan", "clean", "switch"],
+        },
+        {
+          name: t("settings.purgeNow"),
+          // 状态说明 + 两个按钮（立即清理 / 恢复）用 render 自绘：
+          // 声明式控件没有「带确认的删除按钮」这种形态。
+          render: (setting: Setting) => this.renderPurgeRow(setting),
+          aliases: ["清理", "恢复", "purge", "restore", "孤儿"],
+        },
+      ],
+    });
+
     // 2026-10-09 雄哥要求删掉设置页里的「日历视图中显示待办」——
     // 它跟面板工具栏「日历筛选」浮层里的同名开关是同一个 setting.showTodosInCalendar，
     // 两处都能改就会让人怀疑到底听谁的，而且设置页那个改完不重绘面板（要等下次同步），
@@ -328,6 +360,93 @@ export class CalDavSettingTab extends PluginSettingTab {
     //    并且 toolbar 的读写路径依赖它。删的只是设置页这一处 UI。
 
     return defs as unknown as SettingDefinitionItem[];
+  }
+
+  /**
+   * 「立即清理旧服务器条目」+「恢复上次清理」两个按钮 + 状态说明。
+   *
+   * ⚠️ 收到的 `setting` 是**已建好的 Setting 对象**，直接往它身上加控件即可 ——
+   *    在 action 的容器里再 `new Setting(el)` 会套出错误的嵌套结构（2026-10-06 实测）。
+   *
+   * 清理是删除动作，按项目约定**二次点击确认**（不用 confirm()）：
+   * 第一次点把按钮文案改成「再点一次确认清理 N 条」，第二次才真删。
+   */
+  private renderPurgeRow(setting: Setting): void {
+    const store = this.plugin.store;
+    const orphans = store.orphanItems();
+    const bk = store.purgeBackup;
+
+    // 状态说明：当前有多少孤儿条目、上次清理是什么时候
+    const status = document.createElement("div");
+    status.className = "caldav-purge-status";
+    const parts: string[] = [];
+    if (orphans.length) {
+      parts.push(t("settings.purgeStatus", { count: String(orphans.length) }));
+    } else if (store.activeServerOrigins().size) {
+      parts.push(t("settings.purgeStatusNone"));
+    } else {
+      parts.push(t("settings.purgeStatusNoServer"));
+    }
+    if (bk && bk.items.length) {
+      parts.push(
+        t("settings.purgeBackupInfo", {
+          time: formatTimeText(bk.at),
+          count: String(bk.count),
+          from: bk.removedServers ? t("settings.purgeBackupFrom", { servers: bk.removedServers }) : ""
+        })
+      );
+    }
+    status.textContent = parts.join("；");
+    setting.descEl.appendChild(status);
+
+    // 二次点击确认的状态（存在闭包里，按钮重绘时不丢）
+    let armed = false;
+    // 句柄类型必须是 number（见 constants.ts 的 TimerHandle 注释），且定时器
+    // 一律走 window.setTimeout / window.clearTimeout —— 全仓禁裸定时器调用。
+    let armTimer: TimerHandle | null = null;
+
+    setting
+      .addButton((b) => {
+        // 按钮组件本身要留着：改文案走它的 setButtonText，
+        // 直接改 buttonEl.textContent 会把 Obsidian 挂在按钮上的内部状态弄乱。
+        const btn = b;
+        b.setButtonText(t("settings.purgeNow")).onClick(async () => {
+          const cur = store.orphanItems();
+          if (!cur.length) {
+            new Notice(t("settings.purgeNothing"), 4000);
+            return;
+          }
+          if (!armed) {
+            armed = true;
+            btn.setButtonText(t("settings.purgeConfirmHint", { count: String(cur.length) }));
+            if (armTimer) window.clearTimeout(armTimer);
+            armTimer = window.setTimeout(() => {
+              armed = false;
+              btn.setButtonText(t("settings.purgeNow"));
+            }, 5000);
+            return;
+          }
+          armed = false;
+          if (armTimer) {
+            window.clearTimeout(armTimer);
+            armTimer = null;
+          }
+          btn.setButtonText(t("settings.purgeNow"));
+          // 手动清理**不受开关限制** —— 用户点了就是明确意图
+          const n = await store.purgeOrphanItems();
+          new Notice(n ? t("settings.purgeDone", { count: String(n) }) : t("settings.purgeNothing"), 5000);
+          this.update();
+        });
+        b.buttonEl.disabled = !orphans.length;
+      })
+      .addButton((b) => {
+        b.setButtonText(t("settings.purgeRestore")).onClick(async () => {
+          const n = await store.restorePurgedItems();
+          new Notice(n ? t("settings.purgeRestored", { count: String(n) }) : t("settings.purgeRestoreNothing"), 5000);
+          this.update();
+        });
+        b.buttonEl.disabled = !bk || !bk.items.length;
+      });
   }
 
   /** 单个日历的声明式定义：启用勾选 + 日程色 / 待办色 */
@@ -494,6 +613,14 @@ export class CalDavSettingTab extends PluginSettingTab {
       await this.save();
       // 日历列表已变（新增/移除），让声明式设置重新拉取
       this.update();
+      // 「发现日历」是新服务器日历真正接管配置的时刻 —— 此时旧服务器的条目
+      // 已经没有任何日历能引用它们，正是「切换服务器时清理」的时机。
+      // 开关关着则不做任何事（见 store.purgeOrphansIfEnabled）。
+      const purged = await this.plugin.store.purgeOrphansIfEnabled();
+      if (purged) {
+        new Notice(t("settings.purgeDone", { count: String(purged) }), 5000);
+        this.update();
+      }
       new Notice(t("settings.discoverDone", { count: s.calendars.length }));
     } catch (e) {
       new Notice(t("settings.discoverFailed", { msg: describeNetworkError(e, s.channel) }), 6000);

@@ -727,6 +727,18 @@ export async function testConnection(serverUrl: string, channel: Channel, auth: 
       auth
     );
     if (res.status === 401) return { ok: false, message: t("net.authFailedTest") };
+    // 405/501 = 服务器「这个路径不收 WebDAV 方法」。常见于自建服务把网页管理界面
+    // 挂在根路径（nginx 只放行 GET/HEAD），真正的 DAV 入口在别的子路径
+    // （Baïkal = /dav.php，2026-10-24 雄哥实测）。别只丢一个状态码——主动探出入口。
+    if (res.status === 405 || res.status === 501) {
+      const entry = await probeDavEntry(serverUrl, channel, auth);
+      return {
+        ok: false,
+        message: entry
+          ? t("net.davEntryFound", { status: res.status, url: entry })
+          : t("net.davEntryNone", { status: res.status })
+      };
+    }
     if (res.status >= 400) return { ok: false, message: t("net.httpStatus", { status: res.status }) };
     // 只走 connectOkDirect：Obsidian 下 via 恒为 "direct"（http.ts 的单传输实现），
     // 「内核代理」分支是从思源版搬过来的死代码 —— 留着会让 connectOkProxy
@@ -735,6 +747,65 @@ export async function testConnection(serverUrl: string, channel: Channel, auth: 
   } catch (e: unknown) {
     return { ok: false, message: t("settings.connectFail", { msg: describeNetworkError(e, channel) }) };
   }
+}
+
+/** 探测用 PROPFIND 请求体（只要 current-user-principal，最小） */
+const PROBE_PROPFIND =
+  `<?xml version="1.0" encoding="utf-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:current-user-principal/></D:prop></D:propfind>`;
+
+/**
+ * 根路径不支持 WebDAV 时，探测真正的 DAV 入口，返回可直接填进「服务器地址」的地址。
+ *
+ * 背景（2026-10-24 雄哥实测）：自建 **Baïkal** 前面套 nginx，根路径 `/` 只放行
+ * GET/HEAD（返回 Baïkal 的网页管理界面），对根路径发 PROPFIND/OPTIONS 直接 **405**。
+ * 真正的 DAV 入口是 `http://<host>:<port>/dav.php`
+ * （`WWW-Authenticate: Basic realm="sabre/dav"` 可确认）。
+ *
+ * 候选顺序：RFC 6764 的标准入口 → 各家默认布局。命中判据：207 / 200 / **401**
+ * （401 = 端点在、只是要认证，这正是最常见的命中方式）。
+ *
+ * ⚠️ 跳转目标要**用原 origin 重建**：Baïkal 的 `/.well-known/caldav` 会 302 到
+ * `http://nas.bonebear.cn/dav.php`（**丢了端口**）——直接照抄会跳到 80 端口的别处。
+ */
+export async function probeDavEntry(serverUrl: string, channel: Channel, auth: DavAuth): Promise<string> {
+  let origin: string;
+  try {
+    origin = new URL(serverUrl.endsWith("/") ? serverUrl : serverUrl + "/").origin;
+  } catch {
+    return "";
+  }
+  const candidates = ["/.well-known/caldav", "/dav.php/", "/dav/", "/caldav/", "/dav.php"];
+  for (const p of candidates) {
+    const url = origin + p;
+    let res: HttpResult;
+    try {
+      res = await dav(url, "PROPFIND", PROBE_PROPFIND, channel, auth);
+    } catch {
+      continue; // 网络层失败（超时/拒绝连接）——换下一个候选
+    }
+    if (res.status === 207 || res.status === 200 || res.status === 401) return url;
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers?.["location"] || res.headers?.["Location"] || "";
+      if (loc) {
+        let rebuilt = "";
+        try {
+          const u = new URL(loc, origin);
+          rebuilt = u.origin === origin ? u.toString() : origin + u.pathname;
+        } catch {
+          rebuilt = "";
+        }
+        if (rebuilt) {
+          try {
+            const r2 = await dav(rebuilt, "PROPFIND", PROBE_PROPFIND, channel, auth);
+            if (r2.status === 207 || r2.status === 200 || r2.status === 401) return rebuilt;
+          } catch {
+            /* 忽略 */
+          }
+        }
+      }
+    }
+  }
+  return "";
 }
 
 /** 服务端时间窗 ISO（UTC 基本格式 20260101T000000Z） */

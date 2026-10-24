@@ -4590,3 +4590,13 @@ body > .caldav-reminder-layer {
    ⚠️ [hidden] 必须自写：万一哪天给它加了 display:flex，UA 的
    [hidden]{display:none} 就会被盖掉（本文件里 .caldav-switch-line 就是这么踩的）。 */
 /* 子选项已内联进范围行（见 .caldav-range-inline），不再有独立的子选项区。 */
+
+/* ===== 设置页「本地数据」区块 ===== */
+/* 清理状态说明行：普通说明文字，用次要色 + 小字号，
+   跟上面的 desc 区分开（desc 是设置项的固定描述，这一行随数据变化）。 */
+.caldav-purge-status {
+  font-size: 12px;
+  color: var(--caldav-text-2);
+  line-height: 1.6;
+  margin-top: 4px;
+}

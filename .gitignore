@@ -41,6 +41,9 @@ _*.html
 .test-digest/
 .test-allday/
 .test-wkreplica/
+# 其余 tsc 临时编译目录（component-set / dav-entry / delete-412 / purge-switch 等）
+# 用通配一次覆盖，避免以后新增测试又漏掉规则、把编译产物提交进库
+.test-*/
 
 # 周视图几何复刻诊断工具（replica-wk.cjs）的产物，工具本身保留
 replica-wk.html
