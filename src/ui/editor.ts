@@ -141,7 +141,18 @@ class EditorModal extends Modal {
     );
     this.modalEl.addClass("caldav-dialog");
     if (isTodo) this.modalEl.addClass("caldav-dialog--todo");
-    if (this.mobile) this.modalEl.addClass("caldav-dialog--mobile");
+    if (this.mobile) {
+      this.modalEl.addClass("caldav-dialog--mobile");
+      // 与思源端对齐：styles.css 里窄屏收紧规则的选择器统一写成 .caldav-mobile-dialog
+      // （.caldav-mobile-dialog .caldav-datetime-row / -label / -inputs / .caldav-date-input /
+      //   .caldav-input-wrap--time …），必须把它挂到 modalEl 上才会生效 ——
+      //   .caldav-touch 只出现在面板根 .caldav-root 内部，而本 Modal 的 DOM 在 body 下、
+      //   与面板不相邻，压根罩不到这个弹窗；Obsidian 的 Modal 也没有思源 Dialog 的
+      //   containerClassName 可借力。
+      // （2026-10-25 雄哥实测：Obsidian 移动端编辑器日期框只显示「2026/」被裁，
+      //   思源端同位置完整显示「2026/10/24」—— 差异就在这个类没挂上。）
+      this.modalEl.addClass("caldav-mobile-dialog");
+    }
 
     const cats = this.ctx.store.settings.categories?.length
       ? this.ctx.store.settings.categories

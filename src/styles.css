@@ -3943,7 +3943,12 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
    图标与左内边距同步收一档（图标不缩小会压住数字）。
    清除按钮保持 28px 不动 —— 再小就不好点了。
    `.caldav-touch` 由 panel 根挂（Dock / 主面板），`.caldav-mobile-dialog` 由编辑弹窗挂
-   （editor.ts 的 containerClassName，落在 .b3-dialog__container 上），两者都写才能都覆盖。 */
+   （Obsidian 无思源 Dialog 的 containerClassName，改由 editor.ts 的 onOpen addClass 到
+   modalEl 上；modalEl 在 body 下、与面板根的 .caldav-touch 不相邻，两路都要写），
+   两者都写才能都覆盖。
+   2026-10-25 实测教训：曾只挂 `.caldav-dialog--mobile`（只管全屏尺寸）而漏挂
+   `.caldav-mobile-dialog`，本段规则在编辑器弹窗里一条都没生效，日期框退回桌面
+   尺寸被裁成「2026/」—— 类名差一笔，整套窄屏适配静默失效。 */
 .caldav-touch .caldav-datetime-row,
 .caldav-mobile-dialog .caldav-datetime-row { gap: 6px; }
 
