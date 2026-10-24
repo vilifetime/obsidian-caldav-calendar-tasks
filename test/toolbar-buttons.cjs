@@ -139,8 +139,10 @@ for (const needle of [
   'data-action="sync-now"',
   'title="${t("toolbar.syncNow")}',
   'aria-label="${t("toolbar.syncNow")}',
-  'classList.add("is-syncing")',
-  'classList.remove("is-syncing")',
+  // 2026-10-25 起转圈改**响应式**：由 onChange 按 store.syncing 统一驱动
+  //（手动同步与「保存即推」共用一套，不再由点击处理器自己加/减 class，
+  //  否则两条路径并存时会互相抹掉转动）。
+  'classList.toggle("is-syncing", !!ctx.store.syncing)',
   "syncBtn.disabled = true",
   "syncBtn.disabled = false",
   // 防重复点击的闸（分两行写：同步中 return、没注入 syncNow 也 return）
@@ -150,6 +152,9 @@ for (const needle of [
 ]) {
   assert.ok(panel.includes(needle), `面板同步按钮应包含：${needle}`);
 }
+// 旧的手动加/减 class 写法必须已经去掉（响应式接管）
+assert.ok(!panel.includes('classList.add("is-syncing")'), "不应再手动加 is-syncing（改响应式了）");
+assert.ok(!panel.includes('classList.remove("is-syncing")'), "不应再手动减 is-syncing（改响应式了）");
 
 assert.ok(
   /syncNow:\s*\(\)\s*=>\s*this\.runSync\(true\)/.test(main),

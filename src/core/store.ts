@@ -36,6 +36,12 @@ export class CalStore {
   lastError?: string;
   /** 上次同步的中性提示（对账自愈等），**不是错误**，见 types.ts 的 SyncState */
   lastNote?: string;
+  /**
+   * 「同步中」瞬时状态（**不持久化**）：手动同步与「保存即推」都经
+   * SyncEngine.beginSyncing 置位，驱动同步按钮转圈 / 状态条显示「同步中…」。
+   * 2026-10-25 雄哥要求：条目改动提交服务器时按钮也要转，与手动点同步同一套规矩。
+   */
+  syncing = false;
   /** 即时推送累计成功的条目 key（上传/删除分列），下一轮 syncAll 合并进报告后清零。
    *  按 key 而非按条数：同一条目推 N 次只计一条（2026-10-19 修「操作几次就报上传几次」）。 */
   pendingUploadedKeys: string[] = [];
