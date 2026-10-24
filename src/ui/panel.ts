@@ -18,6 +18,7 @@ import { renderMonthView } from "./view-month";
 import { renderWeekView } from "./view-week";
 import { renderTaskView } from "./view-task";
 import { renderYearView } from "./view-year";
+import { renderListView } from "./view-list";
 import { todoDueOccurrences } from "./view-common";
 import { saveViewMode, saveCalendarView, loadCalendarView, DEFAULT_VIEW } from "./view-pref";
 import { askDiaryRange } from "./diary-range-modal";
@@ -59,6 +60,15 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
           <button class="caldav-seg-btn" data-view="week">${t("toolbar.viewWeek")}</button>
           <button class="caldav-seg-btn" data-view="day">${t("toolbar.viewDay")}</button>
         </div>
+        <!--
+          「列表」按钮（2026-10-25 雄哥拍板方案 A）：放在 年/月/周/日 **右边**。
+          它是横切在时间段之上的**正交开关** —— 年/月/周/日决定范围，
+          列表决定呈现方式（见 PanelCtx.listMode）。切时间段时列表自动换范围。
+          单独成组（不塞进 .caldav-seg 内）以免被误读成第五种时间段。
+        -->
+        <button class="caldav-list-toggle" data-action="toggle-list"
+                title="${t("toolbar.viewList")}" aria-label="${t("toolbar.viewList")}"
+                aria-pressed="false">${t("toolbar.viewList")}</button>
       </div>
       <!--
         统计条挂载点（2026-10-07 雄哥要求：把统计数字从列表上方移到工具条这一行）。
@@ -129,6 +139,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   const cursorTitleEl = root.querySelector(".caldav-cursor-title") as HTMLElement;
   const segBtns = Array.from(root.querySelectorAll<HTMLElement>(".caldav-seg-btn"));
   const viewToggleBtn = root.querySelector('[data-action="toggle-view"]') as HTMLElement;
+  const listToggleBtn = root.querySelector('[data-action="toggle-list"]') as HTMLButtonElement;
   // 与上面的模板同源生成，必然存在（同 viewToggleBtn 的处理）
   const syncBtn = root.querySelector('[data-action="sync-now"]') as HTMLButtonElement;
   /** 同步按钮的「正在同步」闸：连点时直接忽略第二次 */
@@ -221,6 +232,21 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     app.classList.toggle("is-task", ctx.viewMode === "task");
     cursorTitleEl.textContent = cursorTitle();
     renderViewToggle();
+    renderListToggle();
+  }
+
+  /**
+   * 「列表」按钮的状态（2026-10-25 方案 A）。
+   *
+   * 按钮本身**不切换时间段** —— 时间段由 年/月/周/日 决定。
+   * 它只切换「列表 / 网格」这层呈现方式，所以高亮态是独立的一段。
+   */
+  function renderListToggle(): void {
+    const on = ctx.listMode && ctx.viewMode !== "task";
+    listToggleBtn.classList.toggle("is-active", on);
+    listToggleBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    // 任务视图下没有「时间段」可言，列表按钮无意义 → 直接隐藏
+    listToggleBtn.hidden = ctx.viewMode === "task";
   }
 
   /** 视图切换按钮：图标表示「点击后将切换到的视图」，标题同步说明，随当前视图模式更新 */
@@ -309,11 +335,16 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   function renderView(): void {
     renderToolbarState();
     const args = { ctx, viewEl, occurrences: visibleOccurrences };
-    if (ctx.viewMode === "year") renderYearView(args);
+    // 任务视图优先：它是**另一个维度**（工作台 vs 日历），列表开关在任务视图下隐藏
+    if (ctx.viewMode === "task") {
+      renderTaskView(args);
+    } else if (ctx.listMode) {
+      // 列表是正交开关：开启时用列表渲染当前时间段的内容（范围仍由 viewMode 决定）
+      renderListView(args);
+    } else if (ctx.viewMode === "year") renderYearView(args);
     else if (ctx.viewMode === "month") renderMonthView(args);
     else if (ctx.viewMode === "week") renderWeekView(args, 7);
-    else if (ctx.viewMode === "day") renderWeekView(args, 1);
-    else renderTaskView(args);
+    else renderWeekView(args, 1);
     /**
      * 统计条只在**任务视图**显示（2026-10-07 雄哥要求）。
      * 切到日历视图时 `renderTaskView` 不会执行，但槽位里上一轮的统计 DOM
@@ -672,6 +703,12 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       return;
     }
     const action = target.dataset.action;
+    if (action === "toggle-list") {
+      // 列表是正交开关：只切呈现方式，**不动时间段**（范围仍由 年/月/周/日 决定）
+      ctx.listMode = !ctx.listMode;
+      renderAll();
+      return;
+    }
     if (action === "toggle-view") {
       // 日历视图（年/月/周/日）↔ 任务视图 互切；从任务视图返回时回到
       // 上次使用的日历视图（2026-10-20 雄哥要求，原来是硬编码落回月视图）。

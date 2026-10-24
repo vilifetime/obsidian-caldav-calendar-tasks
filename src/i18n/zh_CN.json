@@ -100,6 +100,7 @@
   "toolbar.viewMonth": "月",
   "toolbar.viewWeek": "周",
   "toolbar.viewDay": "日",
+  "toolbar.viewList": "列表",
   "toolbar.new": "新建",
   "toolbar.syncNow": "立即同步 CalDAV",
   "toolbar.calFilter": "日历筛选",

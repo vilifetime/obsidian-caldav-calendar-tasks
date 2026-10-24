@@ -56,6 +56,14 @@ export interface PanelCtx {
   reminderStatus?: () => string;
   unsaved: Set<string>;
   viewMode: ViewMode;
+  /**
+   * 「列表」正交开关（2026-10-25 雄哥拍板方案 A）。
+   *
+   * 列表**不是新的 ViewMode**，而是横切在年/月/周/日之上的**呈现方式**：
+   * 年/月/周/日决定**范围**（整年 / 当月 / 本周 / 当天），列表决定**排版**。
+   * 所以切时间段时列表自动换范围，不必再点一次「列表」。
+   */
+  listMode: boolean;
   /** 当前聚焦日期 YYYY-MM-DD */
   cursor: string;
   /** 排序方式：开始/结束/优先级/完成/创建/分类/标题 */

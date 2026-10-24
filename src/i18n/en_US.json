@@ -100,6 +100,7 @@
   "toolbar.viewMonth": "Month",
   "toolbar.viewWeek": "Week",
   "toolbar.viewDay": "Day",
+  "toolbar.viewList": "List",
   "toolbar.new": "New",
   "toolbar.syncNow": "Sync CalDAV now",
   "toolbar.calFilter": "Calendar filter",
