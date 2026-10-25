@@ -22,6 +22,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const { rmrf } = require("./fsx.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const SIYUAN_ROOT = path.resolve(ROOT, "..", "SiYuanCalDAV");
@@ -30,7 +31,7 @@ const readSiyuan = (rel) => fs.readFileSync(path.join(SIYUAN_ROOT, rel), "utf8")
 
 // 与其它测试同一套路：tsc 编译到临时目录再引
 const outDir = path.join(ROOT, ".test-allday");
-fs.rmSync(outDir, { recursive: true, force: true });
+rmrf(outDir);
 fs.mkdirSync(path.join(outDir, "tsconfig.dir"), { recursive: true });
 fs.writeFileSync(
   path.join(outDir, "tsconfig.json"),

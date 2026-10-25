@@ -23,6 +23,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
+const { rmrf } = require("./fsx.cjs");
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 // 统一 normalize 行尾：仓库是 LF，但断言不写死 \n（CRLF 仓库教训）
 const readLF = (rel) => read(rel).replace(/\r\n/g, "\n");
@@ -30,7 +31,7 @@ const readLF = (rel) => read(rel).replace(/\r\n/g, "\n");
 // 编译 view-pref.ts 到临时目录（与 digest.cjs 同套路）。
 // view-pref.ts 的 import 用了 @/ 别名，命令行 tsc 不认 --paths → 落临时 tsconfig。
 const outDir = path.join(ROOT, ".test-viewpref");
-fs.rmSync(outDir, { recursive: true, force: true });
+rmrf(outDir);
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(
   path.join(outDir, "tsconfig.json"),

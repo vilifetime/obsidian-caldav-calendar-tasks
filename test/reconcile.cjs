@@ -157,9 +157,10 @@ const syncSrc = readSrc("src/core/sync.ts");
 const caldavSrc = readSrc("src/core/caldav.ts");
 
 t("syncAll 每个日历拉取成功后都要调 reconcile，且排在 mergeServerItems 之后", () => {
-  assert.ok(/await this\.reconcile\(cal, report\)/.test(syncSrc), "缺 reconcile 调用");
+  // 多账户（2026-10-26）：对账要带上账户（冲突策略、窗口都按账户取）
+  assert.ok(/await this\.reconcile\(cal, acc, report\)/.test(syncSrc), "缺 reconcile 调用（或没把账户传进去）");
   const iMerge = syncSrc.indexOf("mergeServerItems(items, deletedKeys)");
-  const iRecon = syncSrc.indexOf("await this.reconcile(cal, report)");
+  const iRecon = syncSrc.indexOf("await this.reconcile(cal, acc, report)");
   assert.ok(iMerge > 0 && iRecon > iMerge, "reconcile 必须排在 mergeServerItems 之后");
 });
 

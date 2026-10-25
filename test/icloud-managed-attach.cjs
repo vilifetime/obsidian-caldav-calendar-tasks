@@ -25,6 +25,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { rmrf } = require("./fsx.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -68,7 +69,7 @@ i18n.initLocale("zh");
 // 临时目录随进程退出清掉（老测试留 .test-*  debris，这里不跟）
 process.on("exit", () => {
   try {
-    fs.rmSync(outDir, { recursive: true, force: true });
+    rmrf(outDir);
   } catch {
     /* 清理失败不影响测试结论 */
   }

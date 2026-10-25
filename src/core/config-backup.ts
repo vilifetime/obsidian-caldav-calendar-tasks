@@ -43,7 +43,7 @@
  */
 
 import { normalizePath, type App } from "obsidian";
-import { DEFAULT_SETTINGS, type CalSettings } from "./types";
+import { DEFAULT_SETTINGS, migrateToAccounts, type CalSettings } from "./types";
 import { isEncrypted } from "./secret";
 import { t } from "../i18n";
 
@@ -269,7 +269,12 @@ export function mergeBackupSettings(backup: BackupPayload): CalSettings {
   const merged: CalSettings = { ...DEFAULT_SETTINGS, ...backup.settings };
   // 日历数组要**新建**，不能就地改：merged.calendars 与 backup.settings.calendars
   // 是同一个数组引用，就地清token 会把调用方（读备份做展示的那侧）的对象也改掉。
-  merged.calendars = (merged.calendars || []).map((c) => ({ ...c, syncToken: undefined }));
+  // 多账户（2026-10-25）：日历挂在每个账户下，迁移 + 逐账户清 token
+  migrateToAccounts(merged);
+  merged.accounts = (merged.accounts || []).map((a) => ({
+    ...a,
+    calendars: (a.calendars || []).map((c) => ({ ...c, syncToken: undefined }))
+  }));
   return merged;
 }
 
@@ -288,10 +293,17 @@ export function mergeBackupSettings(backup: BackupPayload): CalSettings {
  * 所以只在遇到 **v3** 密文时才要求 keyring。
  */
 export function isBackupUseful(b: BackupPayload): boolean {
-  if (!(b.settings?.serverUrl || (b.settings?.calendars || []).length)) return false;
+  // 多账户：老备份是平铺结构，先迁移再判定（与运行时的 load() 同一口径）
+  const probe: CalSettings = { ...DEFAULT_SETTINGS, ...(b.settings || {}) } as CalSettings;
+  migrateToAccounts(probe);
+  const accs = probe.accounts || [];
+  const hasServer = accs.some((a) => a.serverUrl || (a.calendars || []).length);
+  if (!hasServer) return false;
   // v3 密文必须配keyring，否则密码解不开（v1/v2 用设备派生密钥，不在此列）
-  const pw = b.settings?.password || "";
-  if (pw.startsWith("enc:v3:") && !(b.keyring || "").trim()) return false;
+  for (const a of accs) {
+    const pw = a.password || "";
+    if (pw.startsWith("enc:v3:") && !(b.keyring || "").trim()) return false;
+  }
   return true;
 }
 
@@ -304,8 +316,11 @@ export function isBackupUseful(b: BackupPayload): boolean {
  * 否则英文界面下重装恢复提示会露出「（未设置服务器）· N 个日历」。
  */
 export function describeBackup(b: BackupPayload): string {
-  const n = (b.settings?.calendars || []).length;
-  const host = safeHost(b.settings?.serverUrl || "");
+  const probe2: CalSettings = { ...DEFAULT_SETTINGS, ...(b.settings || {}) } as CalSettings;
+  migrateToAccounts(probe2);
+  const accs2 = probe2.accounts || [];
+  const n = accs2.reduce((sum, a) => sum + (a.calendars || []).length, 0);
+  const host = accs2.length > 1 ? t("backup.multiAccount", { count: String(accs2.length) }) : safeHost(accs2[0]?.serverUrl || "");
   const cals = n ? ` ${t("backup.calSuffix", { count: String(n) })}` : "";
   return `${host || t("backup.noServer")}${cals}`;
 }
@@ -327,7 +342,12 @@ export function looksFreshInstall(loaded: unknown): boolean {
   const o = loaded as { settings?: unknown };
   // 有 settings 且带服务器地址 → 明确是老装，直接走正常路径
   if (o.settings && typeof o.settings === "object") {
-    return !(o.settings as { serverUrl?: string }).serverUrl;
+    const s = o.settings as Partial<CalSettings> & { serverUrl?: string };
+    // 多账户（2026-10-26）：服务器地址已下沉到 accounts[]。平铺老数据与账户化
+    // 新数据都要认 —— 只看平铺键的话，账户化的老装会被判成新装，
+    // 于是每次重装都弹一遍恢复提示（明明配置还在），属于明明有数据还去问人。
+    const accs = Array.isArray(s.accounts) ? s.accounts : [];
+    return !(s.serverUrl || accs.some((a) => !!(a && a.serverUrl)));
   }
   return true;
 }
@@ -353,8 +373,12 @@ export function backupTimeText(b: BackupPayload, fallback: string): string {
  * 不自己写正则 —— 免得 secret.ts 将来加 v4 时这里漏掉、变成形同虚设的检查。
  */
 export function hasPlaintextPassword(b: BackupPayload): boolean {
-  const p = b.settings?.password || "";
-  return !!p && !isEncrypted(p);
+  const probe3: CalSettings = { ...DEFAULT_SETTINGS, ...(b.settings || {}) } as CalSettings;
+  migrateToAccounts(probe3);
+  return (probe3.accounts || []).some((a) => {
+    const p = a.password || "";
+    return !!p && !isEncrypted(p);
+  });
 }
 
 /** 供测试与调试：把备份内容读成可比较的普通对象（去掉时间戳） */

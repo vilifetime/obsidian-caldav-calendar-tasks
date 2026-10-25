@@ -1,10 +1,12 @@
 /**
- * 回归测试：「切换服务器时清理旧条目」开关（与 SiYuan test/purge-switch.test.mjs 同构，2026-10-24）
+ * 回归测试：跨服务器孤儿条目的清理 / 备份 / 恢复（与 SiYuan 同构，2026-10-24 起）
  *
  * 覆盖：
  *   ① core/server-id.ts 的服务器身份判定（origin 归一 + iCloud 归一 + 退化路径）
  *   ② core/store.ts 的孤儿条目识别（activeServerOrigins / orphanItems）
- *   ③ 清理 + 备份 + 恢复的完整往返，以及开关入口的三道安全阀
+ *   ③ 清理 + 备份 + 恢复的完整往返
+ *   ④ **删除账户时**的可选清理（purgeAccountItems，多账户改造后取代原「切换
+ *      服务器时自动清理」开关 —— 那个常开开关容易误伤，改成用户点删除时显式选）
  *
  * ⚠️ Obsidian 端特有约束：备份条目快照必须存**数据顶层**（PersistData.purgeBackup），
  *    绝不能进 CalSettings —— core/config-backup.ts 的「配置备份」只抄 settings，
@@ -103,20 +105,22 @@ function mkItem(uid, calendarUrl, extra = {}) {
   };
 }
 
-function mkStore(items, calendars, serverUrl = NAS, extraSettings = {}) {
+const { seedAccounts } = require("./accfx.cjs");
+
+const cal = (url, enabled = true, displayName = "日历") => ({ url, displayName, enabled });
+
+// 多账户（2026-10-26）：服务器地址与日历都挂在账户上，直接写 settings.calendars
+// 等于没配 —— activeServerOrigins 会拿到空集合，所有条目都不算孤儿。
+// extraAccounts 用于「另一个账户」场景（旧服务器的条目来自被删掉的那个账户）。
+function mkStore(items, calendars, serverUrl = NAS, extraAccounts = []) {
   const st = new storeMod.CalStore({
     loadData: async () => undefined,
     saveData: async () => {}
   });
-  st.settings.serverUrl = serverUrl;
-  st.settings.calendars = calendars;
-  st.settings.purgeOtherServerOnSwitch = false;
-  Object.assign(st.settings, extraSettings);
+  seedAccounts(st, [{ id: "acc-main", name: "主账户", serverUrl, calendars }, ...extraAccounts]);
   for (const it of items) st.put(it);
   return st;
 }
-
-const cal = (url, enabled = true, displayName = "日历") => ({ url, displayName, enabled });
 
 (async () => {
   // ============================================================== ① 身份判定
@@ -257,8 +261,7 @@ const cal = (url, enabled = true, displayName = "日历") => ({ url, displayName
         saved = d;
       }
     });
-    st.settings.serverUrl = NAS;
-    st.settings.calendars = [cal(NAS_CAL, true)];
+    st.settings.accounts = [{ id: "acc-main", name: "主账户", enabled: true, serverUrl: NAS, calendars: [cal(NAS_CAL, true)], username: "u", password: "p", calendarPath: "", serverType: "caldav", channel: "auto", conflict: "server", pastDays: 90, futureDays: 370, attachSizeMaxMB: 5, icsSizeMaxMB: 10 }];
     st.put(mkItem("c", OLD_CAL));
     await st.purgeOrphanItems();
     assert.ok(saved);
@@ -272,8 +275,7 @@ const cal = (url, enabled = true, displayName = "日历") => ({ url, displayName
       loadData: async () => undefined,
       saveData: async () => {}
     });
-    st1.settings.serverUrl = NAS;
-    st1.settings.calendars = [cal(NAS_CAL, true)];
+    seedAccounts(st1, [{ id: "acc-main", name: "主账户", serverUrl: NAS, calendars: [cal(NAS_CAL, true)] }]);
     st1.put(mkItem("c", OLD_CAL));
     await st1.purgeOrphanItems();
 
@@ -286,51 +288,59 @@ const cal = (url, enabled = true, displayName = "日历") => ({ url, displayName
     assert.strictEqual(await st2.restorePurgedItems(), 1);
   });
 
-  // ============================================================== ④ 开关与安全阀
-  console.log("[purge] 开关入口与安全阀");
+  // ============================================================== ④ 删除账户时的清理
+  // 2026-10-26：原「切换服务器时自动清理」开关**已废除** —— 一个常开的自动开关
+  // 会在用户换服务器（或手滑改地址）时静默删掉本地数据，太容易误伤。
+  // 改成：删除账户时由用户显式二选一（只删账户 / 连带清理本地条目），
+  // 且清理前照样留备份可恢复。
+  console.log("[purge] 删除账户时的可选清理（purgeAccountItems）");
 
-  await t("开关关闭 → purgeOrphansIfEnabled 什么都不做", async () => {
-    const st = mkStore([mkItem("a", NAS_CAL), mkItem("c", OLD_CAL)], [cal(NAS_CAL, true)]);
-    assert.strictEqual(await st.purgeOrphansIfEnabled(), 0);
-    assert.strictEqual(st.getAll().length, 2);
-  });
-
-  await t("开关打开 + 配置已对齐 → 清理孤儿", async () => {
-    const st = mkStore([mkItem("a", NAS_CAL), mkItem("c", OLD_CAL)], [cal(NAS_CAL, true)], NAS, {
-      purgeOtherServerOnSwitch: true
-    });
-    assert.strictEqual(await st.purgeOrphansIfEnabled(), 1);
-    assert.strictEqual(st.getAll().length, 1);
-  });
-
-  await t("安全阀：启用日历还指着旧服务器 → 一条都不清", async () => {
-    const st = mkStore([mkItem("a", OLD_CAL), mkItem("c", NAS_CAL)], [cal(OLD_CAL, true)], NAS, {
-      purgeOtherServerOnSwitch: true
-    });
-    assert.strictEqual(await st.purgeOrphansIfEnabled(), 0);
-    assert.strictEqual(st.getAll().length, 2);
-  });
-
-  await t("安全阀：serverUrl 为空 → 跳过", async () => {
-    const st = mkStore([mkItem("a", NAS_CAL), mkItem("c", OLD_CAL)], [cal(NAS_CAL, true)], "", {
-      purgeOtherServerOnSwitch: true
-    });
-    assert.strictEqual(await st.purgeOrphansIfEnabled(), 0);
-  });
-
-  await t("安全阀：一个启用日历都没有 → 跳过", async () => {
-    const st = mkStore([mkItem("a", NAS_CAL)], [cal(NAS_CAL, false)], NAS, {
-      purgeOtherServerOnSwitch: true
-    });
-    assert.strictEqual(await st.purgeOrphansIfEnabled(), 0);
-  });
-
-  await t("iCloud → 自建服务器切换：iCloud 的条目被认出为孤儿", async () => {
-    const st = mkStore([mkItem("x", ICLOUD_CAL), mkItem("y", NAS_CAL)], [cal(NAS_CAL, true)], NAS, {
-      purgeOtherServerOnSwitch: true
-    });
+  await t("iCloud → 自建服务器切换：iCloud 的条目被认出为孤儿", () => {
+    const st = mkStore([mkItem("x", ICLOUD_CAL), mkItem("y", NAS_CAL)], [cal(NAS_CAL, true)]);
     assert.deepStrictEqual(st.orphanItems().map((i) => i.uid), ["x"]);
-    assert.strictEqual(await st.purgeOrphansIfEnabled(), 1);
+  });
+
+  await t("purgeAccountItems 只清该账户日历下的条目，别的账户一条不动", async () => {
+    const st = mkStore(
+      [mkItem("a", NAS_CAL), mkItem("x", ICLOUD_CAL), mkItem("y", NAS_CAL2)],
+      [cal(NAS_CAL, true), cal(NAS_CAL2, true)],
+      NAS,
+      [{ id: "acc-icloud", name: "iCloud", serverUrl: "https://caldav.icloud.com", calendars: [cal(ICLOUD_CAL, true)] }]
+    );
+    const n = await st.purgeAccountItems("acc-icloud");
+    assert.strictEqual(n, 1, "只清 iCloud 账户那一条");
+    assert.deepStrictEqual(st.getAll().map((i) => i.uid).sort(), ["a", "y"], "主账户的条目必须原样留下");
+    assert.strictEqual(st.purgeBackup.count, 1);
+    assert.strictEqual(st.purgeBackup.removedServers, "iCloud", "备份要记清是哪个账户被清的");
+    assert.ok(st.purgeBackup.keptServer.includes("主账户"), "备份要记清留下了谁");
+  });
+
+  await t("purgeAccountItems 连**已停用**日历的条目一起清（账户都没了，留着纯占位）", async () => {
+    const st = mkStore([mkItem("a", NAS_CAL), mkItem("x", ICLOUD_CAL)], [cal(NAS_CAL, true)], NAS, [
+      { id: "acc-icloud", name: "iCloud", serverUrl: "https://caldav.icloud.com", calendars: [cal(ICLOUD_CAL, false)] }
+    ]);
+    assert.strictEqual(await st.purgeAccountItems("acc-icloud"), 1);
+    assert.deepStrictEqual(st.getAll().map((i) => i.uid), ["a"]);
+  });
+
+  await t("账户 id 不存在 / 没有日历 → 返回 0，不误伤任何条目", async () => {
+    const st = mkStore([mkItem("a", NAS_CAL)], [cal(NAS_CAL, true)], NAS, [
+      { id: "acc-empty", name: "空账户", serverUrl: "https://x/", calendars: [] }
+    ]);
+    assert.strictEqual(await st.purgeAccountItems("acc-empty"), 0, "没日历 → 0");
+    assert.strictEqual(await st.purgeAccountItems("acc-不存在"), 0, "账户不存在 → 0");
+    assert.strictEqual(st.getAll().length, 1, "一条都不该少");
+    assert.strictEqual(st.purgeBackup, undefined, "没清东西就不该产生备份");
+  });
+
+  await t("删除账户清理后仍可完整恢复（备份挂在数据顶层）", async () => {
+    const st = mkStore([mkItem("a", NAS_CAL), mkItem("x", ICLOUD_CAL)], [cal(NAS_CAL, true)], NAS, [
+      { id: "acc-icloud", name: "iCloud", serverUrl: "https://caldav.icloud.com", calendars: [cal(ICLOUD_CAL, true)] }
+    ]);
+    await st.purgeAccountItems("acc-icloud");
+    assert.strictEqual(await st.restorePurgedItems(), 1);
+    assert.deepStrictEqual(st.getAll().map((i) => i.uid).sort(), ["a", "x"]);
+    assert.strictEqual(st.get("x").dirty, false, "恢复出来的条目不带脏标记");
   });
 
   // ============================================================== ⑤ 源码级约束
@@ -344,12 +354,15 @@ const cal = (url, enabled = true, displayName = "日历") => ({ url, displayName
     assert.ok(/purgeBackup\??\s*:\s*PurgeBackup/.test(src.slice(src.indexOf("export interface PersistData"))));
   });
 
-  await t("设置页必须提供开关与「清理/恢复」按钮", () => {
+  await t("设置页：删除账户时可选清理（废除的自动开关不许复活）", () => {
     const src = read("src/ui/settings-tab.ts");
-    assert.ok(/purgeOtherServerOnSwitch/.test(src), "应声明开关");
-    assert.ok(/renderPurgeRow/.test(src), "应有清理/恢复按钮行");
-    assert.ok(/purgeOrphansIfEnabled/.test(src), "应有自动清理触发点");
-    assert.ok(/restorePurgedItems/.test(src), "应有恢复入口");
+    assert.ok(/purgeAccountItems/.test(src), "删除账户应能连带清理本地条目");
+    assert.ok(/renderPurgeRow/.test(src), "仍要有手动清理/恢复按钮行");
+    assert.ok(/restorePurgedItems/.test(src), "仍要有恢复入口");
+    // 常开的自动清理开关是误伤源，2026-10-26 随多账户废除，不许再回来
+    assert.ok(!/purgeOtherServerOnSwitch|purgeOrphansIfEnabled/.test(src), "「切换服务器自动清理」开关已废除，不许复活");
+    const types = read("src/core/types.ts");
+    assert.ok(!/purgeOtherServerOnSwitch/.test(types), "CalSettings 里不该再有该开关字段");
   });
 
   await t("i18n 中英文案对位且齐全", () => {
@@ -357,8 +370,6 @@ const cal = (url, enabled = true, displayName = "日历") => ({ url, displayName
     const en = JSON.parse(read("src/i18n/en_US.json"));
     const keys = [
       "settings.groupLocalData",
-      "settings.purgeOnSwitch",
-      "settings.purgeOnSwitchDesc",
       "settings.purgeNow",
       "settings.purgeRestore",
       "settings.purgeStatus",

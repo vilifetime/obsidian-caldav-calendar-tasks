@@ -102,9 +102,13 @@ check("软确认只由确认栏说话，挑选侧不预发 setMsg 文件信息",
  * 2026-10-15 雄哥报「改了 7M 还提示 5M」：开弹窗时的上限快照会过期，
  * 挑选文件这一刻必须按当前设置重写。 */
 check("挑选文件时刷新提示语（按当前设置）", () => {
-  assert.ok(editor.includes("const maxBytes = attachSizeMaxBytes(ctx.store.settings);"));
+  // 上限 2026-10-26 下沉到账户：必须按**条目所属账户**取（accOfItem()），
+  // 写成 ctx.store.settings 的话多账户下 A 账户的条目会拿 B 账户的上限去卡。
+  assert.ok(editor.includes("const maxBytes = attachSizeMaxBytes(accOfItem());"));
   assert.ok(editor.includes("refreshHint();"));
-  assert.ok(/const refreshHint = \(\): void => \{[\s\S]{0,200}attachHintHtml\(attachSizeMaxBytes\(ctx\.store\.settings\)(?:, ctx\.store\.settings\.serverType === "icloud")?\)/.test(editor));
+  assert.ok(
+    /const refreshHint = \(\): void => \{[\s\S]{0,300}attachHintHtml\(attachSizeMaxBytes\(accOfItem\(\)\)[\s\S]{0,120}\)/.test(editor)
+  );
 });
 
 /* ── ⑥ 确认栏「建议」口吻 ─────────────────────────────────────
@@ -209,21 +213,30 @@ for (const rule of [".caldav-attach {", ".caldav-attach-rows {", ".caldav-attach
   check(`CSS 规则 ${rule} 存在`, () => assert.ok(css.includes(rule), `styles.css 里找不到 ${rule}`));
 }
 
-/* ── ⑫ 设置项：两个上限在同步板块 ──────────────────────────── */
-check("设置页声明 attachSizeMaxMB", () => {
-  assert.ok(/num\("attachSizeMaxMB", 5\)/.test(settingsTab), "同步板块应声明附件大小限制（默认 5）");
+/* ── ⑫ 设置项：两个上限在**账户的策略段** ──────────────────────
+ * 2026-10-26 雄哥：附件/ICS 体积上限是**服务器特性**（Radicale 10MB /
+ * PHP 8MB / iCloud 另有一套），不同服务器各配各的 —— 已从全局「同步」段下沉
+ * 到每个账户的「策略」段，key 也带账户前缀（acc.<id>.xxx）。 */
+check("设置页声明 attachSizeMaxMB（账户键）", () => {
+  assert.ok(/num\(pre \+ "attachSizeMaxMB", 5\)/.test(settingsTab), "账户策略段应声明附件大小限制（默认 5）");
 });
-check("设置页声明 icsSizeMaxMB", () => {
-  assert.ok(/num\("icsSizeMaxMB", 10\)/.test(settingsTab), "同步板块应声明单个 ICS 限制（默认 10）");
+check("设置页声明 icsSizeMaxMB（账户键）", () => {
+  assert.ok(/num\(pre \+ "icsSizeMaxMB", 10\)/.test(settingsTab), "账户策略段应声明单个 ICS 限制（默认 10）");
 });
-check("两个上限项挂在同步分组里（groupSync 之内）", () => {
-  // 从 groupSync 标题截到下一个分组标题（第一个 ] 会撞上 aliases 数组，
+check("两个上限项挂在账户策略分组里（groupStrategy 之内）", () => {
+  // 从 groupStrategy 标题截到下一个分组标题（第一个 ] 会撞上 aliases 数组，
   // 用分组边界更稳）
-  const start = settingsTab.indexOf('heading: t("settings.groupSync")');
-  assert.ok(start > 0, "应找到同步分组");
+  const start = settingsTab.indexOf('heading: t("settings.groupStrategy")');
+  assert.ok(start > 0, "应找到策略分组");
   const nextGroup = settingsTab.indexOf('type: "group"', start + 10);
   const group = settingsTab.slice(start, nextGroup > 0 ? nextGroup : undefined);
-  assert.ok(/attachSizeMaxMB/.test(group) && /icsSizeMaxMB/.test(group), "两个上限项都该在同步分组内");
+  assert.ok(/attachSizeMaxMB/.test(group) && /icsSizeMaxMB/.test(group), "两个上限项都该在账户的策略分组内");
+  // 反向钉死：全局同步段不许再留这两个上限（放回去 = 所有服务器共用一个值）
+  const syncStart = settingsTab.indexOf('heading: t("settings.groupSync")');
+  assert.ok(syncStart > 0, "应找到同步分组");
+  const syncNext = settingsTab.indexOf('type: "group"', syncStart + 10);
+  const syncGroup = settingsTab.slice(syncStart, syncNext > 0 ? syncNext : undefined);
+  assert.ok(!/attachSizeMaxMB/.test(syncGroup) && !/icsSizeMaxMB/.test(syncGroup), "同步段不该再留这两个上限（已下沉到账户）");
 });
 check("types.ts 仍有 CalAttachment 与两个设置字段（防回退）", () => {
   assert.ok(/export interface CalAttachment/.test(types));

@@ -4,7 +4,7 @@
 import { Modal, Notice } from "obsidian";
 import { isMobile } from "@/obs/platform";
 import type { Alarm, CalAttachment, CalCalendar, CalItem, CalKind, CategoryDef, Recurrence } from "../core/types";
-import { DEFAULT_CATEGORIES, calEventColor } from "../core/types";
+import { DEFAULT_CATEGORIES, accountOfUrl, calEventColor, enabledCalendars, findCalendarByUrl, resolveDefaultCalendar } from "../core/types";
 import { keyOf } from "../core/store";
 import { addDays, defaultStartStamp, isDateOnly, parseLocalStamp, stampOfMs, todayStamp } from "../core/date";
 import { attachSizeMaxBytes, convertItemKind } from "../core/ics";
@@ -22,12 +22,31 @@ export interface EditorPreset {
   kind?: CalKind; // 新建时的种类
   start?: string; // 新建时的开始
   end?: string;
+  /** 新建时指定落到哪个日历（不指定则用默认日历） */
+  calendarUrl?: string;
+}
+
+/**
+ * 编辑器「日历」下拉的可选集合：启用账户下的启用日历。
+ *
+ * 多账户后不能只给 enabledCalendars —— 编辑的条目若属于一个**已停用**的日历
+ * （或该账户已停用），下拉里没有它就会显示成空、保存时还可能把它改成别的日历。
+ * 与思源端 editorCalendars 同款：启用集合 + 把当前日历补回。
+ */
+export function editorCalendars(ctx: PanelCtx, keepUrl?: string): CalCalendar[] {
+  const cals = enabledCalendars(ctx.store.settings);
+  if (!keepUrl) return cals;
+  if (cals.some((c) => c.url === keepUrl)) return cals;
+  const cur = findCalendarByUrl(ctx.store.settings, keepUrl);
+  return cur ? [...cals, cur] : cals;
 }
 
 export function openEditor(ctx: PanelCtx, preset: EditorPreset): void {
   const editing = preset.item;
   const kind: CalKind = editing ? editing.kind : preset.kind || "event";
-  const cals = ctx.store.settings.calendars;
+  // 多账户（2026-10-25 从思源侧同构）：启用账户下的启用日历；编辑既有条目时把它
+  // 所属日历（即使已停用）补回，保证下拉里能看到当前值
+  const cals = editorCalendars(ctx, editing?.calendarUrl || preset.calendarUrl);
   if (!cals.length) {
     // 用 Obsidian 的 Notice 而非原生 alert（官方规则）：原生弹窗在移动端
     // 体验割裂，且阻塞 JS 事件循环。
@@ -35,9 +54,13 @@ export function openEditor(ctx: PanelCtx, preset: EditorPreset): void {
     return;
   }
   const defaultCal =
-    cals.find((c) => c.url === ctx.store.settings.defaultCalendarUrl) ||
-    cals.find((c) => c.enabled) ||
+    (editing || preset.calendarUrl ? cals.find((c) => c.url === (editing?.calendarUrl || preset.calendarUrl)) : undefined) ||
+    resolveDefaultCalendar(ctx.store.settings) ||
     cals[0];
+  if (!defaultCal) {
+    new Notice(t("editor.needConfig"), 5000);
+    return;
+  }
 
   const isNew = !editing;
   // 新建时的默认开始时间：日期是今天就落在「下一个整点」，其它日期落在当天 09:00
@@ -166,8 +189,8 @@ class EditorModal extends Modal {
         cats,
         !!this.ctx.store.settings.categoryMulti,
         this.isNew,
-        attachSizeMaxBytes(this.ctx.store.settings),
-        this.ctx.store.settings.serverType === "icloud"
+        attachSizeMaxBytes(accountOfUrl(this.ctx.store.settings, this.it.calendarUrl)),
+        accountOfUrl(this.ctx.store.settings, this.it.calendarUrl)?.serverType === "icloud"
       )
     );
     bindEvents(this.ctx, this, wrap, this.it, this.isNew);
@@ -836,7 +859,8 @@ function editorHtml(
 
 function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalItem, isNew: boolean): void {
   const isTodo = it.kind === "todo";
-  const cals = ctx.store.settings.calendars;
+  const cals = editorCalendars(ctx, it.calendarUrl);
+  const accOfItem = () => accountOfUrl(ctx.store.settings, it.calendarUrl);
   const f = (name: string) => el.querySelector(`[data-f="${name}"]`) as HTMLInputElement;
   const errEl = el.querySelector("[data-error]") as HTMLElement;
 
@@ -858,14 +882,14 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
   let attachList: CalAttachment[] | undefined;
   const attachRows = el.querySelector<HTMLElement>("[data-attach-rows]");
   if (attachRows) {
-    const isIcloud = ctx.store.settings.serverType === "icloud";
+    const isIcloud = accOfItem()?.serverType === "icloud";
     const fileInput = el.querySelector<HTMLInputElement>("[data-attach-file]");
     const msgEl = el.querySelector<HTMLElement>("[data-attach-msg]");
     const hintEl = el.querySelector<HTMLElement>("[data-attach-hint]");
     // 提示语实时刷新：开弹窗后的上限快照会过期（设置里改大后旧弹窗仍显示老数字），
     // 每次挑选文件时按当前设置重写，保证显示与校验一致。
     const refreshHint = (): void => {
-      if (hintEl) setHtml(hintEl, attachHintHtml(attachSizeMaxBytes(ctx.store.settings), ctx.store.settings.serverType === "icloud"));
+      if (hintEl) setHtml(hintEl, attachHintHtml(attachSizeMaxBytes(accOfItem()), accOfItem()?.serverType === "icloud"));
     };
     const setMsg = (text: string, isErr = false): void => {
       if (!msgEl) return;
@@ -955,7 +979,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
         //    快照，用户在设置里改大上限后，旧弹窗的提示语还挂着老数字，看着就像
         //    设置没生效。挑选这一刻按当前设置重写提示语，保证「显示的上限」与
         //    「实际校验的上限」永远一致。
-        const maxBytes = attachSizeMaxBytes(ctx.store.settings);
+        const maxBytes = attachSizeMaxBytes(accOfItem());
         refreshHint();
         if (file.size > maxBytes) {
           setMsg(t("editor.attachTooLarge", { name: file.name, size: sizeText(file.size), max: sizeText(maxBytes) }), true);
@@ -1321,7 +1345,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
       const collected = collect(ctx, el, it, attachList); // 复用收集逻辑，未保存编辑不丢
       // 目标类型不被当前日历接受时必须换日历（iCloud 的「日历」只收 VEVENT、
       // 「提醒事项」只收 VTODO，硬转必 403）。UID/附件/重复规则全部保留，只是搬家。
-      const cals = ctx.store.settings.calendars.filter((c) => c.enabled);
+      const cals = enabledCalendars(ctx.store.settings);
       const cur = cals.find((c) => c.url === collected.calendarUrl);
       const accepted = (cal2?: CalCalendar): boolean =>
         !cal2 || (target === "event" ? cal2.supportsEvent !== false : cal2.supportsTodo !== false);
@@ -1447,7 +1471,7 @@ function collect(ctx: PanelCtx, el: HTMLElement, it: CalItem, attachList?: CalAt
   it.summary = v("summary");
   if (!it.summary) throw new Error(t("editor.errTitleEmpty"));
   it.calendarUrl = v("calendar");
-  const cal = ctx.store.settings.calendars.find((c) => c.url === it.calendarUrl);
+  const cal = findCalendarByUrl(ctx.store.settings, it.calendarUrl);
   // 更换日历 = 移动资源
   if (cal && !it.href.startsWith(cal.url.replace(/\/+$/, ""))) {
     // 记下原地址：上传成功后要把旧日历里那份删掉，否则服务端留孤儿

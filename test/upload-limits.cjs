@@ -201,10 +201,19 @@ const reset = (status = 201) => {
     check("timeoutMs 走 uploadTimeoutMs(icsBytes)", src.includes("timeoutMs: uploadTimeoutMs(icsBytes)"), "写死 30000 会让 7MB 附件在家用 NAS 上必然超时");
     check("413 分支存在", !!putFn && /res\.status === 413/.test(putFn[0]) && /net\.tooLarge413/.test(putFn[0]));
     const syncSrc = read("src/core/sync.ts");
-    const icsMaxPasses = (syncSrc.match(/this\.store\.settings\.icsSizeMaxMB/g) || []).length;
+    // 上限 2026-10-26 下沉为**账户级**（不同服务器各配各的：Radicale 10MB / PHP 8MB）：
+    // 每处 putItem 都要把所属账户的 icsSizeMaxMB 传下去，漏传就走默认 10MB，
+    // 账户里配的上限形同虚设。判据用「调用处个数」而非写死的字符串形态，
+    // 免得传参写法一变（settings.icsSizeMaxMB → acc?.icsSizeMaxMB）就误报。
+    const putCalls = (syncSrc.match(/putItem\(/g) || []).length;
+    const icsMaxPasses = (syncSrc.match(/putItem\([^;]*?icsSizeMaxMB/g) || []).length;
     // 4 处：pushDirty 正常 + 412 覆盖 + iCloud 预上传建资源 + 403 降级的重传（2026-10-24
     // 「日程↔待办互转」新增：服务端拒收同 href 换组件类型时，删旧资源后重传也要受同一上限约束）
-    check("sync.ts 四处调用都传 icsSizeMaxMB（pushDirty 正常 + 412 覆盖 + iCloud 预上传建资源 + 403 降级重传）", icsMaxPasses === 4, "实际 " + icsMaxPasses + " 处 —— 漏传的调用走默认 10MB，设置值不生效");
+    check(
+      "sync.ts 四处 putItem 都带账户级 icsSizeMaxMB（pushDirty 正常 + 412 覆盖 + iCloud 预上传建资源 + 403 降级重传）",
+      putCalls === 4 && icsMaxPasses === 4,
+      `putItem ${putCalls} 处 / 带上限 ${icsMaxPasses} 处 —— 漏传的调用走默认 10MB，账户里配的上限不生效`
+    );
     const httpSrc = read("src/core/http.ts");
     check("http.ts 导出 uploadTimeoutMs", /export function uploadTimeoutMs/.test(httpSrc));
     check("预算参数是 10-16 放宽后的值（60s / 32KB/s / 10min）", /BASE_MS = 60000/.test(httpSrc) && /32 \* 1024/.test(httpSrc) && /CAP_MS = 600000/.test(httpSrc));

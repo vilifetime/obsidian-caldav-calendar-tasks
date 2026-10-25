@@ -19,6 +19,7 @@ import { ButtonComponent, Modal, Notice, Plugin, TFile, normalizePath, type App,
 import { CalStore } from "@/core/store";
 import { SyncEngine, type SyncReport } from "@/core/sync";
 import type { CalItem, CalSettings } from "@/core/types";
+import { enabledAccounts, enabledCalendars } from "@/core/types";
 import { occurrencesInRange } from "@/core/ics";
 import { parseLocalStamp, todayStamp, fmtTime } from "@/core/date";
 import {
@@ -244,7 +245,8 @@ export default class CalDavPlugin extends Plugin {
     // 语言要在数据加载后初始化 —— 用户可能手动指定过语言，值存在插件数据里。
     initLocale(this.hostSettings().language);
 
-    this.sync = new SyncEngine(this.store, () => this.store.settings.channel);
+    // 通道回退到第一个启用账户的 channel（账户级 channel 优先，见 sync.channelOf）
+    this.sync = new SyncEngine(this.store, () => enabledAccounts(this.store.settings)[0]?.channel || "auto");
     this.mainCtx = this.createCtx();
 
     // ③ 数据变化 → 重算提醒排程 + 刷新状态栏
@@ -400,18 +402,29 @@ export default class CalDavPlugin extends Plugin {
    */
   private settingsFingerprint(s: CalSettings): string {
     return JSON.stringify([
-      s.serverUrl,
-      s.username,
-      s.password,
-      s.channel,
+      (s.accounts || []).map((a) => [
+        a.id,
+        a.name,
+        a.enabled,
+        a.serverUrl,
+        a.username,
+        a.password,
+        a.calendarPath,
+        a.serverType,
+        a.channel,
+        a.conflict,
+        a.pastDays,
+        a.futureDays,
+        a.attachSizeMaxMB,
+        a.icsSizeMaxMB,
+        (a.calendars || []).map((c) => [c.url, c.displayName, c.eventColor, c.todoColor, c.enabled])
+      ]),
       s.syncIntervalMin,
       s.enableReminders,
-      s.conflict,
-      s.pastDays,
-      s.futureDays,
+      s.defaultCalendarUrl,
+      s.defaultAccountId,
       s.showTodosInCalendar,
       s.categoryMulti,
-      (s.calendars || []).map((c) => [c.url, c.displayName, c.eventColor, c.todoColor, c.enabled]),
       (s.categories || []).map((c) => [c.name, c.color])
     ]);
   }
@@ -449,10 +462,11 @@ export default class CalDavPlugin extends Plugin {
       // loadData 返回卸载前的缓存。所以卸载路径由调用方先 await persist()，
       // 这里的读只是兜底；拿不到就退回内存值并**整个剔除密码**。
       const disk = (await this.loadData()) as { settings?: CalSettings } | null;
-      if (disk?.settings?.password !== undefined) settings = disk.settings;
-      else settings = { ...settings, password: "" };
+      // 多账户：密码在每个账户里 —— 磁盘那份只要**任一账户**有密码字段就视为可取
+      if (disk?.settings && (disk.settings.accounts || []).some((a) => a.password !== undefined)) settings = disk.settings;
+      else settings = { ...settings, accounts: (settings.accounts || []).map((a) => ({ ...a, password: "" })) };
     } catch {
-      settings = { ...settings, password: "" };
+      settings = { ...settings, accounts: (settings.accounts || []).map((a) => ({ ...a, password: "" })) };
     }
     const payload = buildBackup(settings, this.store.keyring);
     // 最后一道闸：万一上游逻辑变了、备份里出现明文密码，宁可不写。
@@ -858,7 +872,7 @@ export default class CalDavPlugin extends Plugin {
       if (report.errors.length > 0) {
         this.notify(t("sync.doneWithErrors", { count: report.errors.length, first: report.errors[0] ?? "" }), "error");
       } else if (report.conflicts.length > 0 && manual) {
-        const strategy = this.store.settings.conflict === "local" ? t("settings.conflictLocal") : t("settings.conflictServer");
+        const strategy = enabledAccounts(this.store.settings)[0]?.conflict === "local" ? t("settings.conflictLocal") : t("settings.conflictServer");
         this.notify(
           t("sync.doneWithConflicts", {
             count: report.conflicts.length,
@@ -1061,9 +1075,7 @@ export default class CalDavPlugin extends Plugin {
       const targetLabel =
         targetOptionsOf(range, today).find((o) => o.key === diaryTarget)?.short ??
         t("diary.target.todayShort");
-      const enabled = new Set(
-        this.store.settings.calendars.filter((c) => c.enabled).map((c) => c.url)
-      );
+      const enabled = new Set(enabledCalendars(this.store.settings).map((c) => c.url));
 
       // 收集落在区间内的实例：日程展开重复规则，待办取到期时刻
       const rows: { ms: number; line: string }[] = [];

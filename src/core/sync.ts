@@ -4,7 +4,8 @@
  * - 上传：本地脏条目 PUT（带 If-Match），412 冲突按策略处理
  * - 删除：本地 deleted 标记 -> 服务端 DELETE
  */
-import type { CalItem } from "./types";
+import type { CalAccount, CalCalendar, CalItem } from "./types";
+import { accountOfUrl, enabledAccounts, enabledCalendars, findCalendarByUrl } from "./types";
 import { keyOf, type CalStore } from "./store";
 import {
   syncCollection,
@@ -130,8 +131,13 @@ export class SyncEngine {
     private getChannel: () => Channel
   ) {}
 
-  private auth(): DavAuth {
-    return { username: this.store.settings.username, password: this.store.settings.password };
+  /**
+   * 按账户取凭据（多账户，2026-10-25 从思源侧同构）。
+   * 没传账户时用第一个启用账户兜底（单账户老路径的同款行为）。
+   */
+  private authOf(acc?: CalAccount): DavAuth {
+    const a = acc || enabledAccounts(this.store.settings)[0];
+    return { username: a?.username || "", password: a?.password || "" };
   }
 
   /** 置「同步中」：界面据此转同步按钮、状态条显示「同步中…」 */
@@ -151,8 +157,18 @@ export class SyncEngine {
     }
   }
 
-  private channel(): Channel {
-    return this.getChannel();
+  /** 按账户取通道：账户级 channel 优先，缺省回退全局设置（旧数据的同款行为） */
+  private channelOf(acc?: CalAccount): Channel {
+    return acc?.channel || this.getChannel();
+  }
+
+  /** 按日历地址反查所属账户（各条目的凭据/通道/冲突策略都靠它） */
+  private accountOf(calUrl: string): CalAccount | undefined {
+    return accountOfUrl(this.store.settings, calUrl);
+  }
+
+  private findCalByUrl(calUrl: string): CalCalendar | undefined {
+    return findCalendarByUrl(this.store.settings, calUrl);
   }
 
   /** 启动定时同步（分钟） */
@@ -206,46 +222,51 @@ export class SyncEngine {
       deletedKeys: []
     };
     try {
-      // 凭据缺失时直接给出明确错误，不再发无效请求、也不再显示“同步成功”
-      const credErr = this.credentialError();
-      if (credErr) {
+      // 多账户（2026-10-25 从思源侧同构）：逐个启用账户过一遍。单个账户的配置问题
+      // 或网络失败只记一条**带账户名**的错误，其他账户照常同步 —— 不能一个账户
+      // 密码错了就把另一个好账户也带停。
+      const accounts = enabledAccounts(this.store.settings);
+      if (!accounts.length) {
         report.ok = false;
-        report.errors.push(credErr);
-        this.store.lastError = credErr;
+        report.errors.push(t("sync.noAccountEnabled"));
+        this.store.lastError = t("sync.noAccountEnabled");
         return report;
       }
-      const enabledCals = this.store.settings.calendars.filter((c) => c.enabled);
-      if (!enabledCals.length) {
-        report.ok = false;
-        report.errors.push(t("sync.noCalendarEnabled"));
-        this.store.lastError = t("sync.noCalendarEnabled");
-        return report;
-      }
-      // 服务器地址改过、但日历地址没跟着更新 → 明确报错。
-      // 否则会静默地去连旧服务器并「同步成功」，让用户以为新地址是可用的。
-      const stale = staleCalendarNames(this.store.settings.serverUrl, enabledCals);
-      if (stale.length) {
-        const msg = t("sync.serverChanged", { list: stale.join("、") });
-        report.ok = false;
-        report.errors.push(msg);
-        this.store.lastError = msg;
-        return report;
-      }
-      const rangeStart = Date.now() - this.store.settings.pastDays * 86400000;
-      const rangeEnd = Date.now() + this.store.settings.futureDays * 86400000;
+      let anyCals = false;
+      for (const acc of accounts) {
+        const accCals = (acc.calendars || []).filter((c) => c.enabled);
+        if (!accCals.length) continue; // 该账户没有启用日历：跳过（不算错误）
+        anyCals = true;
+        // 凭据缺失时给该账户一条明确错误，其他账户继续
+        const credErr = this.accountCredentialError(acc);
+        if (credErr) {
+          report.ok = false;
+          report.errors.push(`账户「${acc.name}」：${credErr}`);
+          continue;
+        }
+        // 服务器地址改过、但日历地址没跟着更新 → 该账户明确报错。
+        // 否则会静默地去连旧服务器并「同步成功」，让用户以为新地址是可用的。
+        const stale = staleCalendarNames(acc.serverUrl, accCals);
+        if (stale.length) {
+          report.ok = false;
+          report.errors.push(`账户「${acc.name}」：${t("sync.serverChanged", { list: stale.join("、") })}`);
+          continue;
+        }
+        // 同步窗口按账户（不同服务器的时间范围本就该能各设各的）
+        const rangeStart = Date.now() - acc.pastDays * 86400000;
+        const rangeEnd = Date.now() + acc.futureDays * 86400000;
 
-      // 0. 补齐日历能力（supported-calendar-component-set）。老配置里的
-      //    supportsEvent/Todo 是「没问过服务端」时的缺省值（全 true），会把 iCloud
-      //    的提醒事项集合误判成也收 VEVENT。必须在推送**之前**弄清，否则 403 降级
-      //    可能对着一个根本不支持目标类型的集合做删旧建新（2026-10-24 事故）。
-      await this.ensureCalendarCapabilities();
+        // 0. 补齐日历能力（supported-calendar-component-set）。老配置里的
+        //    supportsEvent/Todo 是「没问过服务端」时的缺省值（全 true），会把 iCloud
+        //    的提醒事项集合误判成也收 VEVENT。必须在推送**之前**弄清，否则 403 降级
+        //    可能对着一个根本不支持目标类型的集合做删旧建新（2026-10-24 事故）。
+        await this.ensureCalendarCapabilities(acc);
 
-      // 1. 先上传本地脏数据（新条目无 etag 直接 PUT；有 etag 带条件）
-      await this.pushDirty(report);
+        // 1. 先上传本地脏数据（新条目无 etag 直接 PUT；有 etag 带条件）
+        await this.pushDirty(report);
 
-      // 2. 逐日历拉取
-      for (const cal of this.store.settings.calendars) {
-        if (!cal.enabled) continue;
+        // 2. 逐日历拉取
+        for (const cal of accCals) {
         try {
           let items: CalItem[] = [];
           let deletedHrefs: string[] = [];
@@ -267,7 +288,7 @@ export class SyncEngine {
           }
           if (cal.syncToken) {
             try {
-              const r = await syncCollection(cal, this.channel(), this.auth(), cal.syncToken);
+              const r = await syncCollection(cal, this.channelOf(acc), this.authOf(acc), cal.syncToken);
               items = r.items;
               deletedHrefs = r.deletedHrefs;
               if (r.syncToken) cal.syncToken = r.syncToken;
@@ -280,14 +301,14 @@ export class SyncEngine {
           if (!cal.syncToken) {
             const r = await fetchCalendarItems(
               cal,
-              this.channel(),
-              this.auth(),
+              this.channelOf(acc),
+              this.authOf(acc),
               icsRangeIso(rangeStart),
               icsRangeIso(rangeEnd)
             );
             items = r.items;
             // 尝试获取 sync-token 供下次增量（RFC 6578：PROPFIND sync-token）
-            cal.syncToken = await this.tryGetSyncToken(cal);
+            cal.syncToken = await this.tryGetSyncToken(cal, acc);
           }
           const deletedKeys = deletedHrefs
             .map((h) => this.findKeyByHref(h, cal.url))
@@ -303,11 +324,18 @@ export class SyncEngine {
           report.deleted += merged.removed;
           // 拉取成功了才做对账 —— 上一步抛错说明与服务端的对话不完整，
           // 此时拿到的清单不可信，宁可这一轮不做（见 reconcile 的安全约束）
-          await this.reconcile(cal, report);
+          await this.reconcile(cal, acc, report);
         } catch (e: unknown) {
           report.ok = false;
-          report.errors.push(`${cal.displayName}: ${explainError(e)}`);
+          report.errors.push(`账户「${acc.name}」/ ${cal.displayName}: ${explainError(e)}`);
         }
+        }
+      }
+      if (!anyCals) {
+        report.ok = false;
+        report.errors.push(t("sync.noCalendarEnabled"));
+        this.store.lastError = t("sync.noCalendarEnabled");
+        return report;
       }
 
       // 3. 已删除条目已在 pushDirty 中处理（成功后即从本地移除），此处不再重复 DELETE
@@ -356,14 +384,13 @@ export class SyncEngine {
     return report;
   }
 
-  /** 凭据不可用时的统一提示（密码为空/解密失败），避免静默 401 */
-  private credentialError(): string | undefined {
-    const s = this.store.settings;
-    if (!s.serverUrl) return t("sync.noServerUrl");
-    if (!s.username) return t("sync.noUsername");
+  /** 某个账户凭据不可用时的提示（密码为空/解密失败），避免静默 401 */
+  private accountCredentialError(acc: CalAccount): string | undefined {
+    if (!acc.serverUrl) return t("sync.noServerUrl");
+    if (!acc.username) return t("sync.noUsername");
     if (this.store.pendingUnlock) return t("sync.pendingUnlock");
     if (this.store.secretBroken) return t("sync.secretBroken");
-    if (!s.password) return t("sync.noPassword");
+    if (!acc.password) return t("sync.noPassword");
     return undefined;
   }
 
@@ -377,7 +404,7 @@ export class SyncEngine {
     return undefined;
   }
 
-  private async tryGetSyncToken(cal: import("./types").CalCalendar): Promise<string | undefined> {
+  private async tryGetSyncToken(cal: CalCalendar, acc?: CalAccount): Promise<string | undefined> {
     try {
       const res = await httpRequest(
         cal.url,
@@ -387,8 +414,8 @@ export class SyncEngine {
           body: `<?xml version="1.0" encoding="utf-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:sync-token/></D:prop></D:propfind>`,
           timeoutMs: 15000
         },
-        this.channel(),
-        this.auth()
+        this.channelOf(acc),
+        this.authOf(acc)
       );
       if (res.status >= 400) return undefined;
       const m = /<(?:[A-Za-z0-9_-]+:)?sync-token[^>]*>([^<]*)</.exec(res.body);
@@ -417,12 +444,12 @@ export class SyncEngine {
    *   ② 清单为空而本地有条目 → 多半是路径或权限不对，同样跳过；
    *   ③ 只处理本地**不脏**的条目 —— 脏条目本来就在等上传，不能被判成幽灵。
    *
-   * 处理方式跟随 `settings.conflict`：服务端优先 → 删本地；本地优先 → 置脏重传。
+   * 处理方式跟随**该账户的** conflict：服务端优先 → 删本地；本地优先 → 置脏重传。
    */
-  private async reconcile(cal: import("./types").CalCalendar, report: SyncReport): Promise<void> {
+  private async reconcile(cal: CalCalendar, acc: CalAccount, report: SyncReport): Promise<void> {
     let names: string[];
     try {
-      names = await listResourceNames(cal, this.channel(), this.auth());
+      names = await listResourceNames(cal, this.channelOf(acc), this.authOf(acc));
     } catch (e: unknown) {
       console.warn(`[caldav] ${cal.displayName}: ${t("sync.reconcileSkipListFailed", { msg: explainError(e) })}`);
       return;
@@ -438,7 +465,7 @@ export class SyncEngine {
     }
     const ghosts = candidates.filter((it) => !onServer.has(fileNameOf(it.href)));
     if (!ghosts.length) return;
-    if (this.store.settings.conflict === "local") {
+    if ((acc?.conflict || "server") === "local") {
       // 本地优先：认定是服务端把它弄丢了，重新上传
       for (const it of ghosts) {
         it.dirty = true;
@@ -464,12 +491,13 @@ export class SyncEngine {
    * 只在缺 `componentSetProbed` 标记时发一次 Depth-0 PROPFIND，探测失败就保持原值
    * （宁可当支持，也绝不因为探测失败禁用日历）。探测成功后写标记并落盘设置。
    */
-  private async ensureCalendarCapabilities(): Promise<void> {
-    const todo = this.store.settings.calendars.filter((c) => c.enabled && !c.componentSetProbed);
+  private async ensureCalendarCapabilities(acc?: CalAccount): Promise<void> {
+    const cals = acc ? (acc.calendars || []).filter((c) => c.enabled) : enabledCalendars(this.store.settings);
+    const todo = cals.filter((c) => !c.componentSetProbed);
     if (!todo.length) return;
     let dirty = false;
     for (const cal of todo) {
-      const r = await probeCalendarComponents(cal, this.channel(), this.auth());
+      const r = await probeCalendarComponents(cal, this.channelOf(acc), this.authOf(acc));
       if (!r) continue; // 探测失败：保留原值，下轮再试
       cal.supportsEvent = r.supportsEvent;
       cal.supportsTodo = r.supportsTodo;
@@ -489,12 +517,14 @@ export class SyncEngine {
     const from = item.movedFrom;
     item.movedFrom = undefined; // 无论成败都清，避免下一轮重复处理
     if (!from?.href || from.href === item.href) return;
+    // 搬家的原资源可能在**另一个账户**里（换日历跨了服务器），凭据/通道按它取
+    const acc = this.accountOf(from.calendarUrl || item.calendarUrl);
     try {
-      await deleteItem({ ...item, href: from.href, etag: from.etag }, this.channel(), this.auth());
+      await deleteItem({ ...item, href: from.href, etag: from.etag }, this.channelOf(acc), this.authOf(acc));
     } catch {
       // If-Match 对不上（旧资源被别处改过）时无条件再删一次；仍失败就只提示
       try {
-        await deleteItem({ ...item, href: from.href, etag: undefined }, this.channel(), this.auth());
+        await deleteItem({ ...item, href: from.href, etag: undefined }, this.channelOf(acc), this.authOf(acc));
       } catch {
         report.notes = report.notes || [];
         report.notes.push(`「${item.summary}」已保存到新位置，原位置的那份未能删除，请到服务端手动清理`);
@@ -505,6 +535,9 @@ export class SyncEngine {
   private async pushDirty(report: SyncReport): Promise<void> {
     // 新建 / 修改
     for (const item of this.store.dirtyItems()) {
+      // 多账户：这条条目属于哪个账户 → 凭据/通道/冲突策略/上限全按它取。
+      // ⚠️ 声明必须在 try **之外**：catch 里的 412/403 分支同样要用 acc。
+      const acc = this.accountOf(item.calendarUrl);
       try {
         // iCloud 托管附件：先把界面收集到的内联 base64 逐个上传到 iCloud 专用存储，
         // 就地改写成托管 URI（uri + managedId），再序列化（dropBinary 会剥掉任何残留 b64）。
@@ -513,9 +546,9 @@ export class SyncEngine {
         await this.uploadIcloudAttachments(item);
         // iCloud 不支持把附件以 base64 内联进待办（PUT 会被拒、返回 507），
         // 故序列化时剥掉二进制内联附件，只保留 URI（托管 URI 或外链）。
-        const dropBinary = this.store.settings.serverType === "icloud";
+        const dropBinary = acc?.serverType === "icloud";
         const ics = item.raw ? itemToEditedICS(item, dropBinary) : itemToNewICS(item, dropBinary);
-        const r = await putItem(item, ics, this.channel(), this.auth(), this.store.settings.icsSizeMaxMB);
+        const r = await putItem(item, ics, this.channelOf(acc), this.authOf(acc), acc?.icsSizeMaxMB);
         item.etag = r.etag;
         item.dirty = false;
         item.raw = item.raw || ics; // 新建后保留原文
@@ -524,16 +557,16 @@ export class SyncEngine {
         await this.deleteMovedFrom(item, report);
       } catch (e: unknown) {
         if (errStatus(e) === 412) {
-          if (this.store.settings.conflict === "local") {
+          if ((acc?.conflict || "server") === "local") {
             // 本地优先：强制覆盖（去掉 If-Match）
             const keep = item.etag;
             item.etag = undefined;
             try {
               // 与上面同一判据：有原文才走增量改写，否则整份重拼会丢掉
               // 服务端的 ATTACH / ORGANIZER / VTIMEZONE 等未管理属性。
-              const dropBinary = this.store.settings.serverType === "icloud";
+              const dropBinary = acc?.serverType === "icloud";
               const ics = item.raw ? itemToEditedICS(item, dropBinary) : itemToNewICS(item, dropBinary);
-              const r = await putItem(item, ics, this.channel(), this.auth(), this.store.settings.icsSizeMaxMB);
+              const r = await putItem(item, ics, this.channelOf(acc), this.authOf(acc), acc?.icsSizeMaxMB);
               item.etag = r.etag || keep;
               item.dirty = false;
               report.uploaded++;
@@ -572,7 +605,7 @@ export class SyncEngine {
           // （先 DELETE 再 PUT），结果 iCloud 提醒事项集合重建 VEVENT 仍被 403 →
           // 旧待办已被删、新的又建不回来，服务端那条直接没了（雄哥实测「测试任务」）。
           // 改成先 PUT 同集合下的另一个文件名：新建失败则服务端分毫不动，可安全重试。
-          const cal = this.store.settings.calendars.find((c) => c.url === item.calendarUrl);
+          const cal = this.findCalByUrl(item.calendarUrl);
           // 目标类型在该集合根本不被支持（如 iCloud 提醒事项只收 VTODO）→ 换 URI 也
           // 必败，别白折腾，直接给可操作的错误提示（互转时应在编辑器里换日历）。
           const targetSupported =
@@ -595,7 +628,7 @@ export class SyncEngine {
           const altHref = altHrefOf(oldHref, item.uid);
           try {
             const ics = item.raw ? itemToEditedICS(item) : itemToNewICS(item);
-            const r = await putItem({ ...item, href: altHref, etag: undefined }, ics, this.channel(), this.auth(), this.store.settings.icsSizeMaxMB);
+            const r = await putItem({ ...item, href: altHref, etag: undefined }, ics, this.channelOf(acc), this.authOf(acc), acc?.icsSizeMaxMB);
             item.href = altHref;
             item.etag = r.etag;
             item.dirty = false;
@@ -604,7 +637,7 @@ export class SyncEngine {
             report.uploadedKeys?.push(keyOf(item));
             // 新建成功才删旧的：删不掉只提示，条目本身已安全落在新地址上
             try {
-              await deleteItem({ ...item, href: oldHref }, this.channel(), this.auth());
+              await deleteItem({ ...item, href: oldHref }, this.channelOf(acc), this.authOf(acc));
             } catch {
               report.notes = report.notes || [];
               report.notes.push(`「${item.summary}」已保存到新地址，旧地址的那份未能删除，请到服务端手动清理`);
@@ -623,8 +656,9 @@ export class SyncEngine {
     }
     // 删除
     for (const item of this.store.deletedItems()) {
+      const acc = this.accountOf(item.calendarUrl);
       try {
-        await deleteItem(item, this.channel(), this.auth());
+        await deleteItem(item, this.channelOf(acc), this.authOf(acc));
         report.deleted++;
         report.deletedKeys?.push(keyOf(item));
         // 删除成功后从本地移除，否则每次同步都会重复发 DELETE
@@ -637,10 +671,10 @@ export class SyncEngine {
           // 重发 DELETE 再 412，同一个「删除失败」永远报不完（思源侧
           // 2026-10-15 雄哥实测「任务测试Z」修过，Obsidian 侧漏搬；
           // 2026-10-20 雄哥实测「新增日程1 from Thunderbird」同症状）。
-          if (this.store.settings.conflict === "local") {
+          if ((acc?.conflict || "server") === "local") {
             // 本地优先：用户明确要删，去掉 If-Match 无条件删
             try {
-              await deleteItem({ ...item, etag: undefined }, this.channel(), this.auth());
+              await deleteItem({ ...item, etag: undefined }, this.channelOf(acc), this.authOf(acc));
               report.deleted++;
               report.deletedKeys?.push(keyOf(item));
               this.store.remove(keyOf(item));
@@ -675,7 +709,8 @@ export class SyncEngine {
    * 拿到 etag，add-attachment 与最终 PUT 才有目标；已存在的条目直接 POST。
    */
   private async uploadIcloudAttachments(item: CalItem): Promise<void> {
-    if (this.store.settings.serverType !== "icloud") return;
+    const acc = this.accountOf(item.calendarUrl);
+    if (acc?.serverType !== "icloud") return;
     if (!item.attachments?.length) return;
     const inline = item.attachments.filter((a) => (a.b64 || "").trim());
     if (!inline.length) return;
@@ -683,7 +718,7 @@ export class SyncEngine {
     // 资源（保留 URI 外链），拿到 etag，后续 add-attachment 与最终 PUT 才有目标。
     if (!item.href || !item.etag) {
       const ics0 = item.raw ? itemToEditedICS(item, true) : itemToNewICS(item, true);
-      const r0 = await putItem(item, ics0, this.channel(), this.auth(), this.store.settings.icsSizeMaxMB);
+      const r0 = await putItem(item, ics0, this.channelOf(acc), this.authOf(acc), acc?.icsSizeMaxMB);
       item.etag = r0.etag;
       item.raw = item.raw || ics0;
     }
@@ -697,8 +732,8 @@ export class SyncEngine {
         bytes,
         a.name || "attachment",
         a.fmttype || "application/octet-stream",
-        this.channel(),
-        this.auth(),
+        this.channelOf(acc),
+        this.authOf(acc),
         [...known]
       );
       a.uri = r.uri;
@@ -713,18 +748,19 @@ export class SyncEngine {
   }
 
   /** 取回托管附件（iCloud 等）的原始字节，供编辑器下载。走传输层、保留鉴权、二进制不丢。 */
-  async fetchAttachmentBytes(url: string): Promise<Uint8Array> {
+  async fetchAttachmentBytes(url: string, fromUrl?: string): Promise<Uint8Array> {
+    const acc = this.accountOf(fromUrl || "");
     // iCloud 托管附件的下载 URI 在 gateway.icloud.com（预签名：路径尾部自带
     // token），**带 Authorization 反而 500**（2026-10-23 真机实测：带 auth 500、
     // 不带 200 且 256 字节 0x00-0xFF 原样回；直连带 auth 同样 500，与通道无关）。
     // 同主机的托管附件（自建服务器）才需要 auth，按主机是否相同决定带不带。
     let crossHost = false;
     try {
-      crossHost = new URL(url).host !== new URL(this.store.settings.serverUrl).host;
+      crossHost = new URL(url).host !== new URL(acc?.serverUrl || "").host;
     } catch {
       crossHost = false; // URL 解析不了时保守带 auth（自建服务器场景）
     }
-    const res = await httpRequest(url, { method: "GET" }, this.channel(), crossHost ? undefined : this.auth());
+    const res = await httpRequest(url, { method: "GET" }, this.channelOf(acc), crossHost ? undefined : this.authOf(acc));
     if (res.status >= 400) throw new Error(t("net.attachDownloadFailed", { status: res.status }));
     if (res.bytes && res.bytes.length) return res.bytes;
     return new TextEncoder().encode(res.body); // 兜底（纯文本类附件）

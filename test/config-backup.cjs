@@ -14,6 +14,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const { rmrf } = require("./fsx.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -22,7 +23,7 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 // 用 esbuild 把 TS 打成 CJS 再 require，比在测试里复刻实现更可靠 ——
 // 复刻会与源码漂移，而这类安全断言一旦漂移就等于没有。
 const OUT = path.join(ROOT, ".test-config-backup");
-fs.rmSync(OUT, { recursive: true, force: true });
+rmrf(OUT);
 // 直接用 esbuild 的 JS API，不用 CLI —— Windows 上 spawnSync("npx.cmd") 会 EINVAL。
 require(path.join(ROOT, "node_modules", "esbuild")).buildSync({
   entryPoints: [path.join(ROOT, "src/core/config-backup.ts")],
@@ -81,8 +82,20 @@ const ok = (m) => console.log("  ✓ " + m);
   assert.strictEqual(B.looksFreshInstall({ settings: {} }), true, "有 settings 但无服务器 = 新装");
   assert.strictEqual(B.looksFreshInstall({ settings: { serverUrl: "" } }), true, "服务器地址为空 = 新装");
   assert.strictEqual(B.looksFreshInstall({ settings: { serverUrl: "https://x/" } }), false, "已有服务器 = 老装，不能弹恢复提示");
+  // 多账户（2026-10-26）：地址下沉到 accounts[] 之后，只看平铺键会把「配置齐全的
+  // 账户化老装」误判成新装 —— 每次重装都弹一遍恢复提示，明明数据还在。
+  assert.strictEqual(
+    B.looksFreshInstall({ settings: { accounts: [{ id: "a", serverUrl: "https://x/", calendars: [] }] } }),
+    false,
+    "账户化的老装同样不能弹恢复提示"
+  );
+  assert.strictEqual(
+    B.looksFreshInstall({ settings: { accounts: [{ id: "a", serverUrl: "", calendars: [] }] } }),
+    true,
+    "账户存在但没填地址 = 新装"
+  );
   assert.strictEqual(B.looksFreshInstall("乱码"), true, "非对象数据按新装处理");
-  ok("looksFreshInstall 只在真正无配置时为真（老装不会被打扰）");
+  ok("looksFreshInstall 只在真正无配置时为真（老装不会被打扰，含账户化数据）");
 }
 
 /* ── 4. 合并策略：备份为底、默认值为上，新版默认值不能盖掉用户旧配置 ── */
@@ -91,9 +104,12 @@ const ok = (m) => console.log("  ✓ " + m);
     v: 1, savedAt: "", keyring: "k",
     settings: { serverUrl: "https://old.example.com/", channel: "auto" }
   });
-  assert.strictEqual(merged.serverUrl, "https://old.example.com/", "备份里的值必须胜出");
-  assert.ok(merged.conflict, "备份没带的字段应落回默认值（不能是 undefined）");
-  ok("mergeBackupSettings 以备份为底，新版默认值只兜未带的字段");
+  // 多账户（2026-10-26）：备份里的平铺老键会先经 migrateToAccounts 搬进 accounts[0]
+  // （与运行时 load() 同一口径），所以断言要落到账户上，不能再查 merged.serverUrl。
+  assert.strictEqual(merged.accounts.length, 1, "平铺老备份应被迁移成一个账户");
+  assert.strictEqual(merged.accounts[0].serverUrl, "https://old.example.com/", "备份里的值必须胜出");
+  assert.ok(merged.accounts[0].conflict, "备份没带的字段应落回默认值（不能是 undefined）");
+  ok("mergeBackupSettings 以备份为底，新版默认值只兜未带的字段（含老结构迁移）");
 }
 
 /* ── 5. 只有实质内容的备份才值得打扰用户 ── */
@@ -411,21 +427,28 @@ const ok = (m) => console.log("  ✓ " + m);
   assert.ok(/if \(hasPlaintextPassword\(backup\)\) return;/.test(main),
     "恢复前必须过明文密码闸（不能把明文搬进 data.json）");
 
-  // 读不到磁盘形态时必须剔除密码，而不是拿内存明文去写
-  assert.ok(/settings = \{ \.\.\.settings, password: "" \};\s*\n\s*}\s*\ncatch \{/.test(main) ||
-    /catch \{\s*\n\s*settings = \{ \.\.\.settings, password: "" \};/.test(main),
-    "读不到磁盘形态时必须把密码整个剔除（内存里是明文，绝不能落盘）");
+  // 读不到磁盘形态时必须剔除密码，而不是拿内存明文去写。
+  // 多账户（2026-10-26）：密码在每个账户里，所以是「逐账户剔除」，两条兜底分支
+  // （loadData 拿不到账户密码 / 直接抛异常）都必须剔除 —— 漏一条就会把明文写进备份。
+  const sbSeg = main.slice(main.indexOf("private async syncBackup("));
+  const sbBody = sbSeg.slice(0, sbSeg.indexOf("\n  }"));
+  const stripCount = (
+    sbBody.match(/accounts: \(settings\.accounts \|\| \[\]\)\.map\(\(a\) => \(\{ \.\.\.a, password: "" \}\)\)/g) || []
+  ).length;
+  assert.ok(stripCount >= 2, `读不到磁盘形态时必须把每个账户的密码都剔除（内存里是明文，绝不能落盘）—— 实际 ${stripCount} 处`);
 
   // 恢复走 store.adoptBackup，且先给 keyring 再解密
   assert.ok(/await this\.store\.adoptBackup\(payload\)/.test(main),
     "恢复必须 **await** store.adoptBackup（解密是异步的，不等就会拿密文当密码去同步）");
+  // 多账户（2026-10-26）：解锁是**逐账户**的（unlockPasswords），旧密文也从单个
+  // rawCipher 变成 rawCiphers 映射 —— 顺序铁律不变：先 adoptKeyring 再 unlock。
   const adopt = store.slice(store.indexOf("adoptBackup("));
   const keyringAt = adopt.indexOf("adoptKeyring(");
-  const unlockAt = adopt.indexOf("unlockPassword(");
+  const unlockAt = adopt.indexOf("unlockPasswords(");
   assert.ok(keyringAt > 0 && unlockAt > keyringAt,
-    "必须先 adoptKeyring 再 unlockPassword（反了会把新密文误判成解不开而丢弃）");
-  assert.ok(/this\.rawCipher = "";/.test(adopt),
-    "恢复时必须清掉 rawCipher，否则恢复失败会把作废的旧密文写回去");
+    "必须先 adoptKeyring 再 unlockPasswords（反了会把新密文误判成解不开而丢弃）");
+  assert.ok(/this\.rawCiphers\.clear\(\);/.test(adopt),
+    "恢复时必须清掉 rawCiphers，否则恢复失败会把作废的旧密文写回去");
   // adoptBackup 必须返回 Promise（内部要等异步解密），否则调用方无从等待
   assert.ok(/adoptBackup\([^)]*\): Promise<void>/.test(store),
     "adoptBackup 必须返回 Promise<void>，否则调用方等不到密码解密完成");

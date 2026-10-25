@@ -143,6 +143,187 @@ export interface CalCalendar {
   description?: string;
 }
 
+/**
+ * 一个日历账户（2026-10-25 从思源侧同构，2026-10-26 补附件上限）。
+ *
+ * 此前一个插件只能配一台服务器：serverUrl/凭据/日历全平铺在 CalSettings 上。
+ * 现在「服务器 / 日历 / 同步」三类设置**下沉到账户**，每个账户一套；
+ * 全局只留不分服务器的设置（同步间隔、提醒、日记、显示、默认账户与日历）。
+ *
+ * 老数据由 migrateToAccounts() 一次性迁进 accounts[0]。
+ */
+export interface CalAccount {
+  id: string;
+  name: string;
+  /** 停用后：其日历不显示、不参与同步 */
+  enabled: boolean;
+  serverUrl: string;
+  username: string;
+  password: string;
+  /** 可选，直接指定日历集合或主目录；空则自动发现 */
+  calendarPath: string;
+  /**
+   * 服务器类型：icloud / caldav。仅作元数据与默认值驱动，
+   * 发现逻辑本身类型无关（iCloud 与标准 CalDAV 走同一条 principal→home-set→枚举链）。
+   */
+  serverType: "icloud" | "caldav";
+  /** auto：代理优先、失败回退直连 */
+  channel: "auto" | "proxy" | "direct";
+  /** 服务端冲突时：server 服务端优先 / local 本地优先 */
+  conflict: "server" | "local";
+  /** 显示范围：过去 N 天 / 未来 N 天 */
+  pastDays: number;
+  futureDays: number;
+  /**
+   * 单个内联附件的硬上限（MB），超过在挑选时直接拒绝。默认 5。
+   *
+   * ⚠️ 这是**服务器特性**（2026-10-26 下沉到账户）：附件以 base64 内联进
+   * ICS 同步，体积涨约 1/3；服务端普遍限制单条日历数据大小（Radicale 默认 10MB、
+   * PHP post_max_size 8MB、iCloud 另有一套），不同服务器上限不同，所以每个账户各配。
+   */
+  attachSizeMaxMB?: number;
+  /**
+   * 整份 ICS（含全部 base64 附件）的硬上限（MB），超过拒绝保存/上传。默认 10。
+   *
+   * 单文件上限挡不住「多个 4MB 凑 12MB」，所以按真实序列化结果卡总账。
+   * 同样是服务器特性，账户级配置（报错文案里的数字也取此值）。
+   */
+  icsSizeMaxMB?: number;
+  /** 该账户发现的日历集合 */
+  calendars: CalCalendar[];
+}
+
+/** 生成一个新账户 ID（迁移与「添加账户」共用） */
+export function newAccountId(): string {
+  return `acc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * 老数据迁移：单账户 settings → accounts 数组。**幂等，可重复调用。**
+ *
+ * 老数据里 serverUrl/凭据/日历都平铺在 CalSettings 上，这里整体搬进
+ * accounts[0]，之后 settings 上不再保留这些字段（避免两处真相漂移）。
+ * 老字段全空（全新安装）时建空数组，不造一个空账户占位。
+ *
+ * ⚠️ 幂等判据是「**老键还在不在**」而不是「accounts 是不是数组」——
+ * load() 会先合并 DEFAULT_SETTINGS（自带 accounts: []），
+ * 只看数组会让老数据被误判成「已是新结构」而跳过迁移。
+ */
+export function migrateToAccounts(s: any): void {
+  const hasOldKeys = "serverUrl" in s || "username" in s || "password" in s || "calendarPath" in s || "calendars" in s;
+  if (!hasOldKeys) return;
+  const hasOld = !!(s.serverUrl || s.username || s.password || (Array.isArray(s.calendars) && s.calendars.length));
+  if (!Array.isArray(s.accounts)) s.accounts = [];
+  // 只有 accounts 为空时才用平铺字段造第一个账户。两者**共存**时（云同步把旧副本与
+  // 新数据混在一起的极端情况）平铺字段只是残留，绝不能拿它覆盖现有账户数组 ——
+  // 那是一次性抹掉用户其余全部账户的静默数据丢失。
+  if (hasOld && !s.accounts.length) {
+    s.accounts = [
+      {
+        id: newAccountId(),
+        name: s.serverType === "icloud" ? "iCloud 账户" : "CalDAV 账户",
+        enabled: true,
+        serverUrl: s.serverUrl || "",
+        username: s.username || "",
+        password: s.password || "",
+        calendarPath: s.calendarPath || "",
+        serverType: s.serverType || "caldav",
+        channel: s.channel || "auto",
+        conflict: s.conflict || "server",
+        pastDays: typeof s.pastDays === "number" ? s.pastDays : 90,
+        futureDays: typeof s.futureDays === "number" ? s.futureDays : 370,
+        // 附件/ICS 上限原来是全局值，本质是服务器特性 → 迁移时原值带给账户
+        attachSizeMaxMB: typeof s.attachSizeMaxMB === "number" ? s.attachSizeMaxMB : undefined,
+        icsSizeMaxMB: typeof s.icsSizeMaxMB === "number" ? s.icsSizeMaxMB : undefined,
+        calendars: Array.isArray(s.calendars) ? s.calendars : []
+      }
+    ];
+  }
+  // 老字段从 settings 上摘掉：留着就会被 persist 原样写回，变成第二处真相
+  for (const k of [
+    "serverUrl",
+    "username",
+    "password",
+    "calendarPath",
+    "serverType",
+    "channel",
+    "conflict",
+    "pastDays",
+    "futureDays",
+    "calendars",
+    "attachSizeMaxMB",
+    "icsSizeMaxMB"
+  ]) {
+    delete s[k];
+  }
+}
+
+/** 所有启用账户 */
+export function enabledAccounts(s: CalSettings): CalAccount[] {
+  return (s.accounts || []).filter((a) => a && a.enabled);
+}
+
+/**
+ * **真正在用**的日历集合 = 启用账户下的启用日历。
+ *
+ * 全仓唯一入口 —— 视图 / Dock / 日记 / 同步都走它，避免十几处
+ * `settings.calendars.filter(enabled)` 各写一遍、漏改一处就表现为
+ * 「停用账户的条目还在显示」。
+ */
+export function enabledCalendars(s: CalSettings): CalCalendar[] {
+  const out: CalCalendar[] = [];
+  for (const a of enabledAccounts(s)) {
+    for (const c of a.calendars || []) if (c.enabled) out.push(c);
+  }
+  return out;
+}
+
+/** 按日历集合地址反查所属账户（同步层按它取凭据与通道） */
+export function accountOfUrl(s: CalSettings, calUrl: string): CalAccount | undefined {
+  if (!calUrl) return undefined;
+  for (const a of s.accounts || []) {
+    for (const c of a.calendars || []) {
+      if (c.url === calUrl) return a;
+    }
+  }
+  return undefined;
+}
+
+/** 按日历集合地址找日历配置（跨所有账户，含停用日历） */
+export function findCalendarByUrl(s: CalSettings, calUrl: string): CalCalendar | undefined {
+  if (!calUrl) return undefined;
+  for (const a of s.accounts || []) {
+    const hit = (a.calendars || []).find((c) => c.url === calUrl);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/** 按条目反查所属账户 */
+export function accountOfItem(s: CalSettings, item: CalItem): CalAccount | undefined {
+  return accountOfUrl(s, item.calendarUrl);
+}
+
+/**
+ * 新建条目的默认日历：设置页按「默认账户 → 默认日历」两级选，最终落在
+ * `defaultCalendarUrl`。解析顺序：① url 仍有效（属于启用账户且日历启用）；
+ * ② defaultAccountId 指向的启用账户的第一个启用日历；③ 回退到**第一个启用
+ * 账户的第一个启用日历**（账户停用/日历删掉时不能指着空气）。
+ */
+export function resolveDefaultCalendar(s: CalSettings): CalCalendar | undefined {
+  const all = enabledCalendars(s);
+  if (s.defaultCalendarUrl) {
+    const hit = all.find((c) => c.url === s.defaultCalendarUrl);
+    if (hit) return hit;
+  }
+  if (s.defaultAccountId) {
+    const acc = enabledAccounts(s).find((a) => a.id === s.defaultAccountId);
+    const cal = acc?.calendars.find((c) => c.enabled);
+    if (cal) return cal;
+  }
+  return all[0];
+}
+
 /** 找不到日历 / 日历没设颜色时的中性兜底色 */
 export const NEUTRAL_ITEM_COLOR = "#64748b";
 
@@ -173,31 +354,27 @@ export const DEFAULT_CATEGORIES: CategoryDef[] = [
 ];
 
 export interface CalSettings {
-  serverUrl: string;
-  username: string;
-  password: string;
   /**
-   * 服务器类型：icloud / caldav。仅作元数据与默认值驱动，
-   * 发现逻辑本身类型无关（iCloud 与标准 CalDAV 走同一条 principal→home-set→枚举链）。
-   * 选 iCloud 时设置页会自动把 serverUrl 填成 https://caldav.icloud.com。
-   * 2026-10-21 新增（多账户功能第一步）。
+   * 多日历账户（2026-10-25 从思源侧同构）。「服务器 / 日历 / 同步」三类设置
+   * 已下沉到这里，每个账户一套；全局只留不分服务器的设置（同步间隔、提醒、
+   * 日记、显示、默认账户与日历）。老数据由 migrateToAccounts() 一次性迁移。
    */
-  serverType: "icloud" | "caldav";
-  /** 可选，直接指定日历集合或主目录；空则自动发现 */
-  calendarPath: string;
-  /** auto：内核代理优先、失败回退直连 */
-  channel: "auto" | "proxy" | "direct";
-  /** 自动同步间隔（分钟），0 关闭 */
+  accounts: CalAccount[];
+  /** 自动同步间隔（分钟），0 关闭。全局一个周期，跑的时候把所有启用账户过一遍 */
   syncIntervalMin: number;
   /** 启用提醒通知（托盘运行时，对设置了提醒时间的日程/待办到点弹系统通知） */
   enableReminders?: boolean;
-  /** 服务端冲突时：server 服务端优先 / local 本地优先 */
-  conflict: "server" | "local";
-  /** 显示范围：过去 N 天 / 未来 N 天 */
-  pastDays: number;
-  futureDays: number;
-  calendars: CalCalendar[];
+  /**
+   * 新建条目的默认日历（全局一个，不区分账户）。
+   * 配套 defaultAccountId 组成设置页的「默认账户 + 默认日历」两级选择；
+   * 停用/删除后由 resolveDefaultCalendar() 回退到第一个启用账户的第一个启用日历。
+   */
   defaultCalendarUrl?: string;
+  /**
+   * 新建条目的默认**账户**（设置页第一级下拉）。只影响设置页联动与回退顺序，
+   * 最终生效的仍是 defaultCalendarUrl（日历 url 全仓唯一）。
+   */
+  defaultAccountId?: string;
   /**
    * 日历视图（年/月/周/日）是否显示待办任务，默认 true。
    * 关掉后日历视图只显示日程事件 —— 待办仍可在「任务视图」与 Dock 列表中看到与勾选，
@@ -241,31 +418,6 @@ export interface CalSettings {
    * 2026-10-12 从思源侧同步回来（见思源 CalSettings.includeOverdueTodos）。
    */
   includeOverdueTodos?: boolean;
-  /**
-   * 单个内联附件的硬上限（MB），超过在挑选时直接拒绝、不给确认机会。默认 5。
-   *
-   * 附件以 base64 内联进 ICS 同步，体积会涨约 1/3；服务端普遍限制单条日历数据
-   * 大小（Radicale 默认 10MB、PHP 默认 post_max_size 8MB），超了必然 413。
-   */
-  attachSizeMaxMB?: number;
-  /**
-   * 整份 ICS（含全部 base64 附件）的硬上限（MB），超过拒绝保存/上传。默认 10。
-   *
-   * 单文件上限挡不住「多个 4MB 凑 12MB」，所以按真实序列化结果卡总账。
-   * 自己的服务器上限更大就把这里调大（报错文案里的数字也取此值）。
-   */
-  icsSizeMaxMB?: number;
-  /**
-   * 切换服务器时，自动清理**属于旧服务器的本地条目**。默认 false（关）。
-   *
-   * 为什么要它：从 iCloud 换到自建服务器后，本地会留着一大批旧服务器的条目
-   * （2026-10-24 实测 40 条）。它们既不显示也不同步（没有对应日历），
-   * 但一直占着存储、并在换回去时「诈尸」出现。
-   *
-   * 判定口径是**服务器身份**（scheme://host:port，iCloud 统一算一个），
-   * 不是地址字符串 —— 同一台服务器的多个日历集合必须一起保留。
-   */
-  purgeOtherServerOnSwitch?: boolean;
 }
 
 /**
@@ -282,38 +434,26 @@ export interface CalSettings {
 export interface PurgeBackup {
   /** 清理时间（ISO 字符串） */
   at: string;
-  /** 清理后保留的服务器身份（serverOriginOf 的结果） */
+  /** 清理后保留的账户名（可能有多个，顿号分隔） */
   keptServer: string;
-  /** 被清理掉的服务器身份（可能有多个，逗号分隔） */
+  /** 被清理的账户名 */
   removedServers: string;
   /** 被清理的条目数 */
   count: number;
   /** 被清理的条目快照 */
   items: CalItem[];
-  /** 一并被移除的日历配置（切服务器后旧日历 URL 已失效，留着只会同步报错） */
+  /** 一并被移除的日历配置（恢复时连配置一起还原，可直接重新启用） */
   calendars?: CalCalendar[];
 }
 
 export const DEFAULT_SETTINGS: CalSettings = {
-  serverUrl: "",
-  username: "",
-  password: "",
-  serverType: "caldav",
-  calendarPath: "",
-  channel: "auto",
+  accounts: [],
   syncIntervalMin: 15,
   enableReminders: false,
-  conflict: "server",
-  pastDays: 90,
-  futureDays: 370,
-  calendars: [],
   showTodosInCalendar: true,
   categories: DEFAULT_CATEGORIES,
   categoryMulti: false,
-  includeOverdueTodos: false,
-  attachSizeMaxMB: 5,
-  icsSizeMaxMB: 10,
-  purgeOtherServerOnSwitch: false
+  includeOverdueTodos: false
 };
 
 export interface SyncState {

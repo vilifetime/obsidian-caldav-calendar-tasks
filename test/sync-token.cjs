@@ -46,9 +46,10 @@ assert.ok(
   /syncToken: undefined/.test(merge),
   "mergeBackupSettings 必须清掉每个日历的 syncToken（备份含 token 但不含 items ⇒ 恢复后是「空凭证」）"
 );
+// 多账户（2026-10-26）：日历挂在每个账户下，所以是「逐账户重建 calendars 数组」
 assert.ok(
-  /merged\.calendars\s*=/.test(merge),
-  "必须**新建**日历数组，不能就地改：浅拷贝下 merged.calendars 与 backup.settings.calendars 同一引用"
+  /merged\.accounts\s*=/.test(merge) && /calendars: \(a\.calendars \|\| \[\]\)\.map/.test(merge),
+  "必须**新建**日历数组，不能就地改：浅拷贝下账户里的 calendars 与 backup.settings 同一引用"
 );
 
 // 顺带钉住既有契约：返回新对象、不改传入的那个

@@ -16,7 +16,7 @@
  */
 import { addDays, defaultStartStamp, diffDays, parseLocalStamp, startOfWeek, todayStamp } from "../core/date";
 import type { CalItem } from "../core/types";
-import { calEventColor } from "../core/types";
+import { calEventColor, enabledCalendars, findCalendarByUrl, resolveDefaultCalendar } from "../core/types";
 import { occurrencesInRange } from "../core/ics";
 import { calColorOf, escape, keyOfItem, matchesSearchQuery, todoDueOccurrences, type ViewArgs } from "./view-common";
 import { icons } from "./icons";
@@ -102,7 +102,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
 
   // 收集启用日历下的条目。默认只有待办（VTODO）；
   // 设置里打开「任务视图中显示日程事件」后，日程（VEVENT）也进同一列表。
-  const enabled = new Set(ctx.store.settings.calendars.filter((c) => c.enabled).map((c) => c.url));
+  const enabled = new Set(enabledCalendars(ctx.store.settings).map((c) => c.url));
   const showEvents = ctx.store.settings.showEventsInTaskView === true;
   const showExpired = ctx.store.settings.showExpiredEventsInTaskView === true;
   /** 列表里的一行。`due` 为归属日期（YYYY-MM-DD），无日期为空串。 */
@@ -317,7 +317,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
     const finished = isDone({ it, due, isEvent, expired });
     const overdue = !finished && !!due && due < today;
     const pr = priorityMeta(it.priority);
-    const cal = ctx.store.settings.calendars.find((c) => c.url === it.calendarUrl);
+    const cal = findCalendarByUrl(ctx.store.settings, it.calendarUrl);
     /** 条目前的小框标签：中文「日程/待办」，英文界面显示 event/task（走 i18n 键） */
     const kindLabel = (): string => ctx.i18n(isEvent ? "kindEvent" : "kindTodo");
     const dueText = finished
@@ -527,7 +527,11 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   input?.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && input.value.trim()) {
       const title = input.value.trim();
-      const cal = ctx.store.settings.calendars.find((c) => c.enabled && c.supportsTodo !== false) || ctx.store.settings.calendars[0];
+      // 快速添加待办：默认落到 resolveDefaultCalendar，取不到就不硬塞（否则 calendarUrl 为空）
+      const cal =
+        enabledCalendars(ctx.store.settings).find((c) => c.supportsTodo !== false) ||
+        resolveDefaultCalendar(ctx.store.settings);
+      if (!cal) return;
       void ctx.sync
         .createItem({
           uid: genUid(),

@@ -99,14 +99,14 @@ const mkItem = (over = {}) => ({
   ...over
 });
 
+const { seedAccounts } = require("./accfx.cjs");
+
+// 账户化（2026-10-26）：日历 / 凭据 / 冲突策略都挂在账户上，
+// 直接写 st.settings.calendars 等于没配 —— syncAll 会报「没有启用的账户」。
 const newStore = (calendars, conflict = "server") => {
   const st = new CalStore({ loadData: async () => undefined, saveData: async () => undefined });
-  st.settings.calendars = calendars;
-  st.settings.conflict = conflict;
-  st.settings.username = "u";
-  st.settings.password = "p";
-  st.settings.serverUrl = "http://127.0.0.1:5232/";
   st.settings.syncIntervalMin = 0;
+  seedAccounts(st, [{ calendars, conflict }]);
   return st;
 };
 const calBoth = { url: CAL, displayName: "工作", enabled: true, supportsEvent: true, supportsTodo: true, componentSetProbed: true };

@@ -95,11 +95,16 @@ const mkItem = (over = {}) => ({
   ...over
 });
 
-const newStore = (conflict = "server") =>
-  new CalStore({
-    loadData: async () => undefined,
-    saveData: async () => undefined,
-  });
+const { seedAccounts } = require("./accfx.cjs");
+
+// 冲突策略已下沉到账户（2026-10-26）：光改 settings.conflict 是没用的 ——
+// sync 按条目所属日历反查账户、再取该账户的 conflict，查不到就走默认（服务端优先），
+// 于是「本地优先强删」那条分支永远进不去，用例表现为「DELETE 只发了一次」。
+const newStore = (conflict = "server") => {
+  const st = new CalStore({ loadData: async () => undefined, saveData: async () => undefined });
+  seedAccounts(st, [{ conflict, calendars: [{ url: CAL, displayName: "work", enabled: true }] }]);
+  return st;
+};
 
 // ── 行为层：删除 412 的两条分叉 ──────────────────────────────
 
@@ -122,7 +127,6 @@ check("删除 412 + 本地优先 → 去 If-Match 强删成功，条目移除", 
   const seen = [];
   stubDelete412Then204(seen);
   const store = newStore("local");
-  store.settings.conflict = "local";
   const it = mkItem({ deleted: true, dirty: true });
   store.put(it);
   const engine = new SyncEngine(store, () => "direct");
@@ -140,7 +144,6 @@ check("删除 412 + 本地优先但强删仍败 → 报删除失败，不静默"
     return { status: 207, headers: {}, body: EMPTY };
   });
   const store = newStore("local");
-  store.settings.conflict = "local";
   const it = mkItem({ deleted: true, dirty: true });
   store.put(it);
   const engine = new SyncEngine(store, () => "direct");
@@ -154,7 +157,6 @@ check("删除 412 + 服务端优先 → 撤销删除三件套，条目留在本�
     return { status: 207, headers: {}, body: EMPTY };
   });
   const store = newStore("server");
-  store.settings.conflict = "server";
   const it = mkItem({ deleted: true, dirty: true });
   store.put(it);
   const engine = new SyncEngine(store, () => "direct");
@@ -177,7 +179,6 @@ check("删除 412 + 服务端优先 → 不再每轮重发同一条 DELETE", asy
     return { status: 207, headers: {}, body: '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"></d:multistatus>' };
   });
   const store = newStore("server");
-  store.settings.conflict = "server";
   const it = mkItem({ deleted: true, dirty: true });
   store.put(it);
   const engine = new SyncEngine(store, () => "direct");
@@ -229,7 +230,10 @@ check("sync.ts 删除分支有 412 分叉（两端同构）", () => {
   const src = readLF("src/core/sync.ts");
   const seg = src.slice(src.indexOf("for (const item of this.store.deletedItems())"));
   assert.ok(/errStatus\(e\) === 412/.test(seg), "删除分支没判 412");
-  assert.ok(/conflict === "local"/.test(seg), "缺本地优先强删分支");
+  // 冲突策略 2026-10-26 下沉到账户：这里必须取**条目所属账户**的 conflict，
+  // 写成 settings.conflict 的话多账户下会永远走默认（服务端优先），
+  // 「本地优先强删」这条分支等于死的（用例表现：DELETE 只发一次，条目删不掉）。
+  assert.ok(/acc\?\.conflict/.test(seg) && /=== "local"/.test(seg), "缺本地优先强删分支（或仍读全局 conflict）");
   assert.ok(/deleteItem\(\{ \.\.\.item, etag: undefined \}/.test(seg), "强删没去 If-Match");
   assert.ok(/item\.deleted = false;/.test(seg), "服务端优先分支没撤销删除");
   assert.ok(/sync\.deleteConflictServer/.test(seg), "缺可操作说明的 i18n 键");

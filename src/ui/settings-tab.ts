@@ -27,7 +27,17 @@ import type CalDavPlugin from "@/main";
 import type { HostSettings } from "@/main";
 import { describeNetworkError, discoverCalendars, testConnection } from "@/core/caldav";
 import { clearAuthCache } from "@/core/http";
-import { calEventColor, calTodoColor, type CalCalendar } from "@/core/types";
+import {
+  calEventColor,
+  calTodoColor,
+  enabledAccounts,
+  enabledCalendars,
+  findCalendarByUrl,
+  newAccountId,
+  type CalAccount,
+  type CalCalendar,
+  type CalSettings
+} from "@/core/types";
 import { t, currentLang } from "@/i18n";
 import { formatTimeText } from "@/core/server-id";
 import type { TimerHandle } from "@/constants";
@@ -45,6 +55,29 @@ function dynamicField(obj: object, key: string): unknown {
 
 function setDynamicField(obj: object, key: string, value: unknown): void {
   (obj as Record<string, unknown>)[key] = value;
+}
+
+/**
+ * 「新建条目的默认日历」下拉的选项。
+ *
+ * 随**默认账户**联动：选了账户就只列该账户的启用日历，没选（自动）就列全部启用日历。
+ * 当前已存的值即使不在列表里（如日历被停用）也要补回来 —— 否则下拉显示不出原值，
+ * 用户一眼看去像「默认日历丢了」。
+ */
+function defaultCalendarOptions(s: CalSettings): Record<string, string> {
+  const acc = enabledAccounts(s).find((a) => a.id === s.defaultAccountId);
+  const base = acc ? (acc.calendars || []).filter((c) => c.enabled) : enabledCalendars(s);
+  const cur = s.defaultCalendarUrl ? findCalendarByUrl(s, s.defaultCalendarUrl) : undefined;
+  const list = cur && !base.some((c) => c.url === cur.url) ? [...base, cur] : base;
+  const out: Record<string, string> = { "": t("settings.defaultCalendarAuto") };
+  for (const c of list) out[c.url] = acc ? c.displayName : `${accNameOf(s, c.url)}${c.displayName}`;
+  return out;
+}
+
+/** 日历所属账户名（跨账户展示时用于消除同名日历的歧义），查不到返回空串 */
+function accNameOf(s: CalSettings, calUrl: string): string {
+  const acc = (s.accounts || []).find((a) => (a.calendars || []).some((c) => c.url === calUrl));
+  return acc ? `${acc.name} / ` : "";
 }
 
 export class CalDavSettingTab extends PluginSettingTab {
@@ -71,8 +104,38 @@ export class CalDavSettingTab extends PluginSettingTab {
    *   - `host.*` →宿主侧设置（日记目录、系统通知），走 plugin.updateHostSettings
    *   - 其余→ core 的 CalSettings，走 store.saveSettings + persist
    */
+  /**
+   * 当前展开（手风琴）的账户 id。
+   *
+   * ⚠️ 与思源端同一条铁律（2026-10-25 事故）：**只渲染展开账户的控件**。
+   * 思源端曾把收起账户的输入框也渲染出来再 hidden，结果同名控件同时在 DOM 里，
+   * 全局查询只会命中第一张卡 —— 添加第二个账户保存后数据被串写成第一个账户的。
+   * Obsidian 侧用「defs 里只为展开账户 push 子项」实现同一效果，
+   * 且每个控件的 `key` 带账户 id（`acc.<id>.<field>`），从根上不存在歧义。
+   */
+  private activeAccId: string | null = null;
+
+  /** 当前展开的账户；id 失效（被删）时返回 undefined */
+  private activeAcc(): CalAccount | undefined {
+    if (!this.activeAccId) return undefined;
+    return (this.s.accounts || []).find((a) => a.id === this.activeAccId);
+  }
+
+  /** 把 key 拆成账户 + 字段（`acc.<id>.<field>` → [账户, 字段]），非账户键返回 null */
+  private accKey(key: string): { acc: CalAccount; field: string } | null {
+    if (!key.startsWith("acc.")) return null;
+    const i = key.indexOf(".", 4);
+    if (i < 0) return null;
+    const id = key.slice(4, i);
+    const field = key.slice(i + 1);
+    const acc = (this.s.accounts || []).find((a) => a.id === id);
+    return acc ? { acc, field } : null;
+  }
+
   getControlValue(key: string): unknown {
     if (key.startsWith("host.")) return this.hostValue(key);
+    const ak = this.accKey(key);
+    if (ak) return (ak.acc as unknown as Record<string, unknown>)[ak.field];
     return dynamicField(this.s, key);
   }
 
@@ -93,24 +156,23 @@ export class CalDavSettingTab extends PluginSettingTab {
       await this.plugin.updateHostSettings({ [field]: value });
       return;
     }
+    // ── 账户级字段（`acc.<id>.<field>`）──────────────────────
+    const ak = this.accKey(key);
+    if (ak) {
+      (ak.acc as unknown as Record<string, unknown>)[ak.field] = value;
+      // 选 iCloud 时自动填入默认服务器地址，省得用户手敲（2026-10-21）。
+      // 只在 serverUrl 为空时填，避免覆盖用户已填的自定义地址（如 iCloud 节点主机）。
+      if (ak.field === "serverType" && value === "icloud" && !ak.acc.serverUrl) {
+        ak.acc.serverUrl = "https://caldav.icloud.com";
+        this.update(); // 让「服务器地址」输入框立即显示新默认值
+      }
+      await this.save();
+      return;
+    }
     setDynamicField(this.s, key, value);
-    // 选 iCloud 时自动填入默认服务器地址，省得用户手敲（2026-10-21）。
-    // 只在 serverUrl 为空时填，避免覆盖用户已填的自定义地址（如 iCloud 节点主机）。
-    if (key === "serverType" && value === "icloud" && !this.s.serverUrl) {
-      this.s.serverUrl = "https://caldav.icloud.com";
-      this.update(); // 让「服务器地址」输入框立即显示新默认值
-    }
+    // 默认账户换了 → 默认日历下拉要重填（defs 里的选项随账户而变），重渲整页
+    if (key === "defaultAccountId") this.update();
     await this.save();
-    // 「切换服务器时清理旧条目」开关刚被打开 → 立刻清一次。
-    //
-    // ⚠️ 为什么这里安全：store.purgeOrphansIfEnabled() 里有守卫 ——
-    //    启用日历必须全部指向当前服务器地址，否则不动。用户刚开开关、
-    //    日历还指着旧服务器时，什么都不会被删；等他「发现日历」后自然会清。
-    if (key === "purgeOtherServerOnSwitch" && value === true) {
-      const n = await this.plugin.store.purgeOrphansIfEnabled();
-      if (n) new Notice(t("settings.purgeDone", { count: String(n) }), 5000);
-      this.update();
-    }
   }
 
   private hostValue(key: string): unknown {
@@ -160,81 +222,145 @@ export class CalDavSettingTab extends PluginSettingTab {
       ],
     });
 
-    // ---- 服务器 ----
-    defs.push({ type: "group", heading: t("settings.groupServer"), items: [] });
-    const serverGroup = defs[1] as { items: Record<string, unknown>[] };
-    serverGroup.items = [
-      {
-        name: t("settings.serverType"),
-        desc: t("settings.serverTypeDesc"),
-        control: {
-          type: "dropdown" as const,
-          key: "serverType",
-          defaultValue: "caldav",
-          options: { caldav: t("settings.serverTypeCaldav"), icloud: t("settings.serverTypeIcloud") },
-        },
-        aliases: ["type", "类型", "icloud", "caldav", "服务器类型", "server type"],
-      },
-      {
-        name: t("settings.serverUrl"),
-        desc: t("settings.serverUrlDesc"),
-        control: { type: "text", key: "serverUrl", placeholder: "http://…" },
-        aliases: ["server", "url", "地址", "caldav", "服务器", "address", "host"],
-      },
-      {
-        name: t("settings.username"),
-        control: { type: "text", key: "username" },
-        aliases: ["username", "账号", "用户名", "account", "user"],
-      },
-      {
-        name: t("settings.password"),
-        desc: t("settings.passwordDesc"),
-        // 声明式的 text 控件没有 `password` 选项（无原生密码输入），
-        // 故用 render 自绘。**签名必须是 (setting, group)** ——
-        // Obsidian 已建好 Setting 并设好 name/desc，我们只往它身上加控件。
-        // 传成 (el: HTMLElement) 会在 `new Setting(el)` 处炸掉，
-        // 表现为「密码框及之后的设置项全部消失」（实测踩到，2026-10-06）。
-        render: (setting: Setting) => this.renderPasswordRow(setting),
-        aliases: ["password", "密码"],
-      },
-      ...(this.plugin.store.credentialsIssue()
-        ? [{ name: t("settings.credentialsIssue"), desc: this.plugin.store.credentialsIssue() }]
-        : []),
-      {
-        name: t("settings.calendarPath"),
-        desc: t("settings.calendarPathDesc"),
-        control: { type: "text", key: "calendarPath", placeholder: t("settings.calendarPathPlaceholder") },
-        aliases: ["calendar", "path", "路径", "集合", "collection"],
-      },
-      {
-        name: t("settings.connection"),
-        desc: t("settings.connectionDesc"),
-        // 用 render 而非 action：action 的 el 已是 Obsidian 分配好的容器，
-        // 在里面再 `new Setting(el)` 会套出错误的嵌套结构 ——
-        // 表现为标题文字被挤成竖排、整行重复多次（实测踩到，2026-10-06）。
-        // render 收到的是已建好的 Setting，直接 addButton 即可。
-        render: (setting: Setting) => this.renderConnectionButtons(setting),
-        aliases: ["测试", "连接", "发现", "test", "discover", "connect"],
-      },
-    ];
+    // ---- 日历账户 ----
+    // 卡片列表 + 手风琴：每项一行（名称 / 摘要 / 启用开关 / 展开 / 删除），
+    // **只有展开的那个账户**把「服务器 / 日历 / 策略」三段 push 进 defs。
+    const accounts = s.accounts || [];
+    const accItems: Record<string, unknown>[] = accounts.length
+      ? accounts.map((acc) => ({
+          name: acc.name,
+          desc: acc.serverUrl
+            ? `${acc.serverUrl} · ${(acc.calendars || []).filter((c) => c.enabled).length}/${(acc.calendars || []).length} ${t("settings.calCountSuffix")}`
+            : t("settings.accNoServer"),
+          render: (setting: Setting) => this.renderAccountRow(setting, acc),
+          aliases: ["账户", "account", acc.name, acc.serverUrl],
+        }))
+      : [{ name: t("settings.accEmpty"), desc: t("settings.accEmptyDesc") }];
 
-    // ---- 日历 ----
-    const calItems: Record<string, unknown>[] = s.calendars.length
-      ? s.calendars.map((cal) => this.calendarDefinition(cal))
-      : [
-          {
-            name: t("settings.noCalendar"),
-            desc: t("settings.noCalendarDesc"),
+    // 展开账户的三段（服务器 / 日历 / 策略）——收起的账户不渲染，见 activeAccId 注释
+    const open = this.activeAcc();
+    const accDetail: Record<string, unknown>[] = [];
+    if (open) {
+      const pre = `acc.${open.id}.`;
+      // ---- 服务器 ----
+      accDetail.push({ type: "group", heading: t("settings.groupServer"), items: [
+        {
+          name: t("settings.accName"),
+          desc: t("settings.accNameDesc"),
+          control: { type: "text", key: pre + "name" },
+          aliases: ["账户名", "名称", "account name"],
+        },
+        {
+          name: t("settings.serverType"),
+          desc: t("settings.serverTypeDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: pre + "serverType",
+            defaultValue: "caldav",
+            options: { caldav: t("settings.serverTypeCaldav"), icloud: t("settings.serverTypeIcloud") },
           },
-        ];
+          aliases: ["type", "类型", "icloud", "caldav", "服务器类型", "server type"],
+        },
+        {
+          name: t("settings.serverUrl"),
+          desc: t("settings.serverUrlDesc"),
+          control: { type: "text", key: pre + "serverUrl", placeholder: "http://…" },
+          aliases: ["server", "url", "地址", "caldav", "服务器", "address", "host"],
+        },
+        {
+          name: t("settings.username"),
+          control: { type: "text", key: pre + "username" },
+          aliases: ["username", "账号", "用户名", "account", "user"],
+        },
+        {
+          name: t("settings.password"),
+          desc: t("settings.passwordDesc"),
+          // 声明式的 text 控件没有 `password` 选项（无原生密码输入），
+          // 故用 render 自绘。**签名必须是 (setting, group)** ——
+          // Obsidian 已建好 Setting 并设好 name/desc，我们只往它身上加控件。
+          // 传成 (el: HTMLElement) 会在 `new Setting(el)` 处炸掉，
+          // 表现为「密码框及之后的设置项全部消失」（实测踩到，2026-10-06）。
+          render: (setting: Setting) => this.renderPasswordRow(setting, open),
+          aliases: ["password", "密码"],
+        },
+        ...(this.plugin.store.credentialsIssue()
+          ? [{ name: t("settings.credentialsIssue"), desc: this.plugin.store.credentialsIssue() }]
+          : []),
+        {
+          name: t("settings.calendarPath"),
+          desc: t("settings.calendarPathDesc"),
+          control: { type: "text", key: pre + "calendarPath", placeholder: t("settings.calendarPathPlaceholder") },
+          aliases: ["calendar", "path", "路径", "集合", "collection"],
+        },
+        {
+          name: t("settings.connection"),
+          desc: t("settings.connectionDesc"),
+          // 用 render 而非 action：action 的 el 已是 Obsidian 分配好的容器，
+          // 在里面再 `new Setting(el)` 会套出错误的嵌套结构 ——
+          // 表现为标题文字被挤成竖排、整行重复多次（实测踩到，2026-10-06）。
+          render: (setting: Setting) => this.renderConnectionButtons(setting, open),
+          aliases: ["测试", "连接", "发现", "test", "discover", "connect"],
+        },
+      ] });
+
+      // ---- 日历 ----
+      const calItems: Record<string, unknown>[] = (open.calendars || []).length
+        ? (open.calendars || []).map((cal) => this.calendarDefinition(cal, open))
+        : [{ name: t("settings.noCalendar"), desc: t("settings.noCalendarDesc") }];
+      accDetail.push({ type: "list", heading: t("settings.groupCalendar"), items: calItems, cls: "caldav-cal-list" });
+
+      // ---- 策略（原「同步」段中属于账户的部分：冲突 / 窗口 / 附件上限）----
+      accDetail.push({ type: "group", heading: t("settings.groupStrategy"), items: [
+        {
+          name: t("settings.conflict"),
+          desc: t("settings.conflictDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: pre + "conflict",
+            defaultValue: "server",
+            options: { server: t("settings.conflictServer"), local: t("settings.conflictLocal") },
+          },
+          aliases: ["冲突", "conflict", "优先级"],
+        },
+        {
+          name: t("settings.range"),
+          desc: t("settings.rangeDesc", { past: open.pastDays, future: open.futureDays }),
+          // 一个 Setting 需要两个数字输入，声明式里用 render 表达
+          render: (setting: Setting) => this.renderRangeRow(setting, open),
+          aliases: ["范围", "过去", "未来", "range"],
+        },
+        {
+          // 附件/ICS 体积上限是**服务器特性**（2026-10-26 下沉到账户）：
+          // Radicale 10MB / PHP 8MB / iCloud 另有一套，不同服务器各配各的。
+          name: t("settings.attachLimit"),
+          desc: t("settings.attachLimitDesc"),
+          control: num(pre + "attachSizeMaxMB", 5),
+          aliases: ["附件", "大小", "上限", "attach", "limit", "size"],
+        },
+        {
+          name: t("settings.icsLimit"),
+          desc: t("settings.icsLimitDesc"),
+          control: num(pre + "icsSizeMaxMB", 10),
+          aliases: ["ICS", "单个文件", "上限", "ics", "limit"],
+        },
+      ] });
+    }
     defs.push({
-      type: "list",
-      heading: t("settings.groupCalendar"),
-      items: calItems,
-      cls: "caldav-cal-list",
+      type: "group",
+      heading: t("settings.groupAccount"),
+      items: [
+        ...accItems,
+        ...accDetail,
+        {
+          name: t("settings.accAdd"),
+          desc: t("settings.accAddDesc"),
+          render: (setting: Setting) => this.renderAddAccountButton(setting),
+          aliases: ["添加", "新增", "账户", "add", "account"],
+        },
+      ],
     });
 
-    // ---- 同步 ----
+    // ---- 同步（全局）----
     defs.push({
       type: "group",
       heading: t("settings.groupSync"),
@@ -246,36 +372,30 @@ export class CalDavSettingTab extends PluginSettingTab {
           aliases: ["同步", "间隔", "interval", "自动", "sync", "auto"],
         },
         {
-          name: t("settings.conflict"),
-          desc: t("settings.conflictDesc"),
+          // 新建条目的默认归属：两级选择（默认账户 → 默认日历），2026-10-26 从思源侧同构
+          name: t("settings.defaultAccount"),
+          desc: t("settings.defaultAccountDesc"),
           control: {
             type: "dropdown" as const,
-            key: "conflict",
-            defaultValue: "server",
-            options: { server: t("settings.conflictServer"), local: t("settings.conflictLocal") },
+            key: "defaultAccountId",
+            defaultValue: "",
+            options: {
+              "": t("settings.defaultAccountAuto"),
+              ...Object.fromEntries((enabledAccounts(s) || []).map((a) => [a.id, a.name])),
+            },
           },
-          aliases: ["冲突", "conflict", "优先级"],
+          aliases: ["默认账户", "账户", "default", "account"],
         },
         {
-          // 附件/ICS 体积上限（2026-10-20 从思源移植）。改动经 store.saveSettings
-          // 持久化；编辑器上传时的硬闸门与提示语都读这里的值。
-          name: t("settings.attachLimit"),
-          desc: t("settings.attachLimitDesc"),
-          control: num("attachSizeMaxMB", 5),
-          aliases: ["附件", "大小", "上限", "attach", "limit", "size"],
-        },
-        {
-          name: t("settings.icsLimit"),
-          desc: t("settings.icsLimitDesc"),
-          control: num("icsSizeMaxMB", 10),
-          aliases: ["ICS", "单个文件", "上限", "ics", "limit"],
-        },
-        {
-          name: t("settings.range"),
-          desc: t("settings.rangeDesc", { past: s.pastDays, future: s.futureDays }),
-          // 一个 Setting 需要两个数字输入，声明式里用 render 表达
-          render: (setting: Setting) => this.renderRangeRow(setting),
-          aliases: ["范围", "过去", "未来", "range"],
+          name: t("settings.defaultCalendar"),
+          desc: t("settings.defaultCalendarDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: "defaultCalendarUrl",
+            defaultValue: "",
+            options: defaultCalendarOptions(s),
+          },
+          aliases: ["默认日历", "日历", "default", "calendar"],
         },
       ],
     });
@@ -328,16 +448,12 @@ export class CalDavSettingTab extends PluginSettingTab {
     });
 
     // ---- 本地数据 ----
+    // 「切换服务器时清理旧条目」开关已随多账户废除（2026-10-25）：清理由「删除账户」
+    // 时可选执行（store.purgeAccountItems），不再有一个容易误伤的常开开关。
     defs.push({
       type: "group",
       heading: t("settings.groupLocalData"),
       items: [
-        {
-          name: t("settings.purgeOnSwitch"),
-          desc: t("settings.purgeOnSwitchDesc"),
-          control: { type: "toggle" as const, key: "purgeOtherServerOnSwitch", defaultValue: false },
-          aliases: ["清理", "旧服务器", "孤儿", "purge", "orphan", "clean", "switch"],
-        },
         {
           name: t("settings.purgeNow"),
           // 状态说明 + 两个按钮（立即清理 / 恢复）用 render 自绘：
@@ -450,13 +566,143 @@ export class CalDavSettingTab extends PluginSettingTab {
   }
 
   /** 单个日历的声明式定义：启用勾选 + 日程色 / 待办色 */
-  private calendarDefinition(cal: CalCalendar): Record<string, unknown> {
+  private calendarDefinition(cal: CalCalendar, acc: CalAccount): Record<string, unknown> {
     return {
       name: cal.displayName || cal.url,
       desc: this.calendarCaps(cal) ? t("settings.capDesc", { caps: this.calendarCaps(cal) }) : cal.url,
-      render: (setting: Setting) => this.renderCalendarRow(setting, cal),
+      render: (setting: Setting) => this.renderCalendarRow(setting, cal, acc),
       aliases: ["日历", "calendar", cal.displayName || cal.url],
     };
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 账户卡片（手风琴）：名称 / 启用 / 展开 / 删除
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * 账户行：启用开关 + 展开/收起 + 删除（二次点击确认，另可选清理本地条目）。
+   *
+   * 删除是破坏性动作，按项目约定**不用 confirm()**，改成内联二次确认：
+   * 第一次点「删除」把该行换成「确认删除 / 删除并清理本地条目 / 取消」三个按钮。
+   */
+  private renderAccountRow(setting: Setting, acc: CalAccount): void {
+    setting
+      .addToggle((tg) =>
+        tg
+          .setTooltip(t("settings.accEnabled"))
+          .setValue(acc.enabled)
+          .onChange((v) => {
+            acc.enabled = v;
+            void this.save();
+            // 停用/启用立刻反映到面板（视图里该账户的日历显不显示）
+            this.plugin.refreshViews?.();
+            this.update();
+          })
+      )
+      .addButton((b) => {
+        const isOpen = this.activeAccId === acc.id;
+        b.setButtonText(isOpen ? t("settings.accCollapse") : t("settings.accExpand"))
+          .setTooltip(t("settings.accExpandDesc"))
+          .onClick(() => {
+            this.activeAccId = isOpen ? null : acc.id;
+            this.update();
+          });
+      })
+      .addButton((b) => {
+        const btn = b;
+        // 确认区：第一次点击后方才创建，避免平时占地方
+        let conf: HTMLElement | null = null;
+        let armTimer: TimerHandle | null = null;
+        const reset = (): void => {
+          btn.setButtonText(t("settings.accDelete"));
+          if (armTimer) {
+            window.clearTimeout(armTimer);
+            armTimer = null;
+          }
+          conf?.remove();
+          conf = null;
+        };
+        b.setButtonText(t("settings.accDelete")).onClick(async () => {
+          if (conf) return;
+          // ── 二次确认：展开两个选择（是否连本地条目一起清理）──
+          conf = document.createElement("div");
+          conf.className = "caldav-acc-delconf";
+          const hint = document.createElement("div");
+          hint.className = "caldav-set-hint";
+          const n = this.plugin.store.getAll().filter((it) => (acc.calendars || []).some((c) => c.url === it.calendarUrl)).length;
+          hint.textContent = t("settings.accDeleteHint", { name: acc.name, count: String(n) });
+          conf.appendChild(hint);
+          const row = document.createElement("div");
+          row.className = "caldav-acc-delconf-row";
+          const mk = (label: string, purge: boolean): HTMLButtonElement => {
+            const el = document.createElement("button");
+            el.className = "caldav-btn caldav-btn--sm" + (purge ? "" : " mod-cta");
+            el.textContent = label;
+            el.addEventListener("click", () => {
+              void (async () => {
+                await this.deleteAccount(acc, purge);
+                reset();
+              })();
+            });
+            return el;
+          };
+          row.appendChild(mk(t("settings.accDeleteOnly"), false));
+          row.appendChild(mk(t("settings.accDeletePurge"), true));
+          const cancel = document.createElement("button");
+          cancel.className = "caldav-btn caldav-btn--sm";
+          cancel.textContent = t("common.cancel");
+          cancel.addEventListener("click", reset);
+          row.appendChild(cancel);
+          conf.appendChild(row);
+          setting.descEl.appendChild(conf);
+          btn.setButtonText(t("settings.accDeleteConfirming"));
+          armTimer = window.setTimeout(reset, 12000);
+        });
+      });
+  }
+
+  /** 删除账户（可选连本地条目一起清理，先备份可恢复） */
+  private async deleteAccount(acc: CalAccount, purge: boolean): Promise<void> {
+    if (purge) {
+      const n = await this.plugin.store.purgeAccountItems(acc.id);
+      if (n) new Notice(t("settings.purgeDone", { count: String(n) }), 5000);
+    }
+    this.s.accounts = (this.s.accounts || []).filter((a) => a.id !== acc.id);
+    if (this.activeAccId === acc.id) this.activeAccId = null;
+    await this.save();
+    this.plugin.refreshViews?.();
+    this.update();
+    new Notice(t("settings.accDeleted", { name: acc.name }), 4000);
+  }
+
+  /** 「添加账户」按钮：新建一个空账户并立刻展开它 */
+  private renderAddAccountButton(setting: Setting): void {
+    setting.addButton((b) =>
+      b
+        .setButtonText(t("settings.accAdd"))
+        .setCta()
+        .onClick(async () => {
+          const acc: CalAccount = {
+            id: newAccountId(),
+            name: t("settings.accDefaultName", { n: String((this.s.accounts || []).length + 1) }),
+            enabled: true,
+            serverUrl: "",
+            username: "",
+            password: "",
+            calendarPath: "",
+            serverType: "caldav",
+            channel: "auto",
+            conflict: "server",
+            pastDays: 90,
+            futureDays: 370,
+            calendars: []
+          };
+          this.s.accounts = [...(this.s.accounts || []), acc];
+          this.activeAccId = acc.id; // 新账户直接展开，顺手就能填
+          await this.save();
+          this.update();
+        })
+    );
   }
 
   /** 「日程 / 待办」能力标签，如「事件 / 任务」 */
@@ -474,12 +720,12 @@ export class CalDavSettingTab extends PluginSettingTab {
    * ⚠️ 收到的 `setting` 是**已建好的 Setting 对象**（Obsidian 已设好 name/desc），
    * 直接往它身上 addText 即可 —— 不要再 `new Setting(...)`。
    */
-  private renderPasswordRow(setting: Setting): void {
+  private renderPasswordRow(setting: Setting, acc: CalAccount): void {
     // 参数名用 tc 而不是 t —— t 是本模块从 @/i18n 导入的 t()，同名会遮蔽它
     setting.addText((tc) => {
       tc.inputEl.type = "password";
-      tc.setValue(this.s.password).onChange((v) => {
-        this.s.password = v;
+      tc.setValue(acc.password).onChange((v) => {
+        acc.password = v;
         void this.save();
       });
     });
@@ -493,25 +739,25 @@ export class CalDavSettingTab extends PluginSettingTab {
    * 直接 addButton即可。原写法 `new Setting(el)` 会造出嵌套的错误结构，
    * 表现为标题文字竖排、整行重复 —— 2026-10-06 实测踩到。
    */
-  private renderConnectionButtons(setting: Setting): void {
+  private renderConnectionButtons(setting: Setting, acc: CalAccount): void {
     setting
       .addButton((b) =>
         b.setButtonText(t("settings.testConnection")).onClick(async () => {
-          const auth = { username: this.s.username, password: this.s.password };
+          const auth = { username: acc.username, password: acc.password };
           try {
-            const r = await testConnection(this.s.serverUrl, this.s.channel, auth);
+            const r = await testConnection(acc.serverUrl, acc.channel, auth);
             new Notice(
               r.ok ? t("settings.connectOk", { msg: r.message || t("settings.connectOkBare") }) : t("settings.connectFail", { msg: r.message }),
               r.ok ? 3000 : 6000,
             );
           } catch (e) {
-            new Notice(t("settings.connectFail", { msg: describeNetworkError(e, this.s.channel) }), 6000);
+            new Notice(t("settings.connectFail", { msg: describeNetworkError(e, acc.channel) }), 6000);
           }
         })
       )
       .addButton((b) =>
         b.setButtonText(t("settings.discover")).onClick(async () => {
-          await this.discover();
+          await this.discover(acc);
         })
       );
   }
@@ -535,24 +781,24 @@ export class CalDavSettingTab extends PluginSettingTab {
    * 直接 addText两次即可。原注释写的「收到的是已分配好标题行的容器」是错的 ——
    * 那正是 2026-10-06 设置项集体消失的根因。
    */
-  private renderRangeRow(setting: Setting): void {
+  private renderRangeRow(setting: Setting, acc: CalAccount): void {
     const apply = (key: "pastDays" | "futureDays") => (v: string) => {
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0) return;
-      this.s[key] = Math.floor(n);
+      acc[key] = Math.floor(n);
       void this.save();
     };
-    setting.setDesc(t("settings.rangeDesc", { past: this.s.pastDays, future: this.s.futureDays }));
+    setting.setDesc(t("settings.rangeDesc", { past: acc.pastDays, future: acc.futureDays }));
     setting
       .addText((t2) => {
         t2.inputEl.type = "number";
         t2.setPlaceholder(t("settings.pastDaysPlaceholder"));
-        t2.setValue(String(this.s.pastDays)).onChange(apply("pastDays"));
+        t2.setValue(String(acc.pastDays)).onChange(apply("pastDays"));
       })
       .addText((t2) => {
         t2.inputEl.type = "number";
         t2.setPlaceholder(t("settings.futureDaysPlaceholder"));
-        t2.setValue(String(this.s.futureDays)).onChange(apply("futureDays"));
+        t2.setValue(String(acc.futureDays)).onChange(apply("futureDays"));
       });
   }
 
@@ -562,7 +808,7 @@ export class CalDavSettingTab extends PluginSettingTab {
 
 
   /** 单个日历：启用勾选 + 名称 + 日程色 / 待办色 */
-  private renderCalendarRow(setting: Setting, cal: CalCalendar): void {
+  private renderCalendarRow(setting: Setting, cal: CalCalendar, _acc: CalAccount): void {
     const caps = this.calendarCaps(cal);
     // name / desc 因日历而异，故在这里覆盖（defs 里只能给静态值）
     setting.setName(cal.displayName || cal.url).setDesc(caps ? t("settings.capDesc", { caps }) : cal.url);
@@ -591,19 +837,18 @@ export class CalDavSettingTab extends PluginSettingTab {
       );
   }
 
-  /** 发现日历：保留用户已有的勾选与配色，只更新服务端侧的元信息 */
-  private async discover(): Promise<void> {
-    const s = this.s;
-    if (!s.serverUrl) {
+  /** 发现日历（**按账户**）：保留用户已有的勾选与配色，只更新服务端侧的元信息 */
+  private async discover(acc: CalAccount): Promise<void> {
+    if (!acc.serverUrl) {
       new Notice(t("settings.noServerFirst"), 4000);
       return;
     }
-    const auth = { username: s.username, password: s.password };
+    const auth = { username: acc.username, password: acc.password };
     try {
       new Notice(t("settings.discovering"), 2000);
-      const r = await discoverCalendars(s.serverUrl, s.channel, auth, s.calendarPath);
-      const existing = new Map(s.calendars.map((c) => [c.url, c]));
-      s.calendars = r.calendars.map((c) => {
+      const r = await discoverCalendars(acc.serverUrl, acc.channel, auth, acc.calendarPath);
+      const existing = new Map((acc.calendars || []).map((c) => [c.url, c]));
+      acc.calendars = r.calendars.map((c) => {
         const old = existing.get(c.url);
         // 已配置过的日历：沿用勾选状态与自定义配色，避免重新发现就丢设置
         return old
@@ -613,17 +858,9 @@ export class CalDavSettingTab extends PluginSettingTab {
       await this.save();
       // 日历列表已变（新增/移除），让声明式设置重新拉取
       this.update();
-      // 「发现日历」是新服务器日历真正接管配置的时刻 —— 此时旧服务器的条目
-      // 已经没有任何日历能引用它们，正是「切换服务器时清理」的时机。
-      // 开关关着则不做任何事（见 store.purgeOrphansIfEnabled）。
-      const purged = await this.plugin.store.purgeOrphansIfEnabled();
-      if (purged) {
-        new Notice(t("settings.purgeDone", { count: String(purged) }), 5000);
-        this.update();
-      }
-      new Notice(t("settings.discoverDone", { count: s.calendars.length }));
+      new Notice(t("settings.discoverDone", { count: acc.calendars.length }));
     } catch (e) {
-      new Notice(t("settings.discoverFailed", { msg: describeNetworkError(e, s.channel) }), 6000);
+      new Notice(t("settings.discoverFailed", { msg: describeNetworkError(e, acc.channel) }), 6000);
     }
   }
 

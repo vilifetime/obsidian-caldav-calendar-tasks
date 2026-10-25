@@ -108,19 +108,15 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 const CAL = "http://dav.test/cal/";
 const cal = { url: CAL, displayName: "工作", enabled: true, supportsEvent: true, supportsTodo: true };
 
-async function mkStore(items = [], settings = {}) {
+const { seedAccounts } = require("./accfx.cjs");
+
+async function mkStore(items = [], accOver = {}) {
   const st = new CalStore({ loadData: async () => undefined, saveData: async () => undefined });
   await st.load();
-  st.settings = {
-    ...st.settings,
-    serverUrl: "http://dav.test/",
-    username: "u",
-    password: "p",
-    calendars: [{ ...cal }],
-    conflict: "server",
-    syncIntervalMin: 0,
-    ...settings
-  };
+  // 账户化（2026-10-26）：serverUrl/凭据/日历都在账户下；直接铺平级字段的话
+  // syncAll 一个启用账户都找不到，「同步中」永远置不上位。
+  st.settings.syncIntervalMin = 0;
+  seedAccounts(st, [{ id: "acc-1", name: "测试账户", serverUrl: "http://dav.test/", calendars: [{ ...cal }], conflict: "server", ...accOver }]);
   items.forEach((it) => st.put(it));
   return st;
 }

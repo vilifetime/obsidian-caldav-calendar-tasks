@@ -18,6 +18,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const { rmrf } = require("./fsx.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -42,7 +43,7 @@ function fnBody(src) {
 // ① 纯函数层：直接跑编译后的 matchesSearchQuery
 // ══════════════════════════════════════════════════════════════
 const OUT = path.join(ROOT, ".test-task-search");
-fs.rmSync(OUT, { recursive: true, force: true });
+rmrf(OUT);
 require(path.join(ROOT, "node_modules", "esbuild")).buildSync({
   entryPoints: [path.join(ROOT, "src/ui/view-common.ts")],
   bundle: true,
@@ -249,4 +250,4 @@ console.log("  - 搜索词存 dataset，跨重渲染存活；空态区分两种�
 
 // 清理编译产物：不留 .test-task-search/ 残渣（已被 .gitignore 兜住，
 // 但本地攒久了还是垃圾，且会被误当成有意义的目录）
-fs.rmSync(OUT, { recursive: true, force: true });
+rmrf(OUT);
