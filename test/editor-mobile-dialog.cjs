@@ -109,7 +109,38 @@ t("极窄屏（max-width:350px）兜底规则里也有 .caldav-mobile-dialog 一
   }
 });
 
-// ---------- ③ 两端机制对等 ----------
+// ---------- ④ 日期框圆角与时间框同源 ----------
+console.log("[editor-mobile-dialog] 日期框圆角");
+
+// 根因：日期框是 input[type=date]，Obsidian 主题的 input[type="date"] 特异性
+// (0,1,1) 高于单类 .caldav-date-input (0,1,0) —— 胶囊圆角的主题会把外框改成
+// 「椭圆」，而时间框是 button、没有这类 type 选择器覆盖，保持基类 9px。
+t("日期框用双类选择器显式钉 border-radius（压过主题 input[type=date]）", () => {
+  assert.ok(
+    /\.caldav-input\.caldav-date-input \{\s*border-radius: 9px;\s*\}/.test(css),
+    "缺少 .caldav-input.caldav-date-input { border-radius } —— 主题会覆盖日期框圆角，与时间框不一致"
+  );
+});
+
+t("日期框圆角值取自 .caldav-input 基类（与时间框同源，防两边漂移）", () => {
+  // 必须锚到真正的基类块（含 width:100% 特征）：文件里 .caldav-field-icon .caldav-input
+  // 等派生选择器排在更前，宽匹配会跨出块抓到别处的圆角值。
+  const base = /^\.caldav-input \{\s*width: 100%;[\s\S]*?border-radius: (\d+)px;/m.exec(css);
+  const date = /\.caldav-input\.caldav-date-input \{\s*border-radius: (\d+)px;/.exec(css);
+  assert.ok(base, "找不到 .caldav-input 基类圆角");
+  assert.ok(date, "找不到日期框圆角");
+  assert.strictEqual(date[1], base[1], `日期框圆角 ${date[1]}px 与基类 ${base[1]}px 不一致 —— 两个框会不一样圆`);
+});
+
+t("思源侧同构在位（两端同步，防 cp 覆盖）", () => {
+  const cssSy = readSiyuan("src/index.css");
+  assert.ok(
+    /\.caldav-input\.caldav-date-input \{\s*border-radius: 9px;\s*\}/.test(cssSy),
+    "思源侧缺少同构规则 —— 两端已漂移"
+  );
+});
+
+// ---------- ⑤ 两端机制对等 ----------
 console.log("[editor-mobile-dialog] 与思源侧机制对等");
 
 t("思源侧同样给移动端弹窗挂 caldav-mobile-dialog（containerClassName）", () => {

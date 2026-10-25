@@ -2522,6 +2522,16 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   min-width: 0;
   padding-left: 34px;
 }
+/* 日期框必须显式钉圆角，且必须用双类选择器：
+   单类 .caldav-date-input 特异性 (0,1,0) 低于 Obsidian 主题（含社区主题）的
+   input[type="date"] (0,1,1)，主题会把外框圆角改成自己的值 —— 用胶囊圆角的
+   主题下日期框变「椭圆」，而旁边的时间框是 button（没有 input[type=…] 规则
+   覆盖它）保持 .caldav-input 基类的 9px，两个框圆角不一致。
+   双类把特异性提到 (0,2,0) 压过主题；取值与基类同为 9px，保证日期框与时间框
+   在任何主题下都同源同值（2026-10-25 雄哥要求「跟后面时间框保持一致」）。 */
+.caldav-input.caldav-date-input {
+  border-radius: 9px;
+}
 
 .caldav-time-input {
   flex: 0 0 118px;
