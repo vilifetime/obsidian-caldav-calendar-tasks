@@ -22,6 +22,10 @@
 import type { CalItem } from "../core/types";
 import { addDays, isDateOnly, padDate, parseLocalStamp, startOfWeek } from "../core/date";
 import { calColorOf, escape, keyOfItem, occComparator, type ViewArgs } from "./view-common";
+// Obsidian 社区审核禁 innerHTML 赋值（会连带丢弃子节点上已绑定的监听），
+// 改走 dom.ts 的 setHtml（DOMParser + replaceChildren，行为等价且更安全）。
+// ⚠️ 思源端没有这套审核、全仓沿用 innerHTML，此处是有意的两端差异。
+import { setHtml } from "./dom";
 
 /** 星期中文名（周一起始，与周/月视图一致） */
 const WEEK_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
@@ -166,7 +170,7 @@ export function renderListView({ ctx, viewEl, occurrences }: ViewArgs): void {
   const total = days.reduce((n, d) => n + byDay.get(d)!.length, 0);
 
   if (!total) {
-    viewEl.innerHTML = `<div class="cal-list"><div class="cal-list-empty">该时间段内暂无日程或待办</div></div>`;
+    setHtml(viewEl, `<div class="cal-list"><div class="cal-list-empty">该时间段内暂无日程或待办</div></div>`);
     return;
   }
 
@@ -182,8 +186,8 @@ export function renderListView({ ctx, viewEl, occurrences }: ViewArgs): void {
     })
     .join("");
 
-  viewEl.innerHTML = `<div class="cal-list">
+  setHtml(viewEl, `<div class="cal-list">
     <div class="cal-list-head">共 ${total} 项</div>
     ${blocks}
-  </div>`;
+  </div>`);
 }

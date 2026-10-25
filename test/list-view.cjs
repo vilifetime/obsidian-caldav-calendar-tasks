@@ -10,6 +10,8 @@
  *  ④ **范围严格跟随左侧标题**（2026-10-25 雄哥指正）：窗口外条目不得混入列表
  *  ⑤ **条目类型标记**：改用任务视图的「待办/日程」文字角标
  *  ⑥ **「列表」按钮紧靠分段控件**（工具栏中部 flex + margin-left 归 0）
+ *  ⑦ **渲染禁 innerHTML 赋值**（社区审核红线）：走 dom.ts 的 setHtml，
+ *     测试侧配「字符串透传」式最小 DOM 替身（见文件末尾 mkViewEl）
  *
  * 用法：node test/list-view.cjs
  */
@@ -77,6 +79,28 @@ Module._resolveFilename = function (request, ...rest) {
   return origResolve.call(this, request, ...rest);
 };
 
+// ── 最小 DOM 替身 ──
+// view-list.ts 渲染末尾走 dom.ts 的 setHtml（DOMParser + DocumentFragment +
+// replaceChildren）—— Node 没有这些全局（2026-10-25 为过社区审核把
+// innerHTML 赋值改成 setHtml 后引入的依赖）。这里给「字符串透传」式最小实现：
+// DOMParser 把 HTML 原样当唯一节点返回，fragment 收集后由 replaceChildren
+// 拼回字符串存进 innerHTML，断言照旧读 viewEl.innerHTML。
+// 渲染路径（分桶 / 过滤 / rowHtml）全真，被 stub 的只有 DOM 解析本身
+// —— 没有任何断言依赖 DOM 结构，只依赖生成的 HTML 字符串。
+globalThis.DocumentFragment = class DocumentFragment {
+  constructor() { this.childNodes = []; }
+  appendChild(n) { this.childNodes.push(n); return n; }
+};
+globalThis.DOMParser = class DOMParser {
+  parseFromString(html) { return { body: { childNodes: [html] } }; }
+};
+function mkViewEl() {
+  return {
+    innerHTML: "",
+    replaceChildren(frag) { this.innerHTML = (frag.childNodes || []).join(""); }
+  };
+}
+
 let pass = 0;
 let fail = 0;
 function t(name, fn) {
@@ -135,7 +159,7 @@ function occMap(entries) {
 }
 
 function render(ctx, entries) {
-  const viewEl = { innerHTML: "" };
+  const viewEl = mkViewEl();
   renderListView({ ctx, viewEl, occurrences: () => occMap(entries) });
   return viewEl.innerHTML;
 }
@@ -162,7 +186,7 @@ function realOccMap(items, startMs, endMs) {
 
 /** 走真实展开路径的渲染 */
 function renderReal(ctx, items) {
-  const viewEl = { innerHTML: "" };
+  const viewEl = mkViewEl();
   renderListView({ ctx, viewEl, occurrences: (s, e) => realOccMap(items, s, e) });
   return viewEl.innerHTML;
 }
@@ -361,6 +385,18 @@ t("i18n 两个语言都有 toolbar.viewList", () => {
 // 根因：core/ics.ts 的 expandRepeats() 对无重复规则的条目回退返回 item.start
 //（不看窗口），而列表把**所有** occ 都建了日期组 → 窗口外条目混入。
 // 修复：渲染层再按自然日闭区间过滤一次。
+
+t("view-list.ts 不得用 innerHTML 赋值（社区审核红线，走 dom.ts setHtml）", () => {
+  // 2026-10-25 发版前产物复查发现：列表渲染用了 viewEl.innerHTML = …，
+  // 而 Obsidian 社区审核明确点名 innerHTML 赋值为代码质量问题。
+  // 已改用 dom.ts 的 setHtml（DOMParser + replaceChildren），这里钉死防回归。
+  const src = fs.readFileSync(path.join(ROOT, "src/ui/view-list.ts"), "utf8");
+  assert.ok(
+    !/\.innerHTML\s*=/.test(src),
+    "view-list.ts 又出现了 innerHTML 赋值 —— 会被社区审核判为代码质量问题，改用 setHtml"
+  );
+  assert.ok(/setHtml\(viewEl/.test(src), "渲染入口应走 setHtml");
+});
 
 t("月视图：窗口外（12 月）的一次性条目不得进入 10 月列表", () => {
   // 真实展开路径：expandRepeats 会把 12/25 的条目也返回（core 既定行为）
