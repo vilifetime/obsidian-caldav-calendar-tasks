@@ -594,7 +594,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   ctx.navigate = (mode: ViewMode, cursor?: string) => {
     if (cursor) ctx.cursor = cursor;
     ctx.viewMode = mode;
-    notifyViewChange(mode);
+    notifyViewChange(mode, ctx.store);
     renderAll();
   };
 
@@ -723,7 +723,7 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     const view = target.dataset.view;
     if (view) {
       ctx.viewMode = view as ViewMode;
-      notifyViewChange(ctx.viewMode);
+      notifyViewChange(ctx.viewMode, ctx.store);
       renderAll();
       return;
     }
@@ -737,9 +737,9 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     if (action === "toggle-view") {
       // 日历视图（年/月/周/日）↔ 任务视图 互切；从任务视图返回时回到
       // 上次使用的日历视图（2026-10-20 雄哥要求，原来是硬编码落回月视图）。
-      // 读不到记录（含隐私模式 localStorage 不可用）才回落默认月视图。
-      ctx.viewMode = ctx.viewMode === "task" ? loadCalendarView() ?? DEFAULT_VIEW : "task";
-      notifyViewChange(ctx.viewMode);
+      // 读不到记录（配置里还没存过 / 值不合法）才回落默认月视图。
+      ctx.viewMode = ctx.viewMode === "task" ? loadCalendarView(ctx.store.settings) ?? DEFAULT_VIEW : "task";
+      notifyViewChange(ctx.viewMode, ctx.store);
       renderAll();
       return;
     }
@@ -878,14 +878,20 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
 /** 视图切换事件：Dock 导航与主面板页签联动 */
 export const VIEW_CHANGE_EVENT = "caldav-view-change";
 
-export function notifyViewChange(mode: ViewMode): void {
+export function notifyViewChange(mode: ViewMode, store: CalStore): void {
   // 顺手持久化「上次用的哪个视图」（2026-10-07）。
   // 选这里是因为它是三处视图切换（navigate / segBtn / toggleBtn）**唯一的汇聚点** ——
   // 在别处写都会漏掉某条路径。
-  saveViewMode(mode);
+  //
+  // ⚠️ 2026-10-27：记在**配置**里（settings.lastView / lastCalendarView）而非
+  // localStorage —— 思源端端口随机、localStorage 按 origin（含端口）隔离，
+  // 写进去的记录下次永远读不回来；Obsidian 端 localStorage 是 app 级、
+  // 所有 vault 共享一份，存 data.json（per-vault）反而更对。见 ui/view-pref.ts。
+  saveViewMode(store.settings, mode);
   // 日历视图单独记一份（2026-10-20）：从任务视图返回时要回到进任务视图之前
   // 的那个日历视图，而不是统一落回月视图。task 不覆盖它。
-  saveCalendarView(mode);
+  saveCalendarView(store.settings, mode);
+  store.markSettingsDirty();
   document.dispatchEvent(new CustomEvent(VIEW_CHANGE_EVENT, { detail: mode }));
 }
 
@@ -1883,8 +1889,9 @@ export function renderDockPanel(
     if (filterItem && root.contains(filterItem)) {
       dockFilter = filterItem.dataset.dockFilter as DockFilter;
       focusDate = null; // 选了预设筛选即退出「日期聚焦」
-      // 记下这次选的：设置里「上次使用项」下次打开就回到它（本机 localStorage）
-      saveLastDockFilter(dockFilter);
+      // 记下这次选的：设置里「上次使用项」下次打开就回到它（写进配置，随数据同步）
+      saveLastDockFilter(opts.store.settings, dockFilter);
+      opts.store.markSettingsDirty();
       syncDockFilterLabel();
       renderDockList();
       closePops();

@@ -125,60 +125,49 @@ t("年视图 is-today 本来就是纯底色，未被误改", () => {
 // ---------- 需求 2：视图记忆 ----------
 console.log("[today-view-pref] 视图记忆逻辑");
 
-t("saveCalendarView(task) 不写日历视图键", () => {
-  const store = new Map();
-  global.window = { localStorage: {
-    getItem: (k) => (store.has(k) ? store.get(k) : null),
-    setItem: (k, v) => store.set(k, String(v)),
-    removeItem: (k) => store.delete(k),
-  } };
-  vp.saveCalendarView("task");
-  eq(vp.loadCalendarView(), null, "task 竟被记进日历视图");
+// ⚠️ 2026-10-27：载体从 localStorage 换成**配置**（settings.lastView /
+// lastCalendarView），跟 data.json 一起同步。思源端**必须**这么改 —— 它每次启动的
+// 内核端口是随机的，而 localStorage 按 origin（含端口）隔离，写进去的记录下次永远
+// 读不回来；Obsidian 端顺带修好「localStorage 是 app 级、所有 vault 共享一份」的串味。
+const mkSettings = () => ({});
+
+t("saveCalendarView(task) 不写日历视图字段", () => {
+  const s = mkSettings();
+  vp.saveCalendarView(s, "task");
+  eq(vp.loadCalendarView(s), null, "task 竟被记进日历视图");
+  eq(s.lastCalendarView, undefined, "task 落进了 settings.lastCalendarView");
 });
 
-t("saveCalendarView(week) → loadCalendarView() 读回 week", () => {
-  const store = new Map();
-  global.window = { localStorage: {
-    getItem: (k) => (store.has(k) ? store.get(k) : null),
-    setItem: (k, v) => store.set(k, String(v)),
-    removeItem: (k) => store.delete(k),
-  } };
-  vp.saveCalendarView("week");
-  eq(vp.loadCalendarView(), "week", "日历视图键读写不一致");
+t("saveCalendarView(week) → loadCalendarView 读回 week", () => {
+  const s = mkSettings();
+  vp.saveCalendarView(s, "week");
+  eq(s.lastCalendarView, "week", "没写进配置");
+  eq(vp.loadCalendarView(s), "week", "日历视图字段读写不一致");
 });
 
 t("saveViewMode(task) 不影响 loadCalendarView", () => {
-  const store = new Map();
-  global.window = { localStorage: {
-    getItem: (k) => (store.has(k) ? store.get(k) : null),
-    setItem: (k, v) => store.set(k, String(v)),
-    removeItem: (k) => store.delete(k),
-  } };
-  vp.saveCalendarView("day");
-  vp.saveViewMode("task"); // 模拟进入任务视图
-  eq(vp.loadCalendarView(), "day", "进 task 覆盖了日历视图记录（会死循环）");
-  eq(vp.loadViewMode(), "task", "当前视图键没记到 task");
+  const s = mkSettings();
+  vp.saveCalendarView(s, "day");
+  vp.saveViewMode(s, "task"); // 模拟进入任务视图
+  eq(vp.loadCalendarView(s), "day", "进 task 覆盖了日历视图记录（会死循环）");
+  eq(vp.loadViewMode(s), "task", "当前视图字段没记到 task");
 });
 
 t("loadCalendarView 脏值回落 null", () => {
-  const store = new Map([["caldav-calendar-view", "garbage"]]);
-  global.window = { localStorage: {
-    getItem: (k) => (store.has(k) ? store.get(k) : null),
-    setItem: (k, v) => store.set(k, String(v)),
-    removeItem: (k) => store.delete(k),
-  } };
-  eq(vp.loadCalendarView(), null, "脏值没被拒");
+  eq(vp.loadCalendarView({ lastCalendarView: "garbage" }), null, "脏值没被拒");
 });
 
-t("localStorage 抛异常不炸（try 兜底）", () => {
-  global.window = { localStorage: {
-    getItem() { throw new Error("privacy mode"); },
-    setItem() { throw new Error("privacy mode"); },
-    removeItem() {},
-  } };
-  eq(vp.loadCalendarView(), null, "读失败应回落 null");
-  vp.saveCalendarView("week"); // 不抛即过
-  eq(vp.loadViewMode(), null, "读失败应回落 null");
+t("配置里带着 lastCalendarView（同步自别的设备）时照样读得回", () => {
+  // 这正是 localStorage 做不到的：它的记录锁在上一次启动那个随机端口的 origin 里。
+  eq(vp.loadCalendarView({ lastCalendarView: "year" }), "year", "同步过来的记录读不到");
+  eq(vp.loadViewMode({ lastView: "week" }), "week", "同步过来的记录读不到");
+});
+
+t("配置缺字段时不崩，回落 null", () => {
+  eq(vp.loadCalendarView(mkSettings()), null, "读失败应回落 null");
+  eq(vp.loadViewMode(mkSettings()), null, "读失败应回落 null");
+  vp.saveCalendarView(mkSettings(), "week"); // 不抛即过
+  vp.saveViewMode(mkSettings(), "task");
 });
 
 // ---------- 源码断言 ----------
@@ -187,7 +176,7 @@ console.log("[today-view-pref] 源码断言");
 t("panel.ts toggle-view 不再硬编码落回月视图", () => {
   const src = readLF("src/ui/panel.ts");
   ok(
-    src.includes('ctx.viewMode = ctx.viewMode === "task" ? loadCalendarView() ?? DEFAULT_VIEW : "task"'),
+    src.includes('ctx.viewMode = ctx.viewMode === "task" ? loadCalendarView(ctx.store.settings) ?? DEFAULT_VIEW : "task"'),
     "toggle-view 仍硬编码 month 或没用 loadCalendarView"
   );
   ok(!/=== "task" \? "month" : "task"/.test(src), "旧硬编码写法残留");
@@ -201,13 +190,21 @@ t("notifyViewChange 汇聚点记日历视图", () => {
   const seg = bare.slice(bare.indexOf("export function notifyViewChange"));
   ok(/saveCalendarView\(/.test(seg), "notifyViewChange 里没调 saveCalendarView");
   ok(/saveViewMode\(/.test(seg), "notifyViewChange 里丢了 saveViewMode");
+  ok(/markSettingsDirty\(\)/.test(seg), "notifyViewChange 里没落盘（改了内存但没写盘等于没记住）");
 });
 
-t("view-pref.ts 双键分工正确", () => {
+t("view-pref.ts 双字段分工正确", () => {
   const src = readLF("src/ui/view-pref.ts");
-  ok(src.includes('"caldav-calendar-view"'), "缺日历视图专用键");
+  ok(/s\.lastView\s*=/.test(src), "缺当前视图字段 lastView");
+  ok(/s\.lastCalendarView\s*=/.test(src), "缺日历视图专用字段 lastCalendarView");
   ok(/VALID_CALENDAR/.test(src), "缺日历视图合法集合");
   ok(/if \(!VALID_CALENDAR\.includes\(mode\)\) return;/.test(src), "saveCalendarView 没过滤非日历视图");
+});
+
+t("view-pref.ts 不再碰浏览器存储（端口隔离 → 记录永远读不回）", () => {
+  const src = readLF("src/ui/view-pref.ts");
+  const bare = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  ok(!/localStorage|indexedDB/i.test(bare), "view-pref 又用回 localStorage/IndexedDB 了");
 });
 
 console.log(`\n[today-view-pref] ${passed} 项通过${failed ? `，${failed} 项失败` : ""}`);

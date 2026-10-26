@@ -147,7 +147,7 @@
   "settings.groupMisc": "杂项",
   "settings.defaultFilterLast": "上次使用项",
   "settings.defaultDockFilter": "侧边栏 Dock 默认筛选",
-  "settings.defaultDockFilterDesc": "打开侧边栏 Dock 时自动选中哪一项。「上次使用项」记住你上次选的（记在本机，不随数据同步）；也可以固定成某一项，那样每次打开都用它。没有「上次使用项」记录时回落到「所有未完成」。",
+  "settings.defaultDockFilterDesc": "打开侧边栏 Dock 时自动选中哪一项。「上次使用项」记住你上次选的（记在配置里，会随数据同步到其他设备）；也可以固定成某一项，那样每次打开都用它。没有「上次使用项」记录时回落到「所有未完成」。",
   "settings.defaultTaskFilter": "任务视图默认筛选",
   "settings.defaultTaskFilterDesc": "打开任务视图时自动选中哪一项，语义同上；没有记录时同样回落到「所有未完成」。",
 

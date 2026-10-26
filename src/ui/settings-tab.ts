@@ -530,8 +530,8 @@ export class CalDavSettingTab extends PluginSettingTab {
     });
 
     // ---- 杂项（MISC）----
-    // 两处筛选下拉的「默认值」：默认都是「上次使用项」（本机 localStorage 记住，
-    // 不随数据同步），也可固定成某一项。选项表直接取自 ui/filter-pref.ts，
+    // 两处筛选下拉的「默认值」：默认都是「上次使用项」（记在配置里，随数据同步），
+    // 也可固定成某一项。选项表直接取自 ui/filter-pref.ts，
     // 与 Dock 下拉 / 任务视图下拉同一份，避免加项时两边漂移。
     defs.push({
       type: "group",

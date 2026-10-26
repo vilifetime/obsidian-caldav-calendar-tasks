@@ -4,12 +4,18 @@
  * 2026-10-26 雄哥要求：Dock / 任务视图的筛选默认值「不希望固定不可更改」，
  * 设置里新增「上次使用项」（默认）+ 各自下拉的全部取值。
  *
- * ## 为什么存 localStorage 而不进设置
+ * ## 2026-10-27：存储从 localStorage 改到配置（`CalSettings`）
  *
- * 与 `view-pref.ts`（记住上次视图）同一套理由：这是**本机 UI 偏好**，不是业务数据 ——
- *   - 桌面端可能想看「本周任务」、手机端只想看「今日」，没必要跨设备同步
- *   - 不该混进 `CalSettings`（那是给用户看的配置，混进内部状态会污染设置页）
- *   - 切筛选是高频操作，走 data.json 意味着每次都落盘
+ * 原先按「纯 UI 偏好、不该跨设备同步」的理由存了 localStorage。现改存配置，
+ * 与思源端保持一致，两条理由：
+ *   ① 思源端**必须**这么改 —— 它每次启动的内核端口是随机的，而 localStorage 按
+ *      origin（**含端口**）隔离，写进去的记录下次永远读不回来，等于根本没记住
+ *      （这就是「上次使用项」不生效的根因）。
+ *   ② Obsidian 端 localStorage 虽然能用（origin 固定），但它是 **app 级**的、
+ *      所有 vault 共享同一份 —— 换个 vault 会读到另一个 vault 的筛选。
+ *      data.json 是 per-vault 的，存那儿反而修好了这个串味问题。
+ *
+ * 代价：多端同步会互相覆盖，但只影响「上次哪个筛选」，后果很小。
  *
  * ## 「上次使用项」不存在时的回落
  *
@@ -23,15 +29,9 @@
  *
  * ## 容错
  *
- * localStorage 可能因隐私模式 / 配额而抛异常，**读写全部包 try**；
  * 读到的值必须落在合法集合内，否则视为无记录 —— 不让脏数据把面板卡死。
  */
 import type { CalSettings, DockFilterKey, TaskFilterKey } from "../core/types";
-
-/** 上次使用的 Dock 筛选 */
-const KEY_DOCK = "caldav-dock-filter";
-/** 上次使用的任务视图筛选 */
-const KEY_TASK = "caldav-task-filter";
 
 /**
  * Dock 下拉的顺序（即下拉中的显示顺序）。
@@ -89,39 +89,32 @@ export const DEFAULT_DOCK_FILTER: DockFilterKey = "undone";
 /** 无记录时任务视图的初始筛选（与原本一致） */
 export const DEFAULT_TASK_FILTER: TaskFilterKey = "allincomplete";
 
-function read(key: string, valid: readonly string[]): string | null {
-  try {
-    const raw = globalThis.localStorage?.getItem(key);
-    if (!raw) return null;
-    return valid.includes(raw) ? raw : null; // 脏数据视为无记录
-  } catch {
-    // 隐私模式 / 配额受限：读不到就走默认值，不打扰用户
-    return null;
-  }
+/** 读出来的值必须落在合法集合内，否则视为无记录（脏数据不该把面板卡死） */
+function valid<T extends string>(raw: string | undefined, set: readonly string[]): T | null {
+  if (!raw) return null;
+  return set.includes(raw) ? (raw as T) : null;
 }
 
-function write(key: string, value: string): void {
-  try {
-    globalThis.localStorage?.setItem(key, value);
-  } catch {
-    /* 忽略：记不住只是下次回到默认筛选，不影响使用 */
-  }
+export function loadLastDockFilter(s: CalSettings): DockFilterKey | null {
+  return valid<DockFilterKey>(s.lastDockFilter, DOCK_FILTER_KEYS);
 }
 
-export function loadLastDockFilter(): DockFilterKey | null {
-  return read(KEY_DOCK, DOCK_FILTER_KEYS) as DockFilterKey | null;
+/**
+ * 记下本次选的（写进配置 `settings.lastDockFilter`）。
+ *
+ * ⚠️ 只改内存里的 settings，**调用方负责随后 `store.markSettingsDirty()` 落盘** ——
+ * 切筛选是高频操作，由调用方决定何时写，这里不越权触发持久化。
+ */
+export function saveLastDockFilter(s: CalSettings, k: DockFilterKey): void {
+  s.lastDockFilter = k;
 }
 
-export function saveLastDockFilter(k: DockFilterKey): void {
-  write(KEY_DOCK, k);
+export function loadLastTaskFilter(s: CalSettings): TaskFilterKey | null {
+  return valid<TaskFilterKey>(s.lastTaskFilter, TASK_FILTER_KEYS);
 }
 
-export function loadLastTaskFilter(): TaskFilterKey | null {
-  return read(KEY_TASK, TASK_FILTER_KEYS) as TaskFilterKey | null;
-}
-
-export function saveLastTaskFilter(k: TaskFilterKey): void {
-  write(KEY_TASK, k);
+export function saveLastTaskFilter(s: CalSettings, k: TaskFilterKey): void {
+  s.lastTaskFilter = k;
 }
 
 /**
@@ -131,13 +124,13 @@ export function saveLastTaskFilter(k: TaskFilterKey): void {
  */
 export function resolveDockFilter(s: CalSettings): DockFilterKey {
   const v = s.defaultDockFilter;
-  if (!v || v === "last") return loadLastDockFilter() ?? DEFAULT_DOCK_FILTER;
+  if (!v || v === "last") return loadLastDockFilter(s) ?? DEFAULT_DOCK_FILTER;
   return DOCK_FILTER_KEYS.includes(v) ? v : DEFAULT_DOCK_FILTER;
 }
 
 /** 解析「任务视图默认筛选」设置 → 实际该用的初始筛选（同上） */
 export function resolveTaskFilter(s: CalSettings): TaskFilterKey {
   const v = s.defaultTaskFilter;
-  if (!v || v === "last") return loadLastTaskFilter() ?? DEFAULT_TASK_FILTER;
+  if (!v || v === "last") return loadLastTaskFilter(s) ?? DEFAULT_TASK_FILTER;
   return TASK_FILTER_KEYS.includes(v) ? v : DEFAULT_TASK_FILTER;
 }

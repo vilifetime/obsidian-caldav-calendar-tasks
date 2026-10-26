@@ -441,7 +441,7 @@ export interface CalSettings {
   // ── 杂项（MISC）：两处筛选下拉的默认值（2026-10-26）──
   /**
    * 侧边栏 Dock 打开时的默认筛选。
-   * `"last"` = 上次使用项（本机 localStorage 记住；无记录时回落「所有未完成」），
+   * `"last"` = 上次使用项（记在配置里、随数据同步；无记录时回落「所有未完成」），
    * 其余取值 = 固定为该筛选，每次打开都用它。
    */
   defaultDockFilter?: "last" | DockFilterKey;
@@ -449,6 +449,31 @@ export interface CalSettings {
    * 任务视图打开时的默认筛选，语义同 defaultDockFilter。
    */
   defaultTaskFilter?: "last" | TaskFilterKey;
+
+  // ── 「上次使用项」的记录值（2026-10-27 改存配置，随数据同步）──
+  //
+  // 原先按「纯 UI 偏好、不该跨设备同步」的理由存了 localStorage，现在统一改成
+  // 存配置，与思源端保持一致。两条理由：
+  //   ① 思源端**必须**这么改 —— 思源每次启动的内核端口是随机的，而 localStorage
+  //      按 origin（含端口）隔离，写进去的记录下次永远读不回来，等于根本没记住。
+  //   ② Obsidian 端 localStorage 虽然能用（origin 固定），但它是 **app 级**的，
+  //      所有 vault 共享同一份 —— 换个 vault 会读到另一个 vault 的视图/筛选。
+  //      存进 data.json 反而修好了这个串味问题（data.json 是 per-vault 的）。
+  //
+  // 代价：多端（思源云同步 / Obsidian Sync 同步 .obsidian）会互相覆盖，
+  // 但只影响「上次用的哪个视图/哪个筛选」，后果很小。
+  //
+  // 这几个字段**不渲染进设置页**（设置页只画它显式声明的控件），
+  // 所以不会污染用户界面 —— 它是配置里带的记录值，不是给用户调的选项。
+
+  /** 上次使用的 Dock 筛选（defaultDockFilter==="last" 时用它） */
+  lastDockFilter?: DockFilterKey;
+  /** 上次使用的任务视图筛选（defaultTaskFilter==="last" 时用它） */
+  lastTaskFilter?: TaskFilterKey;
+  /** 上次使用的视图（年/月/周/日/任务）。string 而非 ViewMode —— ViewMode 定义在 ui/panel-ctx.ts，core 不能反向依赖 ui */
+  lastView?: string;
+  /** 上次使用的**日历**视图（年/月/周/日，不含任务），供从任务视图切回时用 */
+  lastCalendarView?: string;
 }
 
 /**

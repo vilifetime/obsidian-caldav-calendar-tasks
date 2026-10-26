@@ -828,8 +828,8 @@ export default class CalDavPlugin extends Plugin {
       insertTodayToDiary: (range, target) => this.insertTodayToDiary(range, target),
       unsaved: new Set(),
       // 恢复上次使用的视图（2026-10-07 雄哥要求）；无记录时为月视图。
-      // 纯 UI 偏好，存 localStorage 而非 data.json —— 理由见 ui/view-pref.ts。
-      viewMode: initialViewMode(),
+      // 记在配置里（settings.lastView）—— 理由见 ui/view-pref.ts。
+      viewMode: initialViewMode(this.store.settings),
       // 「列表」正交开关（2026-10-25 方案 A）：默认关 —— 列表是**呈现方式**，
       // 不是第五种时间段，记住它会让下次打开面板时用户摸不着头脑（怎么没有月历了？）
       listMode: false,

@@ -26,7 +26,18 @@ function rmrf(dir) {
 // 测试删的临时产物轻松过 50 件，后半程的测试会被同一个守卫拦下。
 // 清的是 tsc 临时编译目录，删不掉不影响正确性（下次编译会整体覆盖），
 // 所以这里只吞守卫错误，其它错误照抛。
-const isGuard = (e) => typeof e?.code === "string" && e.code.startsWith("SAFE_DELETE");
+/**
+ * 判断是不是宿主的 safe-delete 守卫拦下来的。
+ *
+ * ⚠️ 守卫抛的是 `new Error(detail)` —— **没有 `code` 属性**，标记只在**消息**里：
+ *   `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {...}`
+ * 早先只判 `e.code.startsWith("SAFE_DELETE")`，于是永远匹配不到，兜底形同虚设 ——
+ * 跑一轮全量测试（删除数轻松过 50）后，后半程的测试会被同一个守卫拦下崩掉
+ * （2026-10-27 实测）。两种判据都留着：万一以后宿主补上 code，也能兜住。
+ */
+const isGuard = (e) =>
+  (typeof e?.code === "string" && e.code.startsWith("SAFE_DELETE")) ||
+  (typeof e?.message === "string" && e.message.includes("[safe-delete][SAFE_DELETE"));
 
 function unlinkQuiet(p) {
   try {
