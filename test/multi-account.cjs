@@ -324,8 +324,24 @@ check("手风琴：只为**展开**的那个账户 push 三段（收起的绝不
   assert.ok(/if \(open\)/.test(seg), "accDetail 的填充必须在 open 分支内");
 });
 
+check("详情三段必须是顶层 defs（group.items 嵌套 group/list 会被宿主整个忽略）", () => {
+  // 2026-10-26 实踩：把「服务器/日历/策略」三段塞进「日历账户」组的 items，
+  // Obsidian 的 SettingGroupItem 只收 SettingDefinition/Page，嵌套组静默不渲染——
+  // 展开按钮变「收起」但详情凭空消失。类型上被 Record<string, unknown> 绕过没拦住。
+  assert.ok(/defs\.push\(\.\.\.accDetail\);/.test(tab), "详情段应作为顶层 defs push");
+  const acctGrp = tab.slice(
+    tab.indexOf("heading: t(\"settings.groupAccount\")"),
+    tab.indexOf("defs.push(...accDetail);")
+  );
+  assert.ok(!acctGrp.includes("...accDetail"), "账户组的 items 里绝不能再展开 accDetail");
+  // 类型护栏：defs/accDetail 必须用宿主类型，不能用 Record 绕过检查
+  assert.ok(/const defs: SettingDefinitionItem\[\] = \[\];/.test(tab), "defs 应声明为 SettingDefinitionItem[]");
+  assert.ok(/const accDetail: SettingDefinitionItem\[\] = \[\];/.test(tab), "accDetail 应声明为 SettingDefinitionItem[]");
+});
+
 check("账户内第三段叫「策略」，含冲突/窗口/两个上限", () => {
-  const start = tab.indexOf('heading: t("settings.groupStrategy")');
+  // 标题带账户名（sec() 拼接）——多账户下不标名看不出这三段属于谁
+  const start = tab.indexOf('heading: sec(t("settings.groupStrategy"))');
   assert.ok(start > 0, "账户内应有「策略」段");
   const grp = tab.slice(start, tab.indexOf('type: "group"', start + 10));
   for (const key of ["conflict", "pastDays", "attachSizeMaxMB", "icsSizeMaxMB"]) {

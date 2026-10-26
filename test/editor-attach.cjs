@@ -226,7 +226,7 @@ check("设置页声明 icsSizeMaxMB（账户键）", () => {
 check("两个上限项挂在账户策略分组里（groupStrategy 之内）", () => {
   // 从 groupStrategy 标题截到下一个分组标题（第一个 ] 会撞上 aliases 数组，
   // 用分组边界更稳）
-  const start = settingsTab.indexOf('heading: t("settings.groupStrategy")');
+  const start = settingsTab.indexOf('heading: sec(t("settings.groupStrategy"))');
   assert.ok(start > 0, "应找到策略分组");
   const nextGroup = settingsTab.indexOf('type: "group"', start + 10);
   const group = settingsTab.slice(start, nextGroup > 0 ? nextGroup : undefined);

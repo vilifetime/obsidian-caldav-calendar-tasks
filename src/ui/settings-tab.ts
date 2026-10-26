@@ -22,7 +22,7 @@
  * 三处声明式表达不了的设置用 `render` 自绘（仍用 `new Setting(...)`）：
  * 密码框（text 控件无 password 选项）、显示范围（一行两个数字）、按钮组。
  */
-import { Notice, PluginSettingTab, Setting, type App, type SettingDefinitionItem } from "obsidian";
+import { Notice, PluginSettingTab, Setting, type App, type SettingDefinitionItem, type SettingGroupItem } from "obsidian";
 import type CalDavPlugin from "@/main";
 import type { HostSettings } from "@/main";
 import { describeNetworkError, discoverCalendars, testConnection } from "@/core/caldav";
@@ -196,7 +196,10 @@ export class CalDavSettingTab extends PluginSettingTab {
       validate: (n: number) => (Number.isFinite(n) && n >= 0 ? undefined : t("settings.invalidNumber")),
     });
 
-    const defs: Record<string, unknown>[] = [];
+    // ⚠️ 类型必须是 SettingDefinitionItem / SettingGroupItem，不能用 Record<string, unknown>：
+    // 2026-10-26 实踩——Record 绕过类型检查，把 group 嵌进了 group.items（宿主只允许
+    // 顶层 defs 放 group/list），运行时整段被忽略，展开的账户详情「凭空消失」。
+    const defs: SettingDefinitionItem[] = [];
 
     // ---- 语言 ----
     // 放在最前面：改语言要立刻重渲染整页，排在后面用户会看不到变化。
@@ -226,7 +229,7 @@ export class CalDavSettingTab extends PluginSettingTab {
     // 卡片列表 + 手风琴：每项一行（名称 / 摘要 / 启用开关 / 展开 / 删除），
     // **只有展开的那个账户**把「服务器 / 日历 / 策略」三段 push 进 defs。
     const accounts = s.accounts || [];
-    const accItems: Record<string, unknown>[] = accounts.length
+    const accItems: SettingGroupItem[] = accounts.length
       ? accounts.map((acc) => ({
           name: acc.name,
           desc: acc.serverUrl
@@ -237,13 +240,17 @@ export class CalDavSettingTab extends PluginSettingTab {
         }))
       : [{ name: t("settings.accEmpty"), desc: t("settings.accEmptyDesc") }];
 
-    // 展开账户的三段（服务器 / 日历 / 策略）——收起的账户不渲染，见 activeAccId 注释
+    // 展开账户的三段（服务器 / 日历 / 策略）——收起的账户不渲染，见 activeAccId 注释。
+    // ⚠️ 这三段必须是**顶层 defs**（紧跟「日历账户」组之后）：group.items 只收
+    // SettingDefinition/Page，嵌套 group/list 会被宿主整个忽略（2026-10-26 实踩）。
+    // 标题带账户名——多账户下不标名看不出这三段属于谁。
     const open = this.activeAcc();
-    const accDetail: Record<string, unknown>[] = [];
+    const accDetail: SettingDefinitionItem[] = [];
     if (open) {
       const pre = `acc.${open.id}.`;
+      const sec = (h: string): string => `${h} · ${open.name}`;
       // ---- 服务器 ----
-      accDetail.push({ type: "group", heading: t("settings.groupServer"), items: [
+      accDetail.push({ type: "group", heading: sec(t("settings.groupServer")), items: [
         {
           name: t("settings.accName"),
           desc: t("settings.accNameDesc"),
@@ -304,13 +311,13 @@ export class CalDavSettingTab extends PluginSettingTab {
       ] });
 
       // ---- 日历 ----
-      const calItems: Record<string, unknown>[] = (open.calendars || []).length
+      const calItems: SettingGroupItem[] = (open.calendars || []).length
         ? (open.calendars || []).map((cal) => this.calendarDefinition(cal, open))
         : [{ name: t("settings.noCalendar"), desc: t("settings.noCalendarDesc") }];
-      accDetail.push({ type: "list", heading: t("settings.groupCalendar"), items: calItems, cls: "caldav-cal-list" });
+      accDetail.push({ type: "list", heading: sec(t("settings.groupCalendar")), items: calItems, cls: "caldav-cal-list" });
 
       // ---- 策略（原「同步」段中属于账户的部分：冲突 / 窗口 / 附件上限）----
-      accDetail.push({ type: "group", heading: t("settings.groupStrategy"), items: [
+      accDetail.push({ type: "group", heading: sec(t("settings.groupStrategy")), items: [
         {
           name: t("settings.conflict"),
           desc: t("settings.conflictDesc"),
@@ -350,7 +357,6 @@ export class CalDavSettingTab extends PluginSettingTab {
       heading: t("settings.groupAccount"),
       items: [
         ...accItems,
-        ...accDetail,
         {
           name: t("settings.accAdd"),
           desc: t("settings.accAddDesc"),
@@ -359,6 +365,8 @@ export class CalDavSettingTab extends PluginSettingTab {
         },
       ],
     });
+    // 展开账户的详情段是顶层组（group.items 不允许嵌套 group/list，见上方注释）
+    defs.push(...accDetail);
 
     // ---- 同步（全局）----
     defs.push({
@@ -566,7 +574,7 @@ export class CalDavSettingTab extends PluginSettingTab {
   }
 
   /** 单个日历的声明式定义：启用勾选 + 日程色 / 待办色 */
-  private calendarDefinition(cal: CalCalendar, acc: CalAccount): Record<string, unknown> {
+  private calendarDefinition(cal: CalCalendar, acc: CalAccount): SettingGroupItem {
     return {
       name: cal.displayName || cal.url,
       desc: this.calendarCaps(cal) ? t("settings.capDesc", { caps: this.calendarCaps(cal) }) : cal.url,
