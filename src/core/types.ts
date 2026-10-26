@@ -418,6 +418,25 @@ export interface CalSettings {
    * 2026-10-12 从思源侧同步回来（见思源 CalSettings.includeOverdueTodos）。
    */
   includeOverdueTodos?: boolean;
+
+  // ── 中国日历叠加层（2026-10-26 从思源侧同构）──
+  // 纯展示：节假日/农历/节气一律不进 CalDAV、不参与同步、不写服务器。
+  // 节假日联网按年拉取缓存；农历/节气走内置 lunar-javascript 算法。
+  /** 显示节假日（名称 + 休/班） */
+  showHolidaysCN?: boolean;
+  /** 显示农历 */
+  showLunarCN?: boolean;
+  /** 显示节气（优先于农历，有节气时只显节气） */
+  showTermCN?: boolean;
+  /**
+   * 节假日数据源：timor / holiday-cn / chinese-days / custom。
+   * 默认 timor（国内部署，最稳）；各预设都把 timor 作为最终兜底候选。
+   */
+  holidayCnSource?: "timor" | "holiday-cn" | "chinese-days" | "custom";
+  /** 自定义源 URL（holidayCnSource=custom 时生效，支持 {year} 占位） */
+  holidayCnCustomUrl?: string;
+  /** 节假日缓存复查频率：manual 不自动复查 / daily 每日 / weekly 每周 */
+  holidayCnUpdateFreq?: "manual" | "daily" | "weekly";
 }
 
 /**
@@ -453,7 +472,13 @@ export const DEFAULT_SETTINGS: CalSettings = {
   showTodosInCalendar: true,
   categories: DEFAULT_CATEGORIES,
   categoryMulti: false,
-  includeOverdueTodos: false
+  includeOverdueTodos: false,
+  // 中国日历叠加层默认全开（纯展示，不影响同步）；数据源默认 timor（国内部署最稳），每周复查一次
+  showHolidaysCN: true,
+  showLunarCN: true,
+  showTermCN: true,
+  holidayCnSource: "timor",
+  holidayCnUpdateFreq: "weekly"
 };
 
 export interface SyncState {

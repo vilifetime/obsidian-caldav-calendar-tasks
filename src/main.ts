@@ -30,7 +30,8 @@ import {
   type DiaryRange,
   type DiaryTarget,
 } from "@/ui/diary-range";
-import { setTransport } from "@/core/http";
+import { setTransport, httpRequest } from "@/core/http";
+import { setHolidayTransport } from "@/core/holiday-cn";
 import { ReminderEngine } from "@/core/reminder";
 import { obsidianTransport } from "@/obs/http-transport";
 import { nodeHttpsTransport } from "@/obs/node-https-transport";
@@ -219,6 +220,18 @@ export default class CalDavPlugin extends Plugin {
     // 桌面端走自建 Node https 传输（自行控制重定向、保留跨域 Authorization，
     // 才能正确完成 iCloud 的根→节点主机重定向发现）；移动端无 Node 环境，退回 requestUrl。
     setTransport(isMobile() ? obsidianTransport : nodeHttpsTransport);
+
+    // ①.5 中国日历叠加层：节假日拉取走与 CalDAV 同步同一套 httpRequest（Obsidian 请求天然无 CORS，
+    //     国内访问稳定）。holiday-cn.ts 默认走浏览器 fetch，这里收口到宿主传输实现。
+    setHolidayTransport(async (url, timeoutMs, headers) => {
+      try {
+        const r = await httpRequest(url, { method: "GET", headers, timeoutMs }, "auto");
+        if (r.status < 200 || r.status >= 300) return { ok: false, error: "HTTP " + r.status };
+        return { ok: true, data: JSON.parse(r.body) };
+      } catch (e) {
+        return { ok: false, error: String((e as Error)?.message || e) };
+      }
+    });
 
     // ② 数据层：Obsidian 的 loadData/saveData 与思源语义一致（后者多一个文件名参数）
     //    先把原始数据取出来判「是否新装」—— loadData() 只能调一次（缓存了），

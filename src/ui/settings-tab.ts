@@ -39,6 +39,7 @@ import {
   type CalSettings
 } from "@/core/types";
 import { t, currentLang } from "@/i18n";
+import { forceRefreshChinaCalendar, getLastHolidayError } from "@/core/holiday-cn";
 import { formatTimeText } from "@/core/server-id";
 import type { TimerHandle } from "@/constants";
 /**
@@ -455,6 +456,78 @@ export class CalDavSettingTab extends PluginSettingTab {
       ],
     });
 
+    // ---- 中国日历叠加层 ----
+    // 纯展示：节假日/农历/节气挂在日期数字旁，不进 CalDAV、不参与同步、不写服务器。
+    // 声明式最多只能到 group.items 一层（嵌套 group/list 会被宿主忽略），故「立即检查更新」
+    // 用 render 自绘一个按钮即可；下拉/开关都是原生声明式控件，无需自绘。
+    defs.push({
+      type: "group",
+      heading: t("settings.groupChina"),
+      items: [
+        {
+          name: t("settings.showHolidaysCN"),
+          desc: t("settings.showHolidaysCNDesc"),
+          control: { type: "toggle" as const, key: "showHolidaysCN" },
+          aliases: ["节假日", "法定", "holiday", "休", "班"],
+        },
+        {
+          name: t("settings.showLunarCN"),
+          desc: t("settings.showLunarCNDesc"),
+          control: { type: "toggle" as const, key: "showLunarCN" },
+          aliases: ["农历", "lunar", "阴历"],
+        },
+        {
+          name: t("settings.showTermCN"),
+          desc: t("settings.showTermCNDesc"),
+          control: { type: "toggle" as const, key: "showTermCN" },
+          aliases: ["节气", "term", "jieqi"],
+        },
+        {
+          name: t("settings.holidayCnSource"),
+          desc: t("settings.holidayCnSourceDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: "holidayCnSource",
+            defaultValue: "timor",
+            options: {
+              timor: t("settings.holidayCnSourceTimor"),
+              "holiday-cn": t("settings.holidayCnSourceHolidayCn"),
+              "chinese-days": t("settings.holidayCnSourceChineseDays"),
+              custom: t("settings.holidayCnSourceCustom"),
+            },
+          },
+          aliases: ["数据源", "source", "timor", "jsdelivr"],
+        },
+        {
+          name: t("settings.holidayCnCustomUrl"),
+          desc: t("settings.holidayCnCustomUrlDesc"),
+          control: { type: "text" as const, key: "holidayCnCustomUrl", placeholder: "https://example.com/{year}.json" },
+          aliases: ["自定义", "custom", "url"],
+        },
+        {
+          name: t("settings.holidayCnUpdateFreq"),
+          desc: t("settings.holidayCnUpdateFreqDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: "holidayCnUpdateFreq",
+            defaultValue: "weekly",
+            options: {
+              manual: t("settings.holidayCnUpdateManual"),
+              daily: t("settings.holidayCnUpdateDaily"),
+              weekly: t("settings.holidayCnUpdateWeekly"),
+            },
+          },
+          aliases: ["频率", "更新", "freq"],
+        },
+        {
+          name: t("settings.cnRefresh"),
+          desc: t("settings.cnRefreshDesc"),
+          render: (setting: Setting) => this.renderCnRefreshButton(setting),
+          aliases: ["刷新", "更新", "refresh", "节假日"],
+        },
+      ],
+    });
+
     // ---- 本地数据 ----
     // 「切换服务器时清理旧条目」开关已随多账户废除（2026-10-25）：清理由「删除账户」
     // 时可选执行（store.purgeAccountItems），不再有一个容易误伤的常开开关。
@@ -778,6 +851,27 @@ export class CalDavSettingTab extends PluginSettingTab {
           await this.plugin.mainCtx.testReminder?.();
           // 提醒状态已变，重渲染让描述里的排程数刷新
           this.update();
+        })
+      );
+  }
+
+  /**
+   * 中国日历「立即检查更新」按钮。
+   * 强制拉取当前年 ±1 的节假日数据；成功则刷新日历视图，失败回显最近一次真实错误原因。
+   */
+  private renderCnRefreshButton(setting: Setting): void {
+    setting
+      .addButton((b) =>
+        b.setButtonText(t("settings.cnRefresh")).onClick(async () => {
+          const y = new Date().getFullYear();
+          const ok = await forceRefreshChinaCalendar(this.s, [y - 1, y, y + 1]);
+          if (ok) {
+            new Notice(t("settings.cnRefreshOk"));
+            this.plugin.refreshViews?.();
+          } else {
+            const err = getLastHolidayError();
+            new Notice(t("settings.cnRefreshFail", { msg: err || t("settings.cnRefreshFailUnknown") }));
+          }
         })
       );
   }

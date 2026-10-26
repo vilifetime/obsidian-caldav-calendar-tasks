@@ -20,6 +20,7 @@ import { renderTaskView } from "./view-task";
 import { renderYearView } from "./view-year";
 import { renderListView } from "./view-list";
 import { todoDueOccurrences } from "./view-common";
+import { warmChinaCalendar } from "@/core/holiday-cn";
 import { saveViewMode, saveCalendarView, loadCalendarView, DEFAULT_VIEW } from "./view-pref";
 import { askDiaryRange } from "./diary-range-modal";
 import { setHtml } from "./dom";
@@ -373,6 +374,13 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     }
     // DOM 刚被重建，恢复选中格高亮
     applySelectedDay();
+
+    // 中国日历叠加层：渲染完成后异步预热当前年 ±1 的节假日数据；
+    // 拉到新数据则再触发一次重绘（不影响本次渲染的流畅性）。
+    const curYear = +ctx.cursor.slice(0, 4);
+    void warmChinaCalendar(ctx.store.settings, [curYear - 1, curYear, curYear + 1]).then((changed) => {
+      if (changed && !destroyed) renderView();
+    });
   }
 
   function renderAll(): void {

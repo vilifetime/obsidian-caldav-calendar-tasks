@@ -1,6 +1,6 @@
 /** 月视图：5 行 x 7 列（周一起始，以今天为锚的滑动窗口） */
 import { addDays, dateStampOfMs, todayStamp } from "../core/date";
-import { monthChipHtml, calColorOf, type ViewArgs } from "./view-common";
+import { monthChipHtml, calColorOf, chinaDayBarHTML, type ViewArgs } from "./view-common";
 import { setHtml } from "./dom";
 import { t } from "@/i18n";
 import { openMonthDayPopup, closeMonthDayPopup, schedulePopupClose, cancelPopupClose } from "./month-day-popup";
@@ -88,7 +88,7 @@ export function renderMonthView({ ctx, viewEl, occurrences }: ViewArgs): void {
     dayEntries.set(day, fullList);
     // data-more：悬停时据此判断这一格要不要弹浮层
     html.push(`<div class="cal-month-cell ${inMonth ? "" : "is-out"} ${isToday ? "is-today" : ""}" data-day="${day}" data-more="${more}">
-      <div class="cal-month-daynum">${isToday ? `<span class="cal-today-badge">${+day.slice(8, 10)}</span>` : +day.slice(8, 10)}</div>
+      <div class="cal-month-daynum">${isToday ? `<span class="cal-today-badge">${+day.slice(8, 10)}</span>` : +day.slice(8, 10)}${chinaDayBarHTML(ctx, day)}</div>
       <div class="cal-month-chips">${chips}${more > 0 ? `<div class="cal-chip-more">${t("cal.moreItems", { count: more })}</div>` : ""}</div>
     </div>`);
   }
