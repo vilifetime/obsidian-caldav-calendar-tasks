@@ -5,6 +5,10 @@
   /* 工具栏控件的统一高度（文字按钮与图标按钮共用）。
      见 .caldav-btn 处「为什么必须显式定高」的说明。 */
   --caldav-btn-h: 34px;
+  /* 分段控件（年/月/周/日）与「列表」按钮的**统一高度**。
+     两者必须严格等高 —— 否则「列表」比左侧分段框高出一截（见下方 .caldav-list-toggle
+     注释：它是 button，宿主主题会给 button 默认 height，没显式覆盖就会比 div 分段框高）。 */
+  --caldav-seg-h: 28px;
   --caldav-bg: var(--background-primary, #fff);
   --caldav-bg-2: var(--background-secondary, #f6f8fa);
   --caldav-bg-3: var(--background-secondary-alt, #eef1f5);
@@ -3073,12 +3077,22 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 /* 分段控件 年/月/周/日 */
 .caldav-seg {
   display: inline-flex;
+  /* 与 .caldav-list-toggle 共用同一高度变量，两者才会严格等高（见 .caldav-list-toggle）。
+     box-sizing: border-box —— 否则 28px + 上下各 1px 边框 = 外廓 30px，
+     又比列表按钮高 2px，等于换个地方复现同一个毛病。 */
+  box-sizing: border-box;
+  height: var(--caldav-seg-h);
+  align-items: stretch;
   border: 1px solid var(--caldav-border);
   border-radius: 8px;
   overflow: hidden;
   background: var(--caldav-bg-2);
 }
 .caldav-seg-btn {
+  /* 在固定高度的 .caldav-seg 里垂直居中文字（stretch 已让按钮撑满高度） */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 5px 14px;
   border: none;
   background: transparent;
@@ -3774,8 +3788,18 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 /* 复用月/周视图的勾圈样式（✓ 常驻、显隐由 CSS 控制） */
 .cal-list-row .cal-chip-check { flex: 0 0 auto; }
 
-/* 「列表」按钮：独立于 .caldav-seg（不被误读成第五种时间段） */
+/* 「列表」按钮：独立于 .caldav-seg（不被误读成第五种时间段）
+   ⚠️ 它是 <button>，宿主（Obsidian）主题会给 button 默认 `height: var(--input-height)`（约 30px），
+   权重比不上类选择器，但本规则没写 height 时就是它在生效 —— 于是「列表」比旁边的
+   .caldav-seg（div，不受 button 默认高度影响，自然高约 27px）高出一截。
+   症状：列表框比年月周日框高 2~3px（雄哥截图反馈）。
+   修复：用与 .caldav-seg 同一个高度变量 + border-box，两者严格等高。 */
 .caldav-list-toggle {
+  box-sizing: border-box;
+  height: var(--caldav-seg-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 5px 14px;
   border: 1px solid var(--caldav-border);
   border-radius: 8px;

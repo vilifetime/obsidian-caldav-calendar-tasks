@@ -207,3 +207,42 @@ console.log("  - 手动同步按钮在「新建」右侧，带旋转 + 禁用反
 console.log("  - ctx.syncNow / isSyncing 已接线到入口 runSync");
 console.log("  - i18n 中英文 toolbar.syncNow 齐备");
 console.log("  - adoptBackup 可 await，runSync 并发排队不丢弃");
+
+/* ── ⑨ 「列表」按钮必须与左侧「年/月/周/日」分段框严格等高 ───────
+ * 根因：.caldav-list-toggle 是 <button>，宿主主题会给 button 默认 height，
+ * 没显式覆盖就会被压成主题高度（约 30px），比 .caldav-seg（div，自然高约 27px）
+ * 高出一截。修复 = 两者共用 --caldav-seg-h + border-box。
+ */
+const segRule = rule(".caldav-seg");
+assert.ok(segRule, "应存在 .caldav-seg 规则");
+assert.ok(
+  /height:\s*var\(--caldav-seg-h\)/.test(segRule),
+  ".caldav-seg 必须用 height: var(--caldav-seg-h) 定高（否则与列表按钮不等高）"
+);
+assert.ok(
+  /box-sizing:\s*border-box/.test(segRule),
+  ".caldav-seg 必须 border-box（否则 28px + 上下边框 = 30px，比列表按钮高 2px）"
+);
+
+const listToggleRule = rule(".caldav-list-toggle");
+assert.ok(listToggleRule, "应存在 .caldav-list-toggle 规则");
+assert.ok(
+  /height:\s*var\(--caldav-seg-h\)/.test(listToggleRule),
+  ".caldav-list-toggle 必须用 height: var(--caldav-seg-h) 定高（只靠 padding 会被宿主 button 的 height 压高）"
+);
+assert.ok(
+  /box-sizing:\s*border-box/.test(listToggleRule),
+  ".caldav-list-toggle 必须 border-box"
+);
+
+assert.ok(
+  /--caldav-seg-h:\s*\d+px/.test(css),
+  ".caldav-root 里必须定义 --caldav-seg-h（否则 var() 解析为空，height 失效退回 auto）"
+);
+assert.ok(
+  /\.caldav-seg\s*\{[\s\S]*?height:\s*var\(--caldav-seg-h\)[\s\S]*?\}\s*\n\.caldav-seg-btn/.test(css) ||
+    /\.caldav-list-toggle\s*\{[\s\S]*?height:\s*var\(--caldav-seg-h\)/.test(css),
+  "分段框与列表按钮的高度声明都应取自同一个 --caldav-seg-h 变量（两处各写各的像素值就会差）"
+);
+
+console.log("  - 「列表」按钮与「年/月/周/日」分段框共用 --caldav-seg-h + border-box，严格等高");
