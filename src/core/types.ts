@@ -437,7 +437,36 @@ export interface CalSettings {
   holidayCnCustomUrl?: string;
   /** 节假日缓存复查频率：manual 不自动复查 / daily 每日 / weekly 每周 */
   holidayCnUpdateFreq?: "manual" | "daily" | "weekly";
+
+  // ── 杂项（MISC）：两处筛选下拉的默认值（2026-10-26）──
+  /**
+   * 侧边栏 Dock 打开时的默认筛选。
+   * `"last"` = 上次使用项（本机 localStorage 记住；无记录时回落「所有未完成」），
+   * 其余取值 = 固定为该筛选，每次打开都用它。
+   */
+  defaultDockFilter?: "last" | DockFilterKey;
+  /**
+   * 任务视图打开时的默认筛选，语义同 defaultDockFilter。
+   */
+  defaultTaskFilter?: "last" | TaskFilterKey;
 }
+
+/**
+ * 侧边栏 Dock 筛选下拉的全部键（顺序即下拉中的顺序，见 ui/filter-pref.ts）。
+ *
+ * ⚠️ 放在 core/types.ts 而不是 ui/panel.ts：设置项 `defaultDockFilter` 的类型
+ * 要引用它，而 core 不能反向依赖 ui（会成环）。SortMode 同理早已放这里。
+ */
+export type DockFilterKey =
+  | "today" | "tomorrow" | "next7" | "thisweek" | "future"
+  | "overdue" | "past7" | "undone" | "nodate"
+  | "doneToday" | "doneYesterday" | "done";
+
+/** 任务视图筛选下拉的全部键（见 ui/filter-pref.ts） */
+export type TaskFilterKey =
+  | "allitems" | "today" | "tomorrow" | "next7" | "thisweek" | "future"
+  | "overdue" | "past7" | "allincomplete" | "nodate"
+  | "todaydone" | "yesterdaydone" | "doneall";
 
 /**
  * 「清理旧服务器条目」的备份。
@@ -478,7 +507,10 @@ export const DEFAULT_SETTINGS: CalSettings = {
   showLunarCN: true,
   showTermCN: true,
   holidayCnSource: "timor",
-  holidayCnUpdateFreq: "weekly"
+  holidayCnUpdateFreq: "weekly",
+  // 两处筛选下拉的默认值：一律「上次使用项」（本机记住；无记录时回落「所有未完成」）
+  defaultDockFilter: "last",
+  defaultTaskFilter: "last"
 };
 
 export interface SyncState {

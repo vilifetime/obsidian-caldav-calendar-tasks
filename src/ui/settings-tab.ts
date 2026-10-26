@@ -40,6 +40,7 @@ import {
 } from "@/core/types";
 import { t, currentLang } from "@/i18n";
 import { forceRefreshChinaCalendar, getLastHolidayError } from "@/core/holiday-cn";
+import { DOCK_FILTER_KEYS, DOCK_FILTER_I18N, TASK_FILTER_KEYS, TASK_FILTER_I18N } from "./filter-pref";
 import { formatTimeText } from "@/core/server-id";
 import type { TimerHandle } from "@/constants";
 /**
@@ -524,6 +525,45 @@ export class CalDavSettingTab extends PluginSettingTab {
           desc: t("settings.cnRefreshDesc"),
           render: (setting: Setting) => this.renderCnRefreshButton(setting),
           aliases: ["刷新", "更新", "refresh", "节假日"],
+        },
+      ],
+    });
+
+    // ---- 杂项（MISC）----
+    // 两处筛选下拉的「默认值」：默认都是「上次使用项」（本机 localStorage 记住，
+    // 不随数据同步），也可固定成某一项。选项表直接取自 ui/filter-pref.ts，
+    // 与 Dock 下拉 / 任务视图下拉同一份，避免加项时两边漂移。
+    defs.push({
+      type: "group",
+      heading: t("settings.groupMisc"),
+      items: [
+        {
+          name: t("settings.defaultDockFilter"),
+          desc: t("settings.defaultDockFilterDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: "defaultDockFilter",
+            defaultValue: "last",
+            options: {
+              last: t("settings.defaultFilterLast"),
+              ...Object.fromEntries(DOCK_FILTER_KEYS.map((k) => [k, t(DOCK_FILTER_I18N[k])])),
+            },
+          },
+          aliases: ["dock", "侧边栏", "筛选", "filter", "默认"],
+        },
+        {
+          name: t("settings.defaultTaskFilter"),
+          desc: t("settings.defaultTaskFilterDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: "defaultTaskFilter",
+            defaultValue: "last",
+            options: {
+              last: t("settings.defaultFilterLast"),
+              ...Object.fromEntries(TASK_FILTER_KEYS.map((k) => [k, t(TASK_FILTER_I18N[k])])),
+            },
+          },
+          aliases: ["任务视图", "筛选", "filter", "默认"],
         },
       ],
     });

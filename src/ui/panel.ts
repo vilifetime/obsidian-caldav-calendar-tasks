@@ -6,7 +6,7 @@
  */
 import type { CalStore } from "../core/store";
 import { keyOf } from "../core/store";
-import type { CalItem, SortMode } from "../core/types";
+import type { CalItem, DockFilterKey, SortMode } from "../core/types";
 import { DEFAULT_CATEGORIES, calEventColor, enabledCalendars, findCalendarByUrl } from "../core/types";
 import { occurrencesInRange } from "../core/ics";
 import { parseLocalStamp, stampOfMs, todayStamp, startOfWeek, addDays, isDateOnly, fmtTime, fmtDateCn, diffDays } from "../core/date";
@@ -21,6 +21,7 @@ import { renderYearView } from "./view-year";
 import { renderListView } from "./view-list";
 import { todoDueOccurrences } from "./view-common";
 import { warmChinaCalendar } from "@/core/holiday-cn";
+import { resolveDockFilter, saveLastDockFilter, DOCK_FILTER_KEYS, DOCK_FILTER_I18N } from "./filter-pref";
 import { saveViewMode, saveCalendarView, loadCalendarView, DEFAULT_VIEW } from "./view-pref";
 import { askDiaryRange } from "./diary-range-modal";
 import { setHtml } from "./dom";
@@ -999,10 +1000,11 @@ export function notifyDockExitDetail(): void {
  * 新增 / 排序 为下拉菜单；日历视图 / 任务视图 打开主窗口页签；刷新 触发重新同步。
  * 设置入口从主面板「日历筛选」浮层迁到这里 —— 浮层只留过滤相关的动作，职责更单一。
  */
-type DockFilter =
-  | "today" | "tomorrow" | "next7" | "thisweek" | "future"
-  | "overdue" | "past7" | "undone" | "nodate"
-  | "doneToday" | "doneYesterday" | "done";
+/**
+ * 键集合统一放在 core/types.ts（设置项 defaultDockFilter 要引用它，core 不能反向依赖 ui），
+ * 这里保留 `DockFilter` 这个名字，全部既有用法不用改。
+ */
+type DockFilter = DockFilterKey;
 
 /**
  * 聚焦粒度。
@@ -1022,20 +1024,14 @@ export type FocusScope = "day" | "month" | "week";
  * 模块级常量在 import 时就求值完，若把译文直接放进 label，用户中途改语言后
  * 这个列表不会跟着变（它不在 render 调用链里）。故存 key、在渲染时再 t()。
  */
-const DOCK_FILTERS: Array<{ key: DockFilter; label: string }> = [
-  { key: "next7", label: "dock.filter.next7" },
-  { key: "today", label: "dock.filter.today" },
-  { key: "tomorrow", label: "dock.filter.tomorrow" },
-  { key: "thisweek", label: "dock.filter.thisweek" },
-  { key: "future", label: "dock.filter.future" },
-  { key: "overdue", label: "dock.filter.overdue" },
-  { key: "past7", label: "dock.filter.past7" },
-  { key: "undone", label: "dock.filter.undone" },
-  { key: "nodate", label: "dock.filter.nodate" },
-  { key: "doneToday", label: "dock.filter.doneToday" },
-  { key: "doneYesterday", label: "dock.filter.doneYesterday" },
-  { key: "done", label: "dock.filter.done" }
-];
+/**
+ * 选项表（顺序即下拉中的顺序）由 ui/filter-pref.ts 的 DOCK_FILTER_KEYS +
+ * DOCK_FILTER_I18N 生成，与设置页「侧边栏 Dock 默认筛选」共用一份，避免加项时两边漂移。
+ */
+const DOCK_FILTERS: Array<{ key: DockFilter; label: string }> = DOCK_FILTER_KEYS.map((k) => ({
+  key: k,
+  label: DOCK_FILTER_I18N[k]
+}));
 
 export interface DockPanelOpts {
   store: CalStore;
@@ -1175,7 +1171,9 @@ export function renderDockPanel(
    * 同步错误不会因此丢失 —— 状态栏会显示错误摘要，runSync 也会弹 Notice。
    */
 
-  let dockFilter: DockFilter = "next7";
+  // 初始筛选不再写死「未来七天」：按设置「上次使用项 / 固定某一项」解析
+  // （见 ui/filter-pref.ts；无记录时回落「所有未完成」）
+  let dockFilter: DockFilter = resolveDockFilter(opts.store.settings);
   let dockCategoryFilter: string[] = []; // 空 = 所有分类；"__none__" = 无分类
   /**
    * 聚焦锚点日期（"YYYY-MM-DD"）与聚焦粒度。非空时**优先于** dockFilter：
@@ -1244,6 +1242,31 @@ export function renderDockPanel(
       focusDate = null;
       dockFilter = VIEW_DEFAULT_FILTER[mode] ?? "undone";
     }
+    syncDockFilterLabel();
+    renderDockList();
+  }
+
+  /**
+   * 套用「Dock 打开时的默认筛选」—— 设置项「侧边栏 Dock 默认筛选」
+   * （默认「上次使用项」，可固定成某一项）。
+   *
+   * ⚠️ 只在 **Dock 初始化** 时调一次，与 `applyViewDefault()` 严格分工：
+   *   - 本函数 = 用户配的「默认值」，决定**打开时**看到哪个筛选；
+   *   - applyViewDefault = 主面板**切视图**时右侧栏该显示什么
+   *     （月/年 → 所有未完成、周 → 本周任务、日 → 聚焦当天）。
+   * 两者合并的话，用户配的默认值会被按视图联动那套整个盖掉，设置等于失效
+   * （反过来若用默认值替换掉 applyViewDefault，切到周视图不再自动显示本周任务，
+   * 也是回归）。故各管一段。
+   */
+  function applyInitialDockFilter(): void {
+    if (opts.getViewMode() === "day") {
+      // 日视图与 applyViewDefault 保持一致：直接聚焦那一天
+      focusDate = opts.getCursor();
+      focusScope = "day";
+    } else {
+      focusDate = null;
+    }
+    dockFilter = resolveDockFilter(opts.store.settings);
     syncDockFilterLabel();
     renderDockList();
   }
@@ -1860,6 +1883,8 @@ export function renderDockPanel(
     if (filterItem && root.contains(filterItem)) {
       dockFilter = filterItem.dataset.dockFilter as DockFilter;
       focusDate = null; // 选了预设筛选即退出「日期聚焦」
+      // 记下这次选的：设置里「上次使用项」下次打开就回到它（本机 localStorage）
+      saveLastDockFilter(dockFilter);
       syncDockFilterLabel();
       renderDockList();
       closePops();
@@ -1990,9 +2015,9 @@ export function renderDockPanel(
     if (suppressDockRerender) return;
     renderDockList();
   });
-  // 初次进入：按主面板当前视图套用默认筛选（月 = 所有未完成 / 周 = 本周任务 / 日 = 聚焦当天）
-  // applyViewDefault 内部已调 syncDockFilterLabel + renderDockList，此处不重复
-  applyViewDefault();
+  // 初次进入：套用设置里的「Dock 默认筛选」（默认「上次使用项」）。
+  // 内部已调 syncDockFilterLabel + renderDockList，此处不重复。
+  applyInitialDockFilter();
   renderSortActive();
   syncDockFilterLabel();
   renderDockList();

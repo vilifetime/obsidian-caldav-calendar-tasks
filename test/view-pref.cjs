@@ -161,17 +161,24 @@ const check = (name, cond, extra = "") => {
   check("notifyViewMode 内调用 saveViewMode", /saveViewMode\(mode\)/.test(fn));
 }
 
-// ── 8. 任务视图默认筛选为「所有未完成」──
+// ── 8. 任务视图默认筛选：不再写死，走设置解析；无记录回落「所有未完成」──
+// 2026-10-26 雄哥要求筛选默认值可自定义，默认「上次使用项」。
+// 原来这里断言 `dataset.filter || "allincomplete"`（写死），现在改为解析设置。
 {
-  const src = require("fs").readFileSync(require.resolve("./../src/ui/view-task.ts"), "utf8");
+  const fs = require("fs");
+  const src = fs.readFileSync(require.resolve("./../src/ui/view-task.ts"), "utf8");
+  const pref = fs.readFileSync(require.resolve("./../src/ui/filter-pref.ts"), "utf8");
+  check("view-task 默认筛选走 resolveTaskFilter（不再写死）", /resolveTaskFilter\(ctx\.store\.settings\)/.test(src));
+  check("view-task 不再残留写死的默认筛选", !/dataset\.filter\s*\|\|\s*"allincomplete"/.test(src));
   check(
-    'view-task 默认筛选是 "allincomplete"',
-    /dataset\.filter\s*\|\|\s*"allincomplete"/.test(src)
+    'resolveTaskFilter 的无记录回落是 "allincomplete"',
+    /DEFAULT_TASK_FILTER:\s*TaskFilterKey\s*=\s*"allincomplete"/.test(pref)
   );
   check(
-    "「所有项目」选项仍在（供随时切换到一致口径）",
-    /key:\s*"allitems"/.test(src)
+    'Dock 的无记录回落是 "undone"（雄哥要求：由「未来七天」改为「所有未完成」）',
+    /DEFAULT_DOCK_FILTER:\s*DockFilterKey\s*=\s*"undone"/.test(pref)
   );
+  check("「所有项目」选项仍在（供随时切换到一致口径）", /key:\s*"allitems"/.test(src));
 }
 
 console.log(failed === 0 ? "\n✓ 视图记忆回归测试通过" : `\n✗ ${failed} 个用例失败`);

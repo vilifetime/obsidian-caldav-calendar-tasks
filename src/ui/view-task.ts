@@ -15,28 +15,20 @@
  * 此时才再出现「任务视图中显示过期日程」这一层开关（嵌套联动）。
  */
 import { addDays, defaultStartStamp, diffDays, parseLocalStamp, startOfWeek, todayStamp } from "../core/date";
-import type { CalItem } from "../core/types";
+import type { CalItem, TaskFilterKey } from "../core/types";
 import { calEventColor, enabledCalendars, findCalendarByUrl, resolveDefaultCalendar } from "../core/types";
 import { occurrencesInRange } from "../core/ics";
 import { calColorOf, escape, keyOfItem, matchesSearchQuery, todoDueOccurrences, type ViewArgs } from "./view-common";
+import { resolveTaskFilter, saveLastTaskFilter, TASK_FILTER_I18N } from "./filter-pref";
 import { icons } from "./icons";
 import { setHtml } from "./dom";
 import { t } from "@/i18n";
 
-type FilterKey =
-  | "today"
-  | "tomorrow"
-  | "next7"
-  | "thisweek"
-  | "future"
-  | "overdue"
-  | "past7"
-  | "allitems"
-  | "allincomplete"
-  | "nodate"
-  | "todaydone"
-  | "yesterdaydone"
-  | "doneall";
+/**
+ * 键集合统一放在 core/types.ts（设置项 defaultTaskFilter 要引用它），
+ * 这里保留 `FilterKey` 这个名字，全部既有用法不用改。
+ */
+type FilterKey = TaskFilterKey;
 
 /**
  * 列表里的一行。 为归属日期（YYYY-MM-DD），无日期为空串；
@@ -73,31 +65,31 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   const filters: TaskFilter[] = [
     // 「所有项目」= 不做任何过滤。此时列表内容与统计栏基数相同，数字必然一致。
     // 2026-10-07 雄哥要求：只有这个选项下两者要对得上。
-    { key: "allitems", label: t("task.filter.allitems"), match: () => true },
-    { key: "today", label: t("task.filter.today"), match: (r) => !isDone(r) && r.due === today },
-    { key: "tomorrow", label: t("task.filter.tomorrow"), match: (r) => !isDone(r) && r.due === tomorrow },
+    { key: "allitems", label: t(TASK_FILTER_I18N.allitems), match: () => true },
+    { key: "today", label: t(TASK_FILTER_I18N.today), match: (r) => !isDone(r) && r.due === today },
+    { key: "tomorrow", label: t(TASK_FILTER_I18N.tomorrow), match: (r) => !isDone(r) && r.due === tomorrow },
     {
       key: "next7",
-      label: t("task.filter.next7"),
+      label: t(TASK_FILTER_I18N.next7),
       match: (r) => !isDone(r) && r.due > tomorrow && r.due <= in7
     },
     {
       key: "thisweek",
-      label: t("task.filter.thisweek"),
+      label: t(TASK_FILTER_I18N.thisweek),
       match: (r) => !isDone(r) && r.due >= weekStart && r.due <= weekEnd
     },
-    { key: "future", label: t("task.filter.future"), match: (r) => !isDone(r) && r.due > in7 },
-    { key: "overdue", label: t("task.filter.overdue"), match: (r) => !isDone(r) && !!r.due && r.due < today },
+    { key: "future", label: t(TASK_FILTER_I18N.future), match: (r) => !isDone(r) && r.due > in7 },
+    { key: "overdue", label: t(TASK_FILTER_I18N.overdue), match: (r) => !isDone(r) && !!r.due && r.due < today },
     {
       key: "past7",
-      label: t("task.filter.past7"),
+      label: t(TASK_FILTER_I18N.past7),
       match: (r) => !isDone(r) && !!r.due && r.due >= past7Start && r.due < today
     },
-    { key: "allincomplete", label: t("task.filter.allincomplete"), match: (r) => !isDone(r) },
-    { key: "nodate", label: t("task.filter.nodate"), match: (r) => !isDone(r) && !r.due },
-    { key: "todaydone", label: t("task.filter.todaydone"), match: ({ it }) => completedOn(it, today) },
-    { key: "yesterdaydone", label: t("task.filter.yesterdaydone"), match: ({ it }) => completedOn(it, yesterday) },
-    { key: "doneall", label: t("task.filter.doneall"), match: (r) => isDone(r) }
+    { key: "allincomplete", label: t(TASK_FILTER_I18N.allincomplete), match: (r) => !isDone(r) },
+    { key: "nodate", label: t(TASK_FILTER_I18N.nodate), match: (r) => !isDone(r) && !r.due },
+    { key: "todaydone", label: t(TASK_FILTER_I18N.todaydone), match: ({ it }) => completedOn(it, today) },
+    { key: "yesterdaydone", label: t(TASK_FILTER_I18N.yesterdaydone), match: ({ it }) => completedOn(it, yesterday) },
+    { key: "doneall", label: t(TASK_FILTER_I18N.doneall), match: (r) => isDone(r) }
   ];
 
   // 收集启用日历下的条目。默认只有待办（VTODO）；
@@ -159,7 +151,10 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   // 注：早先默认是「所有项目」，为的是让统计栏与组头计数基数一致。
   // 两者的差异只在这一个筛选下成立 —— 「所有项目」时基数相同、数字必然对得上；
   // 切到别的筛选时组头是「当前筛选内」的计数、统计栏仍是全局概览。
-  const current: FilterKey = (viewEl.dataset.filter || "allincomplete") as FilterKey;
+  // 2026-10-26：默认值不再写死 —— 按设置「上次使用项 / 固定某一项」解析
+  // （见 ui/filter-pref.ts）。`viewEl.dataset.filter` 仍是**本次会话内**切过
+  // 筛选后的当前值，优先级最高；它为空才走默认解析。
+  const current: FilterKey = (viewEl.dataset.filter || resolveTaskFilter(ctx.store.settings)) as FilterKey;
 
   /**
    * 当前生效的筛选项（**现读 dataset**，不用上面那个 `current` 常量）。
@@ -167,7 +162,7 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
    * ⚠️ 同 Obsidian 侧既有坑：`current` 是渲染那一刻算出来的，用户之后切了
    * 筛选它不会变 —— 折叠重渲染若用它，列表会退回旧筛选。搜索同理。
    */
-  const curFilter = (): FilterKey => (viewEl.dataset.filter || "allincomplete") as FilterKey;
+  const curFilter = (): FilterKey => (viewEl.dataset.filter || resolveTaskFilter(ctx.store.settings)) as FilterKey;
 
   /** iCal PRIORITY（1 最高、9 最低）→ 文案与配色级别；覆盖 1~9 全部取值 */
   const priorityMeta = (p?: number): { label: string; cls: string } => {
@@ -475,6 +470,8 @@ export function renderTaskView({ ctx, viewEl, occurrences }: ViewArgs): void {
   select?.addEventListener("change", () => {
     const val = select.value as FilterKey;
     viewEl.dataset.filter = val;
+    // 记下这次选的：设置里「上次使用项」下次打开就回到它（本机 localStorage）
+    saveLastTaskFilter(val);
     const list = viewEl.querySelector<HTMLElement>(".cal-task-list");
     if (list) setHtml(list, listHtml(val));
   });
