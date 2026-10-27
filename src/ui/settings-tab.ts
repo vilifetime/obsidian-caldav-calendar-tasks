@@ -565,6 +565,22 @@ export class CalDavSettingTab extends PluginSettingTab {
           },
           aliases: ["任务视图", "筛选", "filter", "默认"],
         },
+        {
+          // 新建待办的默认截止时间（2026-10-27，与思源端同构）
+          name: t("settings.todoDefaultEnd"),
+          desc: t("settings.todoDefaultEndDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: "todoDefaultEnd",
+            defaultValue: "plus8h",
+            options: {
+              none: t("settings.todoDefaultEndNone"),
+              plus1h: t("settings.todoDefaultEndPlus1h"),
+              plus8h: t("settings.todoDefaultEndPlus8h"),
+            },
+          },
+          aliases: ["待办", "截止", "默认", "due", "todo"],
+        },
       ],
     });
 

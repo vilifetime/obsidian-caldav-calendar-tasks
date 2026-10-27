@@ -145,6 +145,11 @@
   "settings.cnRefreshFailUnknown": "Unknown error",
 
   "settings.groupMisc": "Misc",
+  "settings.todoDefaultEnd": "Default due time for new todos",
+  "settings.todoDefaultEndDesc": "Due time pre-filled for new todos. Based on the start time (which defaults to the next full hour when creating); all-day todos still default to the next day. Affects new todos only.",
+  "settings.todoDefaultEndNone": "Empty (no due time)",
+  "settings.todoDefaultEndPlus1h": "Now + 1 hour",
+  "settings.todoDefaultEndPlus8h": "Now + 8 hours",
   "settings.defaultFilterLast": "Last used",
   "settings.defaultDockFilter": "Default sidebar dock filter",
   "settings.defaultDockFilterDesc": "Which filter is preselected when the sidebar dock opens. “Last used” remembers your previous pick (kept in the settings file, so it syncs to your other devices); pick a specific one to always start with it. With no “Last used” record yet, it falls back to “All unfinished”.",

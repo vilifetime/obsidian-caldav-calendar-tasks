@@ -144,7 +144,12 @@
   "settings.cnRefreshFail": "节假日数据拉取失败：{msg}",
   "settings.cnRefreshFailUnknown": "未知错误",
 
-  "settings.groupMisc": "杂项",
+  "settings.groupMisc": "MISC",
+  "settings.todoDefaultEnd": "新建待办任务时默认结束时间",
+  "settings.todoDefaultEndDesc": "新建待办时预填的截止时间。基准是开始时间（新建时开始默认为当前时刻的下一个整点）；全天待办仍默认次日。只影响新建，不影响既有待办。",
+  "settings.todoDefaultEndNone": "空（无截止时间）",
+  "settings.todoDefaultEndPlus1h": "当前时间+1小时",
+  "settings.todoDefaultEndPlus8h": "当前时间+8小时",
   "settings.defaultFilterLast": "上次使用项",
   "settings.defaultDockFilter": "侧边栏 Dock 默认筛选",
   "settings.defaultDockFilterDesc": "打开侧边栏 Dock 时自动选中哪一项。「上次使用项」记住你上次选的（记在配置里，会随数据同步到其他设备）；也可以固定成某一项，那样每次打开都用它。没有「上次使用项」记录时回落到「所有未完成」。",
