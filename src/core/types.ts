@@ -460,6 +460,21 @@ export interface CalSettings {
    */
   todoDefaultEnd?: "none" | "plus1h" | "plus8h";
 
+  // ── 待办显示位置 / 提醒锚点（2026-11-07 从思源端 0.2.36 同构）──
+  /**
+   * 待办在日历视图中归属到哪个日期单元格：
+   * `"due"` = 结束日期(DUE)（默认，沿用旧行为）；
+   * `"start"` = 开始日期(DTSTART)（旧待办只有 DUE 时退回到 DUE）；
+   * `"start-due"` = 跨 [开始日期, 结束日期] 整个闭区间的每一天都放一个 chip。
+   */
+  todoDuePosition?: "due" | "start" | "start-due";
+  /**
+   * 待办提醒锚点（决定提醒在什么时候触发）：
+   * `"due"` = 结束日期(DUE)（默认，沿用旧行为 `end || start`）；
+   * `"start"` = 开始日期(DTSTART)。
+   */
+  todoReminderAnchor?: "due" | "start";
+
   // ── 「上次使用项」的记录值（2026-10-27 改存配置，随数据同步）──
   //
   // 原先按「纯 UI 偏好、不该跨设备同步」的理由存了 localStorage，现在统一改成
@@ -493,15 +508,15 @@ export interface CalSettings {
  * 要引用它，而 core 不能反向依赖 ui（会成环）。SortMode 同理早已放这里。
  */
 export type DockFilterKey =
-  | "today" | "tomorrow" | "next7" | "thisweek" | "future"
+  | "allitems" | "today" | "tomorrow" | "next7" | "thisweek" | "future"
   | "overdue" | "past7" | "undone" | "nodate"
-  | "doneToday" | "doneYesterday" | "done";
+  | "doneToday" | "doneYesterday" | "done" | "cancelled";
 
 /** 任务视图筛选下拉的全部键（见 ui/filter-pref.ts） */
 export type TaskFilterKey =
   | "allitems" | "today" | "tomorrow" | "next7" | "thisweek" | "future"
   | "overdue" | "past7" | "allincomplete" | "nodate"
-  | "todaydone" | "yesterdaydone" | "doneall";
+  | "todaydone" | "yesterdaydone" | "doneall" | "cancelled";
 
 /**
  * 「清理旧服务器条目」的备份。
@@ -547,7 +562,10 @@ export const DEFAULT_SETTINGS: CalSettings = {
   defaultDockFilter: "last",
   defaultTaskFilter: "last",
   // 新建待办的默认截止：开始 + 8 小时（2026-10-21 既定行为，现开放可配）
-  todoDefaultEnd: "plus8h"
+  todoDefaultEnd: "plus8h",
+  // 待办在日历单元格的显示位置 / 提醒锚点：默认结束日期（沿用旧行为）
+  todoDuePosition: "due",
+  todoReminderAnchor: "due"
 };
 
 export interface SyncState {

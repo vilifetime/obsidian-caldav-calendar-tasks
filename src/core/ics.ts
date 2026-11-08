@@ -479,6 +479,10 @@ function itemFromComponent(
     });
   }
   if (atts.length) item.attachments = atts;
+  // STATUS 对 VEVENT 与 VTODO 都要读：作废的日程（STATUS:CANCELLED）以前只在
+  // VTODO 分支里解析，写出去后读回来永远是「普通日程」，作废态一轮同步就丢。
+  const statusProp = firstProp(comp, "STATUS");
+  if (statusProp?.value) item.status = statusProp.value.toUpperCase();
   if (kind === "event") {
     if (dtendProp) {
       item.end = parseIcsStamp(dtendProp, allDay);
@@ -495,8 +499,6 @@ function itemFromComponent(
     item.end = dueProp ? parseIcsStamp(dueProp) : undefined;
     const pr = firstProp(comp, "PRIORITY");
     if (pr?.value) item.priority = +pr.value || 0;
-    const st = firstProp(comp, "STATUS");
-    if (st?.value) item.status = st.value.toUpperCase();
     const pc = firstProp(comp, "PERCENT-COMPLETE");
     if (pc?.value) item.percent = Math.min(100, Math.max(0, +pc.value || 0));
     const cm = firstProp(comp, "COMPLETED");
@@ -634,12 +636,25 @@ function rebuildComponent(comp: IcsComponent, item: CalItem, dropBinary?: boolea
   if (item.kind === "event") {
     const end = item.end || (dateOnly ? addDaysStamp(item.start, 1) : item.start);
     push("DTEND", stampToIcs(end, dateOnly), dateOnly ? { VALUE: "DATE" } : {});
+    // 作废（CANCELLED）：RFC 5545 允许 VEVENT 携带 STATUS:CANCELLED。
+    // 只在被显式作废时写，普通事件保持原样，不影响既有日程的同步。
+    if (item.status === "CANCELLED") push("STATUS", "CANCELLED");
   } else {
     if (item.end) push("DUE", stampToIcs(item.end, dateOnly), dateOnly ? { VALUE: "DATE" } : {});
     if (item.priority) push("PRIORITY", String(item.priority));
-    push("STATUS", item.percent === 100 ? "COMPLETED" : item.status === "IN-PROCESS" ? "IN-PROCESS" : "NEEDS-ACTION");
-    if (item.percent !== undefined && item.percent > 0) push("PERCENT-COMPLETE", String(item.percent));
-    if (item.percent === 100) push("COMPLETED", icsUtc(Date.now()));
+    // 四态：CANCELLED 是终态，不能被 percent 回算成 NEEDS-ACTION/COMPLETED。
+    push(
+      "STATUS",
+      item.status === "CANCELLED"
+        ? "CANCELLED"
+        : item.percent === 100
+          ? "COMPLETED"
+          : item.status === "IN-PROCESS"
+            ? "IN-PROCESS"
+            : "NEEDS-ACTION"
+    );
+    if (item.status !== "CANCELLED" && item.percent !== undefined && item.percent > 0) push("PERCENT-COMPLETE", String(item.percent));
+    if (item.status !== "CANCELLED" && item.percent === 100) push("COMPLETED", icsUtc(Date.now()));
   }
   if (item.rrule) push("RRULE", serializeRRule(item.rrule));
   if (item.recurId) push("RECURRENCE-ID", stampToIcs(item.recurId, item.allDay), item.allDay ? { VALUE: "DATE" } : {});

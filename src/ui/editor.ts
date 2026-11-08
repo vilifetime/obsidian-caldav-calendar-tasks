@@ -202,6 +202,21 @@ class EditorModal extends Modal {
       )
     );
     bindEvents(this.ctx, this, wrap, this.it, this.isNew);
+
+    // 同构思源端 0.2.38：新建日程/待办时把光标直接放进标题框，省掉再点一下。
+    // 必须放在 Modal 打开之后且延迟一帧 —— Obsidian 的 Modal.open() 会同步把焦点
+    // 放到 modalEl 容器上，立刻 focus 会被抢回去。编辑既有条目不抢焦点（用户可能
+    // 正想改日期/备注），移动端也不自动聚焦（会立刻唤起软键盘盖住弹窗）。
+    if (this.isNew && !this.mobile) {
+      window.setTimeout(() => {
+        const titleInput = wrap.querySelector<HTMLInputElement>('input[data-f="summary"]');
+        if (!titleInput || !titleInput.isConnected) return;
+        const active = document.activeElement;
+        // 用户若已在这极短间隙里主动聚焦了表单内别的控件，就不抢焦点
+        if (active && active !== document.body && wrap.contains(active)) return;
+        titleInput.focus({ preventScroll: true });
+      }, 0);
+    }
   }
 
   onClose(): void {
@@ -857,6 +872,7 @@ function editorHtml(
 <div class="caldav-editor-foot">
   <div class="caldav-editor-error" data-error></div>
   ${!isNew ? `<button type="button" class="caldav-foot-btn caldav-foot-btn--danger" data-action="delete">${icons.trash} ${t("common.delete")}</button>` : ""}
+  ${!isNew ? `<button type="button" class="caldav-foot-btn caldav-foot-btn--void" data-action="void" title="${t("editor.voidHint")}">${icons.ban} ${t("editor.void")}</button>` : ""}
   ${!isNew ? `<button type="button" class="caldav-foot-btn caldav-foot-btn--convert" data-action="convert" title="${it.kind === "todo" ? t("editor.convertToEvent") : t("editor.convertToTodo")}">${it.kind === "todo" ? icons.calendar + " " + t("editor.convertToEvent") : icons.tasks + " " + t("editor.convertToTodo")}</button>` : ""}
   <span class="caldav-flex"></span>
   <button type="button" class="caldav-foot-btn caldav-foot-btn--ghost" data-action="cancel">${icons.close} ${t("common.cancel")}</button>
@@ -1301,7 +1317,11 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
   // 进度
   const percent = el.querySelector<HTMLInputElement>('[data-f="percent"]');
   percent?.addEventListener("input", () => {
-    el.querySelector<HTMLElement>(".caldav-progress-val")!.textContent = percent.value + "%";
+    const v = +percent.value;
+    el.querySelector<HTMLElement>(".caldav-progress-val")!.textContent = v + "%";
+    // 拖动进度即视为「取消作废」：清除 CANCELLED 终态，按进度回算三态。
+    it.percent = v;
+    it.status = v === 100 ? "COMPLETED" : v > 0 ? "IN-PROCESS" : "NEEDS-ACTION";
   });
 
   // 把识别结果写入日期/时间字段并同步显示
@@ -1436,6 +1456,23 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
       void doDelete();
     });
   }
+  // 作废：标记为 CANCELLED 并立即保存关闭。不做二次确认 —— 它只是状态变更
+  // （与删除不同，可重新编辑或点 ✕ 恢复），而「删除」已有自己的二次确认。
+  // 先收集当前表单保留未保存编辑，再强制 status=CANCELLED；collect 内部对 todo
+  // 会保持该终态（percent 归零、不按百分比回算），对 event 原样保留。
+  el.querySelector('[data-action="void"]')?.addEventListener("click", () => {
+    try {
+      it.status = "CANCELLED";
+      const saved = collect(ctx, el, it, attachList);
+      void ctx.sync.updateItem(saved).catch((e: unknown) => {
+        console.warn("[caldav] 作废后的后台上传失败:", e);
+      });
+      ctx.deferResort?.();
+      host.close();
+    } catch (e: unknown) {
+      errEl.textContent = errMessage(e) || String(e);
+    }
+  });
   el.querySelector('[data-action="save"]')?.addEventListener("click", () => {
     try {
       const saved = collect(ctx, el, it, attachList);
@@ -1544,10 +1581,17 @@ function collect(ctx: PanelCtx, el: HTMLElement, it: CalItem, attachList?: CalAt
   }
   if (it.kind === "todo") {
     it.priority = +f("priority").value || 0;
-    it.percent = Math.min(100, Math.max(0, +f("percent").value || 0));
-    it.status = it.percent === 100 ? "COMPLETED" : it.percent > 0 ? "IN-PROCESS" : "NEEDS-ACTION";
-    if (it.percent === 100 && !it.completedAt) it.completedAt = stampNow();
-    if (it.percent < 100) it.completedAt = undefined;
+    // ⚠️「作废」(CANCELLED) 是终态：一旦进入，进度归零且不被百分比重算覆盖。
+    // 这同时修了一个 bug —— 打开一条已作废的待办、不碰进度直接保存，
+    // 旧逻辑按 percent=0 会把它重算成 NEEDS-ACTION，把「作废」偷偷改回「待办」。
+    if (it.status === "CANCELLED") {
+      it.percent = 0;
+    } else {
+      it.percent = Math.min(100, Math.max(0, +f("percent").value || 0));
+      it.status = it.percent === 100 ? "COMPLETED" : it.percent > 0 ? "IN-PROCESS" : "NEEDS-ACTION";
+      if (it.percent === 100 && !it.completedAt) it.completedAt = stampNow();
+      if (it.percent < 100) it.completedAt = undefined;
+    }
   }
   return it;
 }

@@ -92,8 +92,8 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
   const fn = src.match(/function updateTodoCheckDOM[\s\S]*?\n  \}/);
   assert.ok(fn, "没找到 updateTodoCheckDOM");
   assert.ok(
-    /btn\.textContent\s*=\s*done \? "✓" : ""/.test(fn[0]),
-    "updateTodoCheckDOM 必须同步设 textContent —— 只切 class 会出现「有填充色无勾」"
+    /btn\.textContent\s*=\s*cancelled \? "✕" : done \? "✓" : ""/.test(fn[0]),
+    "updateTodoCheckDOM 必须同步设 textContent —— 只切 class 会出现「有填充色无勾」；作废态要写 ✕"
   );
   // 且必须限定在勾圈类上：Dock 的 .caldav-dock-check 内含真 <input type=checkbox>，
   // 塞文字节点会显示出一个多余的「✓」

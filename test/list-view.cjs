@@ -115,6 +115,10 @@ function t(name, fn) {
 }
 
 const { listRange, timeLabelOf, renderListView } = require(path.join(outDir, "ui", "view-list.js"));
+// 列表视图 2026-11-08 起全部文案走 i18n（原先写死中文）。本文件断言的是中文界面，
+// 故显式锁 zh；英文界面的断言在 test/weekday-align.cjs 里用同一套真实渲染做。
+const { initLocale } = require(path.join(outDir, "i18n", "index.js"));
+initLocale("zh");
 // 真实的 occurrence 展开（core/ics.ts）—— 用它做端到端验证，
 // 避免测试自己造 occ 把「窗口外条目混入」这个 bug 藏起来。
 const { occurrencesInRange } = require(path.join(outDir, "core", "ics.js"));

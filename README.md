@@ -84,7 +84,7 @@ implementations.
 - **Open calendar and tasks manager (right sidebar)** — a compact list for keeping the sidebar
   open full time.
 - Mouse actions on day cells and items — see [Mouse actions](#mouse-actions) below.
-- **Sync CalDAV now**, **New task**, **New event**, **Insert events and tasks into daily
+- **Sync CalDAV now**, **New To-do**, **New Event**, **Insert events and to-dos into daily
   note**, and **Send a test reminder** are all available from the command palette.
 - The status bar shows `CalDAV` in the bottom right, and changes appearance while syncing and
   when a sync fails.
@@ -115,7 +115,7 @@ Two things worth knowing:
   hide it. In the day view the cycle has no middle step, so it goes straight from open to
   hidden.
 - On touch devices, **long-pressing an item is the same as right-clicking it**. Day cells have
-  no long-press gesture; use **New task / New event** from the command palette instead.
+  no long-press gesture; use **New To-do / New Event** from the command palette instead.
 
 ### Privacy and network use
 

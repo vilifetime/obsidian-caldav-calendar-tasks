@@ -1352,6 +1352,10 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* 只写 overflow-y:auto 时，overflow-x:visible 会被规范隐式计算成 auto：
+     只要表单里任何一行稍宽（英文长文案 / 大字号 / 界面缩放），就会出现横向滚动条。
+     显式锁成 hidden；宽度已留足余量，正常不会出现裁切，标题行另有弹性兜底。 */
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -2343,8 +2347,20 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px 12px;
+  gap: 4px;
+  /* 编辑态 5 个按钮（Delete / Cancelled / To To-do / Cancel / Save）。
+     两条硬要求：不越过边界、绝不换行 —— 靠「把按钮整体缩小」解决，不靠换行或滚动：
+     容器 gap 4 / padding 10，按钮 padding 6×7、font-size 12、图标 12、内部 gap 4。
+     2026-11-08 作废译名按雄哥要求从 Void 统一成思源端 Cancelled（长 5 字符），
+     Edge 实测 440px 窄容器会溢出 20.5px，故再收 1px gap + 2px 按钮横向内边距。
+     中英 × 440/480/520/560/600 × 字距 0/1.2/1.6 共 30 场景：零越界、零横滚、恒单行。
+     弹窗已加宽到 660 / 700px，页脚富余 280px+，故 overflow-x 也锁成 hidden：
+     整个编辑弹窗任何层级都不渲染横向滚动条（雄哥 2026-11-07 第四张截图）。 */
+  flex-wrap: nowrap;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  padding: 8px 10px 10px;
   border-top: 1px solid var(--caldav-border);
   background: var(--caldav-bg-2);
   /* 页脚是对话框最底部：自带与容器一致的圆角，避免直角背景盖住左下/右下圆角 */
@@ -2353,14 +2369,24 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 
 /* （原思源 Dialog 样式已移除 —— 社区扫描报 !important，核实为死代码：
    Obsidian 用 Modal，没有 .b3-dialog__* 节点，这些规则永不匹配。 */
-.caldav-flex { flex: 1; }
+.caldav-flex { flex: 1; min-width: 0; }
 
-/* 页脚按钮：一律不参与收缩、不换行。
-   窄屏时页脚里的说明文字会把按钮挤窄，按钮内的「图标 + 文字」就断成两行（截图里的「取消」「保存」）。 */
+/* 页脚里的弹性占位不再 grow：改由「取消」按钮的 margin-left:auto 把右侧按钮推到最右。
+   占位元素若参与 grow，会在单行分配里吃掉可用宽度，把「保存」挤到边界外。 */
+.caldav-editor-foot .caldav-flex { flex: 0 1 0; }
+.caldav-editor-foot .caldav-foot-btn--ghost { margin-left: auto; }
+
+/* 页脚按钮：自身不收缩、内部「图标 + 文字」不断行（窄屏下曾被挤成两行）。
+   单行放不下时由容器的 overflow-x 兜底滚动，绝不换行、绝不裁切。 */
 .caldav-editor-foot .caldav-foot-btn {
   flex: 0 0 auto;
   white-space: nowrap;
+  padding: 6px 7px;
+  gap: 4px;
+  font-size: 12px;
 }
+/* 页脚图标同步缩小：只作用于页脚，不影响 Dock / 其它按钮 */
+.caldav-editor-foot .caldav-foot-btn svg { width: 12px; height: 12px; }
 
 /* 错误提示：位于页脚按钮行左侧空白处，无内容时不占位 */
 .caldav-editor-error {
@@ -2431,13 +2457,21 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   gap: 8px;
   margin-bottom: 8px;
   flex-wrap: nowrap;
+  /* 单行不换行时，子项必须允许收缩；否则窄视口 / 大字号下会被 form 的
+     overflow-x:hidden 直接裁掉日历下拉。 */
+  min-width: 0;
 }
 .caldav-title-head .caldav-title-label {
   margin-bottom: 0;
   flex: 0 0 auto;
 }
 .caldav-title-aiparse {
+  /* 文案优先完整（2026-11-07 第七轮实机截图）：原来 flex:0 1 auto 会让
+     「粘贴识别」开关参与整行收缩，字体稍宽时 Detect dates on paste 就被
+     ellipsis 截成 "Detect dates on p…"。改成不可收缩后，宽度压力全部由
+     日历下拉承担（可 140→90px），文案不再靠弹窗宽度碰运气。 */
   flex: 0 0 auto;
+  min-width: 0;
   border-bottom: none;
   padding: 0;
   margin-bottom: 0;
@@ -2445,12 +2479,19 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   font-size: 12px;
   color: var(--caldav-text-2);
 }
+.caldav-title-aiparse .caldav-switch-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* 「日历」标签 + 下拉框收至标题行右端（2026-10-12 从思源侧同步） */
 .caldav-title-cal {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   margin-left: auto;
 }
 .caldav-title-cal-label {
@@ -2461,9 +2502,10 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
 }
 .caldav-title-cal .caldav-cal-wrap {
   position: relative;
+  /* 允许从 140px 收到 90px：窄视口 / 大字号时先压缩下拉，而不是把整行撑出容器 */
   width: 140px;
+  flex: 0 1 140px;
   min-width: 90px;
-  flex: 0 0 auto;
 }
 .caldav-title-cal .caldav-cal-trigger {
   width: 100%;
@@ -2750,7 +2792,7 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
   color: #fff;
 }
 
-/* 「转为日程 / 转为待办」：强调色描边，与删除红、取消灰区分开 */
+/* 「转日程 / 转待办」：强调色描边，与删除红、取消灰区分开 */
 .caldav-foot-btn--convert {
   color: var(--caldav-accent);
   border-color: color-mix(in srgb, var(--caldav-accent) 35%, var(--caldav-border));
@@ -4100,8 +4142,7 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
     max-width: none;
     margin-top: 4px;
   }
-  /* 页脚：说明文字独占一行，按钮整组落到下一行右对齐 */
-  .caldav-editor-foot { flex-wrap: wrap; }
+  /* 页脚单行是基础规则（不依赖视口宽度），这里只保留窄屏说明文字的独占行设置 */
   .caldav-editor-foot .caldav-set-hint { flex: 1 1 100%; }
   .caldav-cursor-title {
     font-size: 14px;
@@ -4379,14 +4420,21 @@ input.caldav-input[type="time"]:hover::-webkit-calendar-picker-indicator {
    ============================================================================ */
 
 .modal.caldav-dialog {
-  width: 520px;
+  /* 宽度 560/600：2026-11-07 第七轮实机截图里英文 "Detect dates on paste"
+     仍被 ellipsis 截成 "Detect dates on p…"，按雄哥要求小幅 +40px。
+     这与第四轮否掉的 660/700 不是一回事：那次横滚条的真根因是 form 只写
+     overflow-y:auto、overflow-x 被隐式算成 auto，已由 form / 页脚显式
+     overflow-x:hidden 根治，加宽纯属多余且把多余宽度全变成标题行中间空白；
+     这次是实机界面字体比探针宽、标题行处在 flex 压缩态，加宽用来「消除
+     压缩」而非「制造空白」，同时开关组已改为不可收缩保证文案完整。 */
+  width: 560px;
   max-width: 94vw;
   height: 86vh;
   max-height: 92vh;
 }
 
 .modal.caldav-dialog.caldav-dialog--todo {
-  width: 560px;
+  width: 600px;
 }
 
 .modal.caldav-dialog.caldav-dialog--mobile {
@@ -4792,4 +4840,72 @@ body > .caldav-reminder-layer {
   color: var(--caldav-text-2);
   line-height: 1.6;
   margin-top: 4px;
+}
+
+/* 「本地数据」清理行改成上下两段（2026-11-07 第五轮截图）。
+   Obsidian 的 .setting-item 是 flex 行：[info | control]。这一行的 control 里
+   有两个很长的按钮（英文合计约 540px），把 info 挤到只剩约 70px —— name 和
+   .caldav-purge-status 被逐词折断竖排，右侧留下一整片空白，就是截图里难看
+   的「细长文字柱」。
+   正解是让说明占满一整行、按钮组另起一行左对齐且允许换行；不是缩短按钮
+   文案，也不是给按钮加省略号。用 :has(.caldav-purge-status) 精确命中本插件
+   这一项，避免影响其它插件的设置行（Obsidian 1.15 的 Chromium 支持 :has）。 */
+.setting-item:has(.caldav-purge-status) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+.setting-item:has(.caldav-purge-status) .setting-item-info {
+  width: 100%;
+  max-width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.setting-item:has(.caldav-purge-status) .setting-item-control {
+  width: 100%;
+  max-width: 100%;
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+/* 状态说明全宽后按正常词距换行，别再被压成每词一行 */
+.setting-item:has(.caldav-purge-status) .caldav-purge-status {
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+/* ───────── 作废（CANCELLED）四态 ─────────
+   与思源端 0.2.35 同构：标题删除线 + 中性灰 ✕ 圈，区别于「已完成」的日历色 ✓。
+   状态前缀置于条目名之前，作废时标灰。 */
+.cal-list-status {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--caldav-text-2);
+}
+.cal-list-row.is-cancelled .cal-list-title,
+.cal-task.is-cancelled .cal-task-title,
+.cal-chip.is-cancelled .cal-chip-title { text-decoration: line-through; opacity: 0.5; }
+.cal-list-row.is-cancelled .cal-task-kind { opacity: 0.5; }
+.cal-list-row.is-cancelled .cal-list-status { color: #9e9e9e; }
+.cal-list-row.is-cancelled .cal-chip-check,
+.cal-task.is-cancelled .cal-task-check,
+.cal-chip.is-cancelled .cal-chip-check,
+.cal-chip-check.is-cancelled {
+  background: #9e9e9e;
+  border-color: #9e9e9e;
+  color: #fff;
+}
+.cal-task.is-cancelled .cal-task-check--event {
+  background: #9e9e9e;
+  border-color: #9e9e9e;
+}
+.caldav-foot-btn--void {
+  color: #b07400;
+  border-color: color-mix(in srgb, #b07400 35%, var(--caldav-border));
+}
+.caldav-foot-btn--void:hover {
+  background: color-mix(in srgb, #b07400 9%, var(--caldav-bg));
+  border-color: #b07400;
 }

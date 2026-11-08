@@ -581,6 +581,37 @@ export class CalDavSettingTab extends PluginSettingTab {
           },
           aliases: ["待办", "截止", "默认", "due", "todo"],
         },
+        {
+          // 待办在日历单元格的显示位置（2026-11-07，与思源端 0.2.36 同构）
+          name: t("settings.todoDuePosition"),
+          desc: t("settings.todoDuePositionDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: "todoDuePosition",
+            defaultValue: "due",
+            options: {
+              due: t("settings.todoAnchorDue"),
+              start: t("settings.todoAnchorStart"),
+              "start-due": t("settings.todoDuePositionRange"),
+            },
+          },
+          aliases: ["待办", "显示位置", "日期", "due", "position"],
+        },
+        {
+          // 待办提醒锚点（2026-11-07，与思源端 0.2.36 同构）
+          name: t("settings.todoReminderAnchor"),
+          desc: t("settings.todoReminderAnchorDesc"),
+          control: {
+            type: "dropdown" as const,
+            key: "todoReminderAnchor",
+            defaultValue: "due",
+            options: {
+              due: t("settings.todoAnchorDue"),
+              start: t("settings.todoAnchorStart"),
+            },
+          },
+          aliases: ["提醒", "锚点", "reminder", "anchor", "due"],
+        },
       ],
     });
 

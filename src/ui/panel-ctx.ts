@@ -43,6 +43,18 @@ export interface PanelCtx {
   /** 发送一条测试提醒（由入口注入，用于自检提醒投递通道） */
   testReminder?: () => Promise<string>;
   /**
+   * 刷新其它已打开的面板实例（同构思源端 `ctx.refreshPanels?.()`）。
+   * 切换日历启用状态时 persist() 不触发 onChange，Dock 是另一个 ItemView，
+   * 不主动刷就会残留旧日历条目（思源端 b5de2f5 修的同一个 bug）。
+   */
+  refreshPanels?: () => void;
+  /**
+   * 延迟重排序（同构思源端 0.2.35）：状态变为终态（完成 / 作废）或反向变更后，
+   * 先就地显示勾圈，再延迟 3 秒重排把条目移入对应分组，避免勾选刹那跳走。
+   * 由 renderPanel 注入具体实现；编辑器的「作废」按钮也复用同一套。
+   */
+  deferResort?: () => void;
+  /**
    * 手动触发一次同步（工具栏同步按钮）。
    *
    * 由入口注入而不是面板直接调 `ctx.sync.syncAll()`：入口那边还要负责刷状态栏、

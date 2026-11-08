@@ -142,9 +142,13 @@ check("配置里带着 lastTaskFilter 时照样生效", () => {
 });
 
 // ⑦ 选项表与两个下拉同源（防漂移）
-check("Dock 选项表 12 项、任务视图 13 项，且与合法集合一致", () => {
-  assert.strictEqual(P.DOCK_FILTER_KEYS.length, 12);
-  assert.strictEqual(P.TASK_FILTER_KEYS.length, 13);
+// 2026-11-07 同构思源端 003977f：Dock 补「所有/作废」→ 14 项；任务视图补「作废」→ 14 项。
+check("Dock 选项表 14 项、任务视图 14 项，且与合法集合一致", () => {
+  assert.strictEqual(P.DOCK_FILTER_KEYS.length, 14);
+  assert.strictEqual(P.TASK_FILTER_KEYS.length, 14);
+  assert.ok(P.DOCK_FILTER_KEYS.includes("allitems"), "Dock 缺「所有」");
+  assert.ok(P.DOCK_FILTER_KEYS.includes("cancelled"), "Dock 缺「作废」");
+  assert.ok(P.TASK_FILTER_KEYS.includes("cancelled"), "任务视图缺「作废」");
   for (const k of P.DOCK_FILTER_KEYS) assert.ok(P.DOCK_FILTER_I18N[k], `Dock ${k} 缺 i18n key`);
   for (const k of P.TASK_FILTER_KEYS) assert.ok(P.TASK_FILTER_I18N[k], `Task ${k} 缺 i18n key`);
 });

@@ -21,14 +21,30 @@
  */
 import type { CalItem } from "../core/types";
 import { addDays, isDateOnly, padDate, parseLocalStamp, startOfWeek } from "../core/date";
-import { calColorOf, escape, keyOfItem, occComparator, type ViewArgs } from "./view-common";
+import { calColorOf, escape, keyOfItem, occComparator, stateOfItem, type ViewArgs } from "./view-common";
+import { stateText } from "@/core/task-state";
+import { t } from "@/i18n";
 // Obsidian 社区审核禁 innerHTML 赋值（会连带丢弃子节点上已绑定的监听），
 // 改走 dom.ts 的 setHtml（DOMParser + replaceChildren，行为等价且更安全）。
 // ⚠️ 思源端没有这套审核、全仓沿用 innerHTML，此处是有意的两端差异。
 import { setHtml } from "./dom";
 
-/** 星期中文名（周一起始，与周/月视图一致） */
-const WEEK_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+/**
+ * 周一起始的星期名字典 key（与 view-month.ts / view-week.ts 同一套）。
+ *
+ * ⚠️ 只存 key 不存译文：模块顶层常量在 import 时求值，宿主那时还没注入语言，
+ * 会把中文写死；且用户中途切语言不会重新求值（2026-11-08 思源端同类事故的教训）。
+ * 下标 0 = 周一，7 项无前置空位，别退回写死中文数组的旧版。
+ */
+const WEEKDAY_KEYS = [
+  "cal.weekdayMon",
+  "cal.weekdayTue",
+  "cal.weekdayWed",
+  "cal.weekdayThu",
+  "cal.weekdayFri",
+  "cal.weekdaySat",
+  "cal.weekdaySun"
+];
 
 /**
  * 当前视图对应的时间窗。
@@ -110,7 +126,7 @@ export function listRange(ctx: { viewMode: string; cursor: string }): ListRange 
  * 与周视图同一套算法：按「开始 + 原时长」算，收在 24:00。
  */
 export function timeLabelOf(it: CalItem, occ: string): string {
-  if (it.allDay || isDateOnly(occ)) return "全天";
+  if (it.allDay || isDateOnly(occ)) return t("time.allDay");
   const startMin = (+occ.slice(11, 13) || 0) * 60 + (+occ.slice(14, 16) || 0);
   if (it.kind === "todo") {
     // 待办只有「到期时刻」这一个时间点
@@ -127,20 +143,29 @@ export function timeLabelOf(it: CalItem, occ: string): string {
 /** 一行条目 */
 function rowHtml(ctx: ViewArgs["ctx"], it: CalItem, occ: string): string {
   const k = keyOfItem(it);
+  const cancelled = it.status === "CANCELLED";
   const done = it.kind === "todo" && it.percent === 100;
-  const check = it.kind === "todo" ? `<button class="cal-chip-check" data-toggle="${k}" title="${done ? "标记未完成" : "标记完成"}">✓</button>` : "";
+  // 状态前缀：四态用括号括起、置于条目名之前（未开始 / 进行中 / 已完成 / 已作废）
+  const statusPrefix = `<span class="cal-list-status">${t("list.statusFmt", { state: stateText(stateOfItem(it)) })}</span>`;
+  // ⚠️ 勾子按状态条件渲染，不能无条件写 ✓ 再靠 CSS 藏 —— hover 时会露出淡勾，
+  // 看着像「未完成却已打勾」。作废显示 ✕，点它即时恢复为待办。
+  const check = it.kind === "todo"
+    ? `<button type="button" class="cal-chip-check ${cancelled ? "is-cancelled" : ""}" data-toggle="${k}" title="${cancelled ? t("task.restoreCancelled") : done ? t("dock.markUndone") : t("dock.markDone")}">${cancelled ? "✕" : done ? "✓" : ""}</button>`
+    : cancelled
+      ? `<span class="cal-chip-check is-cancelled" title="${t("state.canceled")}">✕</span>`
+      : "";
   // 类型标记复用**任务视图**的那两个文字角标（橙「待办」/ 蓝「日程」），
   // 不再是自绘的线框图标 —— 用户 2026-10-25 明确指正：图标表达错了，
   // 列表与任务视图要用同一套标记，跨视图认知才一致。
   const isEvent = it.kind !== "todo";
-  const kindLabel = isEvent ? "日程" : "待办";
+  const kindLabel = t(isEvent ? "kindEvent" : "kindTodo");
   const kindBadge = `<span class="cal-list-kind cal-task-kind ${isEvent ? "is-event" : "is-todo"}" title="${kindLabel}">${kindLabel}</span>`;
-  const repeat = it.rrule ? '<span class="cal-list-repeat" title="重复">↻</span>' : "";
-  return `<div class="cal-list-row ${done ? "is-done" : ""}" data-open="${k}" data-kind="${it.kind}" style="--cal-color:${calColorOf(ctx, it)}">
+  const repeat = it.rrule ? `<span class="cal-list-repeat" title="${t("chip.repeat")}">↻</span>` : "";
+  return `<div class="cal-list-row ${done ? "is-done" : ""} ${cancelled ? "is-cancelled" : ""}" data-open="${k}" data-kind="${it.kind}" style="--cal-color:${calColorOf(ctx, it)}">
     <span class="cal-list-time">${escape(timeLabelOf(it, occ))}</span>
     <span class="cal-list-dot"></span>
-    ${kindBadge}
-    <span class="cal-list-title">${repeat}${escape(it.summary || "(无标题)")}</span>
+    ${kindBadge}${statusPrefix}
+    <span class="cal-list-title">${repeat}${escape(it.summary || t("chip.noTitle"))}</span>
     ${check}
   </div>`;
 }
@@ -170,24 +195,24 @@ export function renderListView({ ctx, viewEl, occurrences }: ViewArgs): void {
   const total = days.reduce((n, d) => n + byDay.get(d)!.length, 0);
 
   if (!total) {
-    setHtml(viewEl, `<div class="cal-list"><div class="cal-list-empty">该时间段内暂无日程或待办</div></div>`);
+    setHtml(viewEl, `<div class="cal-list"><div class="cal-list-empty">${t("list.empty")}</div></div>`);
     return;
   }
 
   const blocks = days
     .map((day) => {
       const list = byDay.get(day)!.slice().sort(cmp);
-      const wd = WEEK_LABELS[(parseLocalStamp(day).getDay() + 6) % 7];
+      const wd = t(WEEKDAY_KEYS[(parseLocalStamp(day).getDay() + 6) % 7]);
       const rows = list.map(({ it, occ }) => rowHtml(ctx, it, occ)).join("");
       return `<div class="cal-list-day">
-        <div class="cal-list-date"><span class="cal-list-md">${+day.slice(5, 7)}/${+day.slice(8, 10)}</span><span class="cal-list-wd">${wd}</span><span class="cal-list-count">${list.length} 项</span></div>
+        <div class="cal-list-date"><span class="cal-list-md">${+day.slice(5, 7)}/${+day.slice(8, 10)}</span><span class="cal-list-wd">${wd}</span><span class="cal-list-count">${t("list.dayCount", { n: list.length })}</span></div>
         <div class="cal-list-items">${rows}</div>
       </div>`;
     })
     .join("");
 
   setHtml(viewEl, `<div class="cal-list">
-    <div class="cal-list-head">共 ${total} 项</div>
+    <div class="cal-list-head">${t("list.head", { n: total })}</div>
     ${blocks}
   </div>`);
 }

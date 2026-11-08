@@ -70,6 +70,13 @@ export class CalStore {
   constructor(private env: StoreEnv) {}
 
   async load(): Promise<void> {
+    // 同构思源端 0.2.37：跨视图/跨窗口重载会重新从磁盘载入内存。若此前尚有排队的
+    // persistSoon（400ms 去抖），必须在载入前清掉，否则它会在 load 之后把旧内存状态
+    // 写回磁盘、覆盖刚读到的更新（主面板改了、Dock/另一个窗口却看不到的隐藏竞态）。
+    if (this.saveTimer) {
+      window.clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
     const data = (await this.env.loadData()) as PersistData | undefined;
     if (data) {
       this.settings = { ...deepCopy(DEFAULT_SETTINGS), ...data.settings };

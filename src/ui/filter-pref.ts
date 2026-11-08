@@ -40,20 +40,21 @@ import type { CalSettings, DockFilterKey, TaskFilterKey } from "../core/types";
  * 「侧边栏 Dock 默认筛选」都引用它，避免加项时两边漂移。
  */
 export const DOCK_FILTER_KEYS: readonly DockFilterKey[] = [
-  "next7", "today", "tomorrow", "thisweek", "future",
+  "allitems", "next7", "today", "tomorrow", "thisweek", "future",
   "overdue", "past7", "undone", "nodate",
-  "doneToday", "doneYesterday", "done"
+  "doneToday", "doneYesterday", "done", "cancelled"
 ];
 
 /** 任务视图下拉的顺序（同上，唯一来源） */
 export const TASK_FILTER_KEYS: readonly TaskFilterKey[] = [
   "allitems", "today", "tomorrow", "next7", "thisweek", "future",
   "overdue", "past7", "allincomplete", "nodate",
-  "todaydone", "yesterdaydone", "doneall"
+  "todaydone", "yesterdaydone", "doneall", "cancelled"
 ];
 
 /** key → i18n key */
 export const DOCK_FILTER_I18N: Record<DockFilterKey, string> = {
+  allitems: "dock.filter.allitems",
   next7: "dock.filter.next7",
   today: "dock.filter.today",
   tomorrow: "dock.filter.tomorrow",
@@ -65,7 +66,8 @@ export const DOCK_FILTER_I18N: Record<DockFilterKey, string> = {
   nodate: "dock.filter.nodate",
   doneToday: "dock.filter.doneToday",
   doneYesterday: "dock.filter.doneYesterday",
-  done: "dock.filter.done"
+  done: "dock.filter.done",
+  cancelled: "dock.filter.cancelled"
 };
 
 export const TASK_FILTER_I18N: Record<TaskFilterKey, string> = {
@@ -81,7 +83,8 @@ export const TASK_FILTER_I18N: Record<TaskFilterKey, string> = {
   nodate: "task.filter.nodate",
   todaydone: "task.filter.todaydone",
   yesterdaydone: "task.filter.yesterdaydone",
-  doneall: "task.filter.doneall"
+  doneall: "task.filter.doneall",
+  cancelled: "task.filter.cancelled"
 };
 
 /** 无记录时 Dock 的初始筛选（雄哥要求：由「未来七天」改为「所有未完成」） */

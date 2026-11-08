@@ -10,6 +10,24 @@ const HOUR_H = 44; // 每小时像素
 // 顶部全天栏行高由 styles.css 的 .cal-wk-allday-cells min/max-height 决定（44px），
 // DOM 里只写类名、不写内联高度，避免两处硬编码打架。
 
+/**
+ * 周一起始的星期名字典 key（渲染时才查表，绝不把中文/英文写死在模块顶层）。
+ *
+ * ⚠️ 下标 0 必须是周一：曾写成 `["", Mon, Tue, …, Sat]`，用
+ * `(getDay() + 6) % 7` 取下标时周一(0) 取到空串、周二(1) 取到 Monday，
+ * 整行星期名右移一列、周日直接没词（2026-11-08 雄哥周/日视图截图）。
+ * 这里保持 7 项、无前置空位；日视图同样复用，任意星期几都能对上。
+ */
+const WEEKDAY_KEYS = [
+  "cal.weekdayMon",
+  "cal.weekdayTue",
+  "cal.weekdayWed",
+  "cal.weekdayThu",
+  "cal.weekdayFri",
+  "cal.weekdaySat",
+  "cal.weekdaySun"
+];
+
 // 文字行数分档阈值（像素高）：矮块少显示几行，避免内容被裁。
 // 必须与 styles.css 里 .cal-wk-block.wk-h-* 的说明保持一致，改一处要改两处。
 const TIER_XS_MAX = 34; // < 34px（约 46 分钟以内）→ 只显示标题
@@ -82,11 +100,7 @@ export function renderWeekView({ ctx, viewEl, occurrences }: ViewArgs, days: num
 
   const dayHead = dayList
     .map((d) => {
-      const wd = t(
-        ["", "cal.weekdayMon", "cal.weekdayTue", "cal.weekdayWed", "cal.weekdayThu", "cal.weekdayFri", "cal.weekdaySat", "cal.weekdaySun"][
-          (parseLocalStamp(d).getDay() + 6) % 7
-        ]
-      );
+      const wd = t(WEEKDAY_KEYS[(parseLocalStamp(d).getDay() + 6) % 7]);
       return `<div class="cal-wk-dayhead ${d === today ? "is-today" : ""}" data-day="${d}">
         <span class="cal-wk-wd">${wd}</span><span class="cal-wk-numrow"><span class="cal-wk-num">${+d.slice(8, 10)}</span>${chinaDayBarHTML(ctx, d)}</span></div>`;
     })

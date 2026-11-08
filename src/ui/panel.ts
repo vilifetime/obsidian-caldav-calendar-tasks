@@ -19,7 +19,8 @@ import { renderWeekView } from "./view-week";
 import { renderTaskView } from "./view-task";
 import { renderYearView } from "./view-year";
 import { renderListView } from "./view-list";
-import { todoDueOccurrences } from "./view-common";
+import { todoDueOccurrences, stateOfItem } from "./view-common";
+import { stateText } from "@/core/task-state";
 import { warmChinaCalendar } from "@/core/holiday-cn";
 import { resolveDockFilter, saveLastDockFilter, DOCK_FILTER_KEYS, DOCK_FILTER_I18N } from "./filter-pref";
 import { saveViewMode, saveCalendarView, loadCalendarView, DEFAULT_VIEW } from "./view-pref";
@@ -201,6 +202,10 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       cal.enabled = !cal.enabled;
       void ctx.store.persist();
       renderAll();
+      // persist() 不触发 onChange，renderAll() 只重绘本面板实例；右侧栏 Dock 是另一个
+      // ItemView、也按 enabledCalendars 过滤条目，不主动刷就会残留旧日历条目
+      // （同构思源端 b5de2f5：任务视图切了日历，Dock 没跟着切）。
+      ctx.refreshPanels?.();
       return;
     }
   }
@@ -288,7 +293,9 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
       // 任务视图自己收集待办（见 view-task.ts），不读这个开关，因此不受影响。
       if (!showTodos && it.kind === "todo") continue;
       const occ =
-        it.kind === "todo" ? todoDueOccurrences(it, startMs, endMs) : occurrencesInRange(it, startMs, endMs);
+        it.kind === "todo"
+          ? todoDueOccurrences(it, startMs, endMs, ctx.store.settings.todoDuePosition)
+          : occurrencesInRange(it, startMs, endMs);
       if (occ.length) out.set(it, occ);
     }
     return out;
@@ -601,11 +608,30 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   // 勾选待办时就地更新可见视图，抑制本次 store 变更触发的整视图重渲染
   // （否则会闪烁、且周/日视图滚动位置被重置到默认当前时间）
   let suppressRerender = false;
-  function updateTodoCheckDOM(root: HTMLElement, key: string, done: boolean): void {
+  /**
+   * 延迟重排序：勾选完成 / 改为作废（及其反向）后，先就地显示勾圈（即时），
+   * 再延迟 3 秒重排，把条目平滑移入「已完成 / 已作废」分组，避免勾选刹那
+   * 条目从原分组跳走打断浏览（同构思源端 f7d0a3b）。期间用 suppressRerender
+   * 抑制 store 驱动的整视图重排，定时到点才放行并 renderAll。
+   */
+  let resortTimer: TimerHandle | null = null;
+  function scheduleDeferredResort(): void {
+    suppressRerender = true;
+    if (resortTimer) window.clearTimeout(resortTimer);
+    resortTimer = window.setTimeout(() => {
+      resortTimer = null;
+      suppressRerender = false;
+      renderAll();
+    }, 3000);
+  }
+  ctx.deferResort = scheduleDeferredResort;
+
+  function updateTodoCheckDOM(root: HTMLElement, key: string, done: boolean, cancelled = false): void {
     root
       .querySelectorAll<HTMLElement>(`[data-toggle="${key}"]`)
       .forEach((btn) => {
-        btn.title = done ? t("dock.markUndone") : t("dock.markDone");
+        btn.title = cancelled ? t("task.restoreCancelled") : done ? t("dock.markUndone") : t("dock.markDone");
+        btn.classList.toggle("is-cancelled", cancelled);
         // ⚠️ 必须同步 textContent，不能只切 is-done class。
         // 勾子的可见性由**内容里有没有 `✓` 字符**决定（见 styles.css .cal-chip-check
         // 处的注释），class 只管填充色与勾子颜色。所以切了 class 而不改字符，
@@ -616,12 +642,28 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
         //   Dock 的 `.caldav-dock-check` 是真 <input type=checkbox>，
         //   且其 DOM 不在本函数的作用域（root 是主面板），不能被塞文字节点。
         if (btn.classList.contains("cal-chip-check") || btn.classList.contains("cal-task-check")) {
-          btn.textContent = done ? "✓" : "";
+          btn.textContent = cancelled ? "✕" : done ? "✓" : "";
         }
       });
     root
       .querySelectorAll<HTMLElement>(`[data-open="${key}"]`)
-      .forEach((el) => el.classList.toggle("is-done", done));
+      .forEach((el) => {
+        el.classList.toggle("is-done", done);
+        el.classList.toggle("is-cancelled", cancelled);
+      });
+  }
+
+  /**
+   * 列表视图行就地更新：勾选 / 作废 / 恢复后同步行上的「完成 / 作废」样式与
+   * 状态前缀文字，避免等整视图重渲染（与任务视图的 .cal-task 修补对称）。
+   */
+  function patchListRowStatus(toggleEl: HTMLElement, item: CalItem): void {
+    const row = toggleEl.closest<HTMLElement>(".cal-list-row");
+    if (!row) return;
+    row.classList.toggle("is-cancelled", item.status === "CANCELLED");
+    row.classList.toggle("is-done", item.kind === "todo" && item.percent === 100);
+    const st = row.querySelector<HTMLElement>(".cal-list-status");
+    if (st) st.textContent = `（${stateText(stateOfItem(item))}）`;
   }
 
   // ---- 事件委托 ----
@@ -633,23 +675,34 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
     if (toggleEl && app.contains(toggleEl)) {
       const item = ctx.store.get(toggleEl.dataset.toggle!);
       if (item && item.kind === "todo") {
-        const nextDone = item.percent !== 100;
-        item.percent = nextDone ? 100 : 0;
-        item.status = nextDone ? "COMPLETED" : "NEEDS-ACTION";
-        item.completedAt = nextDone ? new Date().toISOString().slice(0, 19) : undefined;
+        // 已在「作废」态：点 ✕ 取消作废 → 恢复为普通待办（而非直接标完成，避免误判「已完成」）
+        if (item.status === "CANCELLED") {
+          item.percent = 0;
+          item.status = "NEEDS-ACTION";
+          item.completedAt = undefined;
+        } else {
+          const nextDone = item.percent !== 100;
+          item.percent = nextDone ? 100 : 0;
+          item.status = nextDone ? "COMPLETED" : "NEEDS-ACTION";
+          item.completedAt = nextDone ? new Date().toISOString().slice(0, 19) : undefined;
+        }
         const key = toggleEl.dataset.toggle!;
-        updateTodoCheckDOM(app, key, nextDone);
-        suppressRerender = true;
-        // 兜底：万一同步 promise 一直挂着（网络挂起/等待解锁），最多抑制 10s，
-        // 否则界面从此再也不刷新，表现出来就是「点了没反应」。
-        const guard = window.setTimeout(() => (suppressRerender = false), 10000);
+        const doneNow = item.status === "COMPLETED";
+        const cancelledNow = item.status === "CANCELLED";
+        updateTodoCheckDOM(app, key, doneNow, cancelledNow);
+        patchListRowStatus(toggleEl, item);
+        // 先就地显示勾圈（即时），再延迟 3 秒重排：把条目移入「已完成 / 已作废」分组，
+        // 不立刻跳走（同构思源端 f7d0a3b）。旧实现用「同步结束才放行 + 10s 兜底」，
+        // 会把条目瞬间抽走打断浏览。
+        scheduleDeferredResort();
         void ctx.sync.updateItem(item).finally(() => {
-          window.clearTimeout(guard);
-          suppressRerender = false;
           // 同步收尾后按 store 里的真实状态校正一次：上面那次是乐观更新，
           // 若推送失败/被服务端覆盖而界面停留在乐观值，用户会以为「点了没用」。
           const real = ctx.store.get(key);
-          if (real) updateTodoCheckDOM(app, key, real.percent === 100);
+          if (real) {
+            updateTodoCheckDOM(app, key, real.percent === 100, real.status === "CANCELLED");
+            patchListRowStatus(toggleEl, real);
+          }
         });
         ev.stopPropagation();
         return;
@@ -858,6 +911,12 @@ export function renderPanel(root: HTMLElement, ctx: PanelCtx): { destroy: () => 
   return {
     destroy() {
       destroyed = true;
+      // 延迟重排的定时器必须一并清掉，否则面板销毁 3 秒后还会 renderAll()
+      if (resortTimer) {
+        window.clearTimeout(resortTimer);
+        resortTimer = null;
+      }
+      suppressRerender = false;
       // 摘掉挂在根元素上的监听（它可能被复用，漏摘会叠加处理器）
       offAll();
       document.removeEventListener("click", onDocClick, true);
@@ -1312,9 +1371,14 @@ export function renderDockPanel(
      *  - 待办：命中窗口，或者「已过期且未完成」（没完成的过期任务照样显示）
      *  - 事件：命中窗口，且尚未结束（当前时间以前的不显示）
      */
-    const inWindow = (hit: boolean): boolean => (isTodo ? hit || overdue : hit && !ended);
+    // 作废项（CANCELLED）只在「所有」/「作废」两个筛选里出现，其余时间窗 /
+    // 完成态筛选一律排除 —— 与任务视图 filters 口径统一（同构思源端 003977f）。
+    const isCancelled = it.status === "CANCELLED";
+    const inWindow = (hit: boolean): boolean => (isTodo ? hit || overdue : hit && !ended) && !isCancelled;
 
     switch (filter) {
+      case "allitems":
+        return true;
       case "today":
         return inWindow(date === today);
       case "tomorrow":
@@ -1326,23 +1390,25 @@ export function renderDockPanel(
       case "future":
         return inWindow(diff >= 0);
       case "overdue":
-        return overdue;
+        return overdue && !isCancelled;
       case "past7":
         // 回顾用：保留过去 7 天（含已经结束的事件），不套用 inWindow
-        return diff >= -6 && diff < 0;
+        return diff >= -6 && diff < 0 && !isCancelled;
       case "undone":
         // 「所有未完成」= 未完成的待办 + 尚未结束的日程。
         // 后者用 ended（按结束时间比较）判定，进行中的日程也会保留，只有真正结束的才隐藏 ——
         // 与用户对这个筛选的预期一致：「未完成的待办 + 当前时间之后的日程」。
-        return isTodo ? !isDone : !ended;
+        return (isTodo ? !isDone : !ended) && !isCancelled;
       case "nodate":
-        return isTodo && !date;
+        return isTodo && !date && !isCancelled;
       case "doneToday":
-        return isDone && !!it.completedAt && it.completedAt.slice(0, 10) === today;
+        return isDone && !isCancelled && !!it.completedAt && it.completedAt.slice(0, 10) === today;
       case "doneYesterday":
-        return isDone && !!it.completedAt && it.completedAt.slice(0, 10) === addDays(today, -1).slice(0, 10);
+        return isDone && !isCancelled && !!it.completedAt && it.completedAt.slice(0, 10) === addDays(today, -1).slice(0, 10);
       case "done":
-        return isDone;
+        return isDone && !isCancelled;
+      case "cancelled":
+        return isCancelled;
       default:
         return true;
     }
@@ -1555,7 +1621,8 @@ export function renderDockPanel(
    * 若不提示，看起来就像「记录消失了」（实测用户就是这么反馈的）。
    */
   function hiddenNodateCount(): number {
-    if (dockFilter === "nodate" || dockFilter === "undone" || dockFilter.startsWith("done")) return 0;
+    // 「所有/作废」筛选下这类提示没有意义（作废项本就不进其它筛选），一律不数
+    if (dockFilter === "allitems" || dockFilter === "cancelled" || dockFilter === "nodate" || dockFilter === "undone" || dockFilter.startsWith("done")) return 0;
     return opts.store
       .getAll()
       .filter((it) => it.kind === "todo" && !it.deleted && it.percent !== 100)
@@ -1577,7 +1644,8 @@ export function renderDockPanel(
     const toMs = parseLocalStamp(to + "T00:00:00").getTime() + 86400000;
     if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return false;
     const occ =
-      it.kind === "todo" ? todoDueOccurrences(it, fromMs, toMs) : occurrencesInRange(it, fromMs, toMs);
+      // Dock 的「命中日期区间」判定固定按 DUE，不受日历显示位置设置影响
+      it.kind === "todo" ? todoDueOccurrences(it, fromMs, toMs, "due") : occurrencesInRange(it, fromMs, toMs);
     return occ.some((s) => {
       if (!s) return false;
       const d = s.slice(0, 10);
@@ -2082,6 +2150,13 @@ export function renderDockPanel(
  */
 export function toggleTodoDone(ctx: PanelCtx, item: CalItem): Promise<void> {
   if (item.kind !== "todo") return Promise.resolve();
+  // 已作废：点勾圈是「恢复为待办」，不是标记完成（与主面板勾选口径一致）
+  if (item.status === "CANCELLED") {
+    item.percent = 0;
+    item.status = "NEEDS-ACTION";
+    item.completedAt = undefined;
+    return ctx.sync.updateItem(item);
+  }
   const done = item.percent === 100;
   item.percent = done ? 0 : 100;
   item.status = done ? "NEEDS-ACTION" : "COMPLETED";

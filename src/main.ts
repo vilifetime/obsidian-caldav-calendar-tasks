@@ -837,6 +837,9 @@ export default class CalDavPlugin extends Plugin {
       sortMode: "start",
       testReminder: () => this.testReminder(),
       reminderStatus: () => this.reminderStatus(),
+      // 面板内部改了「日历启用状态」等不触发 onChange 的数据后，主动刷新其它
+      // ItemView（尤其右侧栏 Dock），避免残留旧日历条目。
+      refreshPanels: () => this.refreshViews(),
       // 工具栏同步按钮：走 runSync，状态栏/视图/提醒/Notice 都由它统一负责
       syncNow: () => this.runSync(true),
       isSyncing: () => this.inflight !== null,
@@ -944,7 +947,9 @@ export default class CalDavPlugin extends Plugin {
     if (want && !this.reminder) {
       this.reminder = new ReminderEngine(
         () => this.store.getAll(),
-        (item, anchorISO, alarmMin) => this.fireReminder(item, anchorISO, alarmMin)
+        (item, anchorISO, alarmMin) => this.fireReminder(item, anchorISO, alarmMin),
+        undefined,
+        () => this.store.settings
       );
       this.reminder.start();
     } else if (!want && this.reminder) {
@@ -1102,7 +1107,7 @@ export default class CalDavPlugin extends Plugin {
         if (it.kind === "todo" && it.percent === 100) continue;
         const occs =
           it.kind === "todo"
-            ? todoDueOccurrences(it, startMs, endMs)
+            ? todoDueOccurrences(it, startMs, endMs, "due")
             : occurrencesInRange(it, startMs, endMs);
         let inRange = false;
         for (const occ of occs) {
