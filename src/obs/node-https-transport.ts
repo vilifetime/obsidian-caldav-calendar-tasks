@@ -27,6 +27,40 @@
 import type { HttpOptions, HttpResult, Transport } from "@/core/http";
 import { t } from "../i18n";
 
+// 桌面端在本文件内通过 window.require 动态加载 Node 内置模块（不能在顶层 require，否则移动端崩）。
+// 为避免依赖 @types/node 是否被 ESLint 类型解析到、并彻底消除 any / no-unsafe-*，这里给出
+// 实际用到的最小接口声明；运行时 Node 的 https/http/zlib 实现都满足这些签名（Buffer 是 Uint8Array 子类）。
+interface MinimalIncomingMessage {
+  statusCode?: number;
+  headers: Record<string, string | string[] | undefined>;
+  on(event: "data", listener: (chunk: Uint8Array) => void): void;
+  on(event: "end", listener: () => void): void;
+}
+interface MinimalClientRequest {
+  on(event: "timeout", listener: () => void): void;
+  on(event: "error", listener: (err: Error) => void): void;
+  write(chunk: string | Uint8Array): void;
+  end(): void;
+  destroy(err?: Error): void;
+}
+interface MinimalRequestOptions {
+  protocol?: string;
+  hostname?: string;
+  port?: number | string;
+  path?: string;
+  method?: string;
+  headers?: Record<string, string>;
+  timeout?: number;
+}
+interface MinimalHttpModule {
+  request(options: MinimalRequestOptions, callback: (res: MinimalIncomingMessage) => void): MinimalClientRequest;
+}
+interface MinimalZlib {
+  gunzip(buf: Uint8Array, cb: (err: Error | null, data: Uint8Array) => void): void;
+  inflate(buf: Uint8Array, cb: (err: Error | null, data: Uint8Array) => void): void;
+  brotliDecompress(buf: Uint8Array, cb: (err: Error | null, data: Uint8Array) => void): void;
+}
+
 export const nodeHttpsTransport: Transport = async (
   url: string,
   opts: HttpOptions
@@ -36,9 +70,9 @@ export const nodeHttpsTransport: Transport = async (
   const g = window as unknown as { require?: (id: string) => unknown };
   const nodeRequire = g.require;
   if (!nodeRequire) throw new Error("node-https-transport 仅在桌面端（Electron，window.require 可用）可用");
-  const https = nodeRequire("https") as typeof import("https");
-  const http = nodeRequire("http") as typeof import("http");
-  const zlib = nodeRequire("zlib") as typeof import("zlib");
+  const https = nodeRequire("https") as MinimalHttpModule;
+  const http = nodeRequire("http") as MinimalHttpModule;
+  const zlib = nodeRequire("zlib") as MinimalZlib;
 
   const t0 = Date.now();
   const MAX_REDIRECTS = 6;
@@ -71,24 +105,29 @@ export const nodeHttpsTransport: Transport = async (
           headers: baseHeaders,
           timeout: timeoutMs,
         },
-        (res: import("http").IncomingMessage) => {
-          const chunks: Buffer[] = [];
-          res.on("data", (c: Buffer) => chunks.push(c));
+        (res: MinimalIncomingMessage) => {
+          const chunks: Uint8Array[] = [];
+          res.on("data", (c: Uint8Array) => chunks.push(c));
           res.on("end", () => {
-            const buf = Buffer.concat(chunks);
+            // 手动拼接 Uint8Array（避免引入 Buffer，使本文件不依赖 @types/node 解析）
+            let total = 0;
+            for (const c of chunks) total += c.length;
+            const buf = new Uint8Array(total);
+            let off = 0;
+            for (const c of chunks) { buf.set(c, off); off += c.length; }
             const encoding = String(res.headers["content-encoding"] || "").toLowerCase();
-            const finish = (raw: Buffer) => {
-              const text = raw.toString("utf8");
+            const finish = (raw: Uint8Array) => {
+              const text = new TextDecoder().decode(raw);
               const h: Record<string, string> = {};
               for (const k of Object.keys(res.headers)) h[k.toLowerCase()] = String(res.headers[k]);
-              // bytes：把底层 Buffer 按真实长度切出（Buffer 可能比 ArrayBuffer 容量小，
+              // bytes：把底层 ArrayBuffer 按真实长度切出（视图可能比底层容量小，
               // 不切片会把尾随垃圾也算进来）。托管附件下载走这个，utf8 解码会破坏二进制。
               const bytes = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
               resolve({ status: res.statusCode || 0, headers: h, body: text, bytes, elapsedMs: Date.now() - t0, via: "direct" });
             };
-            if (encoding === "gzip") zlib.gunzip(buf, (e: Error | null, d: Buffer) => (e ? finish(buf) : finish(d)));
-            else if (encoding === "deflate") zlib.inflate(buf, (e: Error | null, d: Buffer) => (e ? finish(buf) : finish(d)));
-            else if (encoding === "br") zlib.brotliDecompress(buf, (e: Error | null, d: Buffer) => (e ? finish(buf) : finish(d)));
+            if (encoding === "gzip") zlib.gunzip(buf, (e, d) => (e ? finish(buf) : finish(d)));
+            else if (encoding === "deflate") zlib.inflate(buf, (e, d) => (e ? finish(buf) : finish(d)));
+            else if (encoding === "br") zlib.brotliDecompress(buf, (e, d) => (e ? finish(buf) : finish(d)));
             else finish(buf);
           });
         }
