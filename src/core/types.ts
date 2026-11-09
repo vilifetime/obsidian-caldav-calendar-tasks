@@ -209,6 +209,7 @@ export function newAccountId(): string {
  * load() 会先合并 DEFAULT_SETTINGS（自带 accounts: []），
  * 只看数组会让老数据被误判成「已是新结构」而跳过迁移。
  */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- migrates untyped legacy single-account settings */
 export function migrateToAccounts(s: any): void {
   const hasOldKeys = "serverUrl" in s || "username" in s || "password" in s || "calendarPath" in s || "calendars" in s;
   if (!hasOldKeys) return;
@@ -257,6 +258,8 @@ export function migrateToAccounts(s: any): void {
     delete s[k];
   }
 }
+
+/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 
 /** 所有启用账户 */
 export function enabledAccounts(s: CalSettings): CalAccount[] {

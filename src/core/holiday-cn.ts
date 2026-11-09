@@ -17,6 +17,7 @@
  *    `httpRequest`（Obsidian 的 requestUrl / Node https 天然无 CORS）；单测注入内存 mock。
  */
 import { Solar } from "lunar-javascript";
+import { requestUrl } from "obsidian";
 import type { CalSettings } from "./types";
 
 export interface CnHoliday {
@@ -49,6 +50,7 @@ interface SourceDef {
 const UA = { "User-Agent": "Mozilla/5.0 (ObsidianCaldav/1.0)" };
 
 // —— 归一化器 ——
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unnecessary-type-assertion -- normalize untyped JSON from holiday APIs */
 function fromArray(arr: any[]): Record<string, CnHoliday> | null {
   const map: Record<string, CnHoliday> = {};
   for (const it of arr) {
@@ -95,6 +97,8 @@ function genericNormalize(data: unknown): Record<string, CnHoliday> | null {
   }
   return null;
 }
+
+/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unnecessary-type-assertion */
 
 // ── 预设数据源（timor.tech 作为每个源的国内部署兜底）──
 const timorCand = (y: number): Cand => ({ url: `https://timor.tech/api/holiday/year/${y}`, normalize: timorNormalize });
@@ -144,7 +148,7 @@ export function effectiveHolidaySource(s: CalSettings): string {
 }
 
 // ── 网络传输层（可注入）──────────────────────────────────────────────
-// 默认走浏览器原生 fetch（单测用 setHolidayTransport 注入内存 mock 覆盖）。
+// 默认走 Obsidian 原生 requestUrl（单测用 setHolidayTransport 注入内存 mock 覆盖）。
 // 真实插件在 onload 时通过 setHolidayTransport 换成走 httpRequest 的实现：
 // Obsidian 的 requestUrl / Node https 天然无 CORS，国内访问稳定。
 export type HolidayTransport = (
@@ -153,15 +157,12 @@ export type HolidayTransport = (
   headers?: Record<string, string>
 ) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
 
-// ⚠️ 定时器必须走 window.（popout 弹出窗口兼容性，同 ui/month-day-popup.ts）：
-// 裸 setTimeout 在弹出窗口里绑的是主窗口的定时器，会提前/错乱触发。
-let holidayTransport: HolidayTransport = (url, timeoutMs, headers) => {
-  const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs);
-  return fetch(url, { signal: ctrl.signal, headers })
-    .then(async (r) => (r.ok ? { ok: true, data: await r.json() } : { ok: false, error: "HTTP " + r.status }))
-    .catch((e) => ({ ok: false, error: String((e && e.message) || e) }))
-    .finally(() => window.clearTimeout(timer)) as Promise<{ ok: boolean; data?: unknown; error?: string }>;
+let holidayTransport: HolidayTransport = (url, _timeoutMs, headers) => {
+  return requestUrl({ url, method: "GET", headers })
+    .then((resp) => (resp.status < 400
+      ? { ok: true, data: resp.json }
+      : { ok: false, error: "HTTP " + resp.status }))
+    .catch((e: unknown) => ({ ok: false, error: String((e && (e as Error).message) || e) }));
 };
 
 /** 真实插件初始化时调用：把节假日拉取切到 httpRequest 通道（国内稳定、天然无 CORS） */
@@ -187,12 +188,14 @@ async function fetchYearJson(def: SourceDef, year: number, timeoutMs = 12000): P
   const results = await Promise.all(cands.map((c) => holidayTransport(c.url, timeoutMs, def.headers)));
   const hit = results.findIndex((r) => r && r.ok);
   if (hit < 0) {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
     const errs = results.filter((r) => r && r.error).map((r) => r!.error).join("；") || "全部候选源无响应";
     lastHolidayError = `「${def.label}」${year}年 所有候选源均失败：${errs}`;
     console.warn("[caldav] " + lastHolidayError);
     return null;
   }
   lastHolidayError = null;
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
   return cands[hit].normalize(results[hit]!.data);
 }
 

@@ -27,13 +27,15 @@
 import type { HttpOptions, HttpResult, Transport } from "@/core/http";
 import { t } from "../i18n";
 
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- dynamically requires untyped Node core modules; desktop Electron only */
+
 export const nodeHttpsTransport: Transport = async (
   url: string,
   opts: HttpOptions
 ): Promise<HttpResult> => {
   // 桌面端 Electron 在 globalThis 上暴露 require；通过属性访问而非裸标识符，
   // 避免被打包器误判为静态 import。移动端 WebView 无 require，但也不会执行本函数。
-  const g: any = globalThis;
+  const g: any = window;
   const nodeRequire: any = g.require;
   const https = nodeRequire("https") as typeof import("https");
   const http = nodeRequire("http") as typeof import("http");
@@ -53,7 +55,7 @@ export const nodeHttpsTransport: Transport = async (
       try {
         u = new URL(currentUrl);
       } catch (e) {
-        reject(e);
+        reject(e instanceof Error ? e : new Error(String(e)));
         return;
       }
       const isHttps = u.protocol === "https:";

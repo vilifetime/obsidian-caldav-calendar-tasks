@@ -661,8 +661,7 @@ export class CalDavSettingTab extends PluginSettingTab {
     const bk = store.purgeBackup;
 
     // 状态说明：当前有多少孤儿条目、上次清理是什么时候
-    const status = document.createElement("div");
-    status.className = "caldav-purge-status";
+    const status = setting.descEl.createEl("div", { cls: "caldav-purge-status" });
     const parts: string[] = [];
     if (orphans.length) {
       parts.push(t("settings.purgeStatus", { count: String(orphans.length) }));
@@ -681,7 +680,6 @@ export class CalDavSettingTab extends PluginSettingTab {
       );
     }
     status.textContent = parts.join("；");
-    setting.descEl.appendChild(status);
 
     // 二次点击确认的状态（存在闭包里，按钮重绘时不丢）
     let armed = false;
@@ -793,19 +791,13 @@ export class CalDavSettingTab extends PluginSettingTab {
         b.setButtonText(t("settings.accDelete")).onClick(async () => {
           if (conf) return;
           // ── 二次确认：展开两个选择（是否连本地条目一起清理）──
-          conf = document.createElement("div");
-          conf.className = "caldav-acc-delconf";
-          const hint = document.createElement("div");
-          hint.className = "caldav-set-hint";
+          conf = setting.descEl.createEl("div", { cls: "caldav-acc-delconf" });
+          const hint = conf.createEl("div", { cls: "caldav-set-hint" });
           const n = this.plugin.store.getAll().filter((it) => (acc.calendars || []).some((c) => c.url === it.calendarUrl)).length;
           hint.textContent = t("settings.accDeleteHint", { name: acc.name, count: String(n) });
-          conf.appendChild(hint);
-          const row = document.createElement("div");
-          row.className = "caldav-acc-delconf-row";
+          const row = conf.createEl("div", { cls: "caldav-acc-delconf-row" });
           const mk = (label: string, purge: boolean): HTMLButtonElement => {
-            const el = document.createElement("button");
-            el.className = "caldav-btn caldav-btn--sm" + (purge ? "" : " mod-cta");
-            el.textContent = label;
+            const el = row.createEl("button", { cls: "caldav-btn caldav-btn--sm" + (purge ? "" : " mod-cta"), text: label });
             el.addEventListener("click", () => {
               void (async () => {
                 await this.deleteAccount(acc, purge);
@@ -814,15 +806,10 @@ export class CalDavSettingTab extends PluginSettingTab {
             });
             return el;
           };
-          row.appendChild(mk(t("settings.accDeleteOnly"), false));
-          row.appendChild(mk(t("settings.accDeletePurge"), true));
-          const cancel = document.createElement("button");
-          cancel.className = "caldav-btn caldav-btn--sm";
-          cancel.textContent = t("common.cancel");
+          mk(t("settings.accDeleteOnly"), false);
+          mk(t("settings.accDeletePurge"), true);
+          const cancel = row.createEl("button", { cls: "caldav-btn caldav-btn--sm", text: t("common.cancel") });
           cancel.addEventListener("click", reset);
-          row.appendChild(cancel);
-          conf.appendChild(row);
-          setting.descEl.appendChild(conf);
           btn.setButtonText(t("settings.accDeleteConfirming"));
           armTimer = window.setTimeout(reset, 12000);
         });

@@ -65,26 +65,6 @@ function pickHrefXml(xml: string): string[] {
   return out;
 }
 
-/**
- * 临时诊断：发现/同步链路失败时把真实 HTTP 响应（URL + status + body）追加到
- * D:/Temp/caldav-debug.txt，便于在没有凭据的情况下定位「服务器到底回了什么」。
- * 仅在桌面端（Electron 提供 globalThis.require）生效；其它环境静默跳过。
- * TODO(临时): 确认 iCloud 修复后删除本函数及其三处调用。
- */
-function debugDump(label: string, url: string, status: number, body: string, headers?: Record<string, string>): void {
-  try {
-    const g: any = globalThis;
-    const fs = g.require?.("fs");
-    if (!fs) return;
-    try { fs.mkdirSync("D:/Temp", { recursive: true }); } catch { /* 已存在 */ }
-    const hdr = headers
-      ? "\nHEADERS:\n" + Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join("\n")
-      : "";
-    const line = `\n===== ${label} =====\nURL: ${url}\nSTATUS: ${status}${hdr}\nBODY:\n${body}\n`;
-    fs.appendFileSync("D:/Temp/caldav-debug.txt", line);
-  } catch { /* 诊断失败不影响主流程 */ }
-}
-
 /** 取响应头里的 ETag（小写归一化后） */
 function etagOf(res: HttpResult): string | undefined {
   const v = (res.headers["etag"] || "").replace(/^"|"$/g, "").trim();
@@ -119,6 +99,7 @@ export function parseAllManagedAttach(body: string): { uri: string; managedId: s
  */
 function sanitizeIcloudFilename(name: string): string {
   return (name || "attachment")
+    // eslint-disable-next-line no-control-regex, @typescript-eslint/no-control-regex
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/[\\/:*?"|]/g, "_");
 }
@@ -258,7 +239,6 @@ export async function discoverCalendars(
       principal = hrefs[0];
     }
     if (!principal) {
-      debugDump("principal", base, res.status, res.body);
       const snippet = (res.body || "(空响应体)").slice(0, 500);
       throw new HttpError(res.status, `${t("net.principalNotFound")}（HTTP ${res.status}；响应前500字：\n${snippet}）`);
     }
@@ -292,7 +272,6 @@ export async function discoverCalendars(
     "1"
   );
   if (listRes.status >= 400) {
-    debugDump("listCalendars", home, listRes.status, listRes.body);
     throw new HttpError(listRes.status, t("net.listCalendarsFailed", { status: listRes.status }));
   }
 
@@ -590,7 +569,6 @@ export async function putItem(
     if (res.status === 507) throw new HttpError(507, t("net.putFailed507"));
     // 诊断落盘（2026-10-23 雄哥实测过一次无法复现的 PUT 400：同一份 ICS/etag 换通道
     // 就能 204，缺响应体只能瞎猜）。412/413 在上面已分别处理，到这里的是真异常。
-    debugDump("icloud-put-item", `${item.href} (If-Match: ${item.etag || "无"})`, res.status, res.body, res.headers);
     throw new HttpError(res.status, t("net.putFailed", { status: res.status }));
   }
   const etag = (res.headers["etag"] || res.headers["etag".toLowerCase()] || "").replace(/^"|"$/g, "");
@@ -661,7 +639,6 @@ export async function uploadIcloudAttachment(
   );
   if (res.status >= 400) {
     if (res.status === 507) throw new HttpError(507, t("net.putFailed507"));
-    debugDump("icloud-add-attachment", url, res.status, res.body, res.headers);
     throw new HttpError(res.status, t("net.attachUploadFailed", { status: res.status }));
   }
   // ① 响应体带托管信息（RFC 8607 标准形态）→ 直接用；ETag 头有就一起拿
@@ -674,12 +651,7 @@ export async function uploadIcloudAttachment(
   const location = (res.headers["location"] || res.headers["Location"] || "").trim();
   const fresh = await fetchFreshManagedAttach(item.href, new Set(knownManagedIds), channel, auth, location);
   if (fresh) return fresh;
-  // ③ GET 也认不出（真出事：上传没落上 / 服务端异常）→ dump 两份现场让人能贴回来定位
-  const getDump = await httpRequest(item.href, { method: "GET" }, channel, auth).catch(() => null);
-  debugDump("icloud-add-attachment-parse", url, res.status, res.body, res.headers);
-  if (getDump) {
-    debugDump("icloud-add-attachment-get-fallback", item.href, getDump.status, getDump.body, getDump.headers);
-  }
+  // ③ GET 也认不出（真出事：上传没落上 / 服务端异常）：已无现场可 dump，直接抛错
   throw new HttpError(res.status, t("net.attachConfirmFailed", { name }));
 }
 

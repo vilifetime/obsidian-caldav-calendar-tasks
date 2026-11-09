@@ -40,7 +40,7 @@ export function todoDueOccurrences(
       dates.push(it.start || it.end!);
     } else {
       const a = it.start || it.end!;
-      const b = it.end || it.start!;
+      const b = it.end || it.start;
       dates.push(...eachDayInclusive(a, b));
     }
     return dates.filter((d) => {

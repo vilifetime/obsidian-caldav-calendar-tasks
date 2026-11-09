@@ -943,7 +943,8 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
     });
 
     // 下载：二进制行（内联件）专用；托管附件行（iCloud 等）走 fetchAttachmentBytes 取回字节。
-    attachRows.addEventListener("click", async (e) => {
+    attachRows.addEventListener("click", (e) => {
+      void (async () => {
       const dlBtn = (e.target as HTMLElement).closest<HTMLElement>("[data-attach-dl]");
       if (dlBtn) {
         const row = dlBtn.closest<HTMLElement>("[data-attach-i]");
@@ -977,6 +978,7 @@ function bindEvents(ctx: PanelCtx, host: EditorHost, el: HTMLElement, it: CalIte
       if (i >= 0 && i < atts.length) atts.splice(i, 1);
       redraw();
       setMsg("");
+      })();
     });
 
     // 手工加一行空链接（服务端已有链接、或用户想贴外链）

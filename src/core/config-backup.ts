@@ -294,6 +294,7 @@ export function mergeBackupSettings(backup: BackupPayload): CalSettings {
  */
 export function isBackupUseful(b: BackupPayload): boolean {
   // 多账户：老备份是平铺结构，先迁移再判定（与运行时的 load() 同一口径）
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
   const probe: CalSettings = { ...DEFAULT_SETTINGS, ...(b.settings || {}) } as CalSettings;
   migrateToAccounts(probe);
   const accs = probe.accounts || [];
@@ -316,6 +317,7 @@ export function isBackupUseful(b: BackupPayload): boolean {
  * 否则英文界面下重装恢复提示会露出「（未设置服务器）· N 个日历」。
  */
 export function describeBackup(b: BackupPayload): string {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
   const probe2: CalSettings = { ...DEFAULT_SETTINGS, ...(b.settings || {}) } as CalSettings;
   migrateToAccounts(probe2);
   const accs2 = probe2.accounts || [];
@@ -373,6 +375,7 @@ export function backupTimeText(b: BackupPayload, fallback: string): string {
  * 不自己写正则 —— 免得 secret.ts 将来加 v4 时这里漏掉、变成形同虚设的检查。
  */
 export function hasPlaintextPassword(b: BackupPayload): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
   const probe3: CalSettings = { ...DEFAULT_SETTINGS, ...(b.settings || {}) } as CalSettings;
   migrateToAccounts(probe3);
   return (probe3.accounts || []).some((a) => {
