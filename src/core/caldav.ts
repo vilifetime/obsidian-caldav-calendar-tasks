@@ -99,7 +99,7 @@ export function parseAllManagedAttach(body: string): { uri: string; managedId: s
  */
 function sanitizeIcloudFilename(name: string): string {
   return (name || "attachment")
-    // eslint-disable-next-line no-control-regex, @typescript-eslint/no-control-regex
+    // eslint-disable-next-line no-control-regex, @typescript-eslint/no-control-regex -- 控制字符需从文件名中剔除，正则必须显式匹配它们
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/[\\/:*?"|]/g, "_");
 }

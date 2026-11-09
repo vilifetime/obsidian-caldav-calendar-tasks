@@ -643,7 +643,7 @@ export class CalDavSettingTab extends PluginSettingTab {
     //    老数据（data.json）里已经存了这个键，删掉定义会让读取端拿不到默认值而走偏，
     //    并且 toolbar 的读写路径依赖它。删的只是设置页这一处 UI。
 
-    return defs as unknown as SettingDefinitionItem[];
+    return defs;
   }
 
   /**

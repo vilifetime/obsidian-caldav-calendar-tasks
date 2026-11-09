@@ -50,12 +50,13 @@ interface SourceDef {
 const UA = { "User-Agent": "Mozilla/5.0 (ObsidianCaldav/1.0)" };
 
 // —— 归一化器 ——
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unnecessary-type-assertion -- normalize untyped JSON from holiday APIs */
-function fromArray(arr: any[]): Record<string, CnHoliday> | null {
+function fromArray(arr: unknown[]): Record<string, CnHoliday> | null {
   const map: Record<string, CnHoliday> = {};
   for (const it of arr) {
-    if (it && it.date) {
-      map[String(it.date).slice(0, 10)] = { name: it.name || "节假日", off: it.isOffDay !== false };
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    if (o.date) {
+      map[String(o.date).slice(0, 10)] = { name: (o.name as string) || "节假日", off: o.isOffDay !== false };
     }
   }
   return Object.keys(map).length ? map : null;
@@ -63,19 +64,24 @@ function fromArray(arr: any[]): Record<string, CnHoliday> | null {
 /** NateScarlet/holiday-cn：{days:[{name,date,isOffDay}]} 或 [{name,date,isOffDay}] */
 function nateNormalize(data: unknown): Record<string, CnHoliday> | null {
   if (Array.isArray(data)) return fromArray(data);
-  const d = data as any;
-  if (d && Array.isArray(d.days)) return fromArray(d.days);
+  if (!data || typeof data !== "object") return null;
+  const d = data as Record<string, unknown>;
+  if (Array.isArray(d.days)) return fromArray(d.days);
   return null;
 }
 /** timor.tech：{code, holiday:{"MM-DD":{holiday:bool,name,date,...}}} */
 function timorNormalize(data: unknown): Record<string, CnHoliday> | null {
-  const t = data as any;
-  if (!t || !t.holiday || typeof t.holiday !== "object") return null;
+  if (!data || typeof data !== "object") return null;
+  const t = data as Record<string, unknown>;
+  if (!t.holiday || typeof t.holiday !== "object") return null;
+  const hol = t.holiday as Record<string, unknown>;
   const map: Record<string, CnHoliday> = {};
-  for (const k of Object.keys(t.holiday)) {
-    const it = t.holiday[k];
-    if (it && it.date) {
-      map[String(it.date).slice(0, 10)] = { name: it.name || "节假日", off: it.holiday === true };
+  for (const k of Object.keys(hol)) {
+    const it = hol[k];
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    if (o.date) {
+      map[String(o.date).slice(0, 10)] = { name: (o.name as string) || "节假日", off: o.holiday === true };
     }
   }
   return Object.keys(map).length ? map : null;
@@ -83,22 +89,20 @@ function timorNormalize(data: unknown): Record<string, CnHoliday> | null {
 /** 自定义源：尽力兼容多种结构（NateScarlet / timor / {dateStr:{name,isOffDay}}） */
 function genericNormalize(data: unknown): Record<string, CnHoliday> | null {
   if (Array.isArray(data)) return fromArray(data);
-  const d = data as any;
-  if (d && Array.isArray(d.days)) return fromArray(d.days);
-  if (d && d.holiday && typeof d.holiday === "object") return timorNormalize(data);
-  if (data && typeof data === "object") {
-    const map: Record<string, CnHoliday> = {};
-    for (const k of Object.keys(data as object)) {
-      const it = (data as any)[k];
-      if (it && it.date) map[String(it.date).slice(0, 10)] = { name: it.name || "节假日", off: it.isOffDay !== false };
-      else if (it && it.name !== undefined) map[k.slice(0, 10)] = { name: it.name || "节假日", off: it.isOffDay !== false };
-    }
-    return Object.keys(map).length ? map : null;
+  if (!data || typeof data !== "object") return null;
+  const d = data as Record<string, unknown>;
+  if (Array.isArray(d.days)) return fromArray(d.days);
+  if (d.holiday && typeof d.holiday === "object") return timorNormalize(data);
+  const map: Record<string, CnHoliday> = {};
+  for (const k of Object.keys(d)) {
+    const it = d[k];
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    if (o.date) map[String(o.date).slice(0, 10)] = { name: (o.name as string) || "节假日", off: o.isOffDay !== false };
+    else if (o.name !== undefined) map[k.slice(0, 10)] = { name: (o.name as string) || "节假日", off: o.isOffDay !== false };
   }
-  return null;
+  return Object.keys(map).length ? map : null;
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unnecessary-type-assertion */
 
 // ── 预设数据源（timor.tech 作为每个源的国内部署兜底）──
 const timorCand = (y: number): Cand => ({ url: `https://timor.tech/api/holiday/year/${y}`, normalize: timorNormalize });
@@ -160,7 +164,7 @@ export type HolidayTransport = (
 let holidayTransport: HolidayTransport = (url, _timeoutMs, headers) => {
   return requestUrl({ url, method: "GET", headers })
     .then((resp) => (resp.status < 400
-      ? { ok: true, data: resp.json }
+      ? { ok: true, data: resp.json as unknown }
       : { ok: false, error: "HTTP " + resp.status }))
     .catch((e: unknown) => ({ ok: false, error: String((e && (e as Error).message) || e) }));
 };
@@ -188,14 +192,14 @@ async function fetchYearJson(def: SourceDef, year: number, timeoutMs = 12000): P
   const results = await Promise.all(cands.map((c) => holidayTransport(c.url, timeoutMs, def.headers)));
   const hit = results.findIndex((r) => r && r.ok);
   if (hit < 0) {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- 前置 filter 已保证 r 非空且有 error，但 TS 不会把收窄带入 map
     const errs = results.filter((r) => r && r.error).map((r) => r!.error).join("；") || "全部候选源无响应";
     lastHolidayError = `「${def.label}」${year}年 所有候选源均失败：${errs}`;
     console.warn("[caldav] " + lastHolidayError);
     return null;
   }
   lastHolidayError = null;
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- results[hit] 可能为 undefined，需非空断言才能取 data
   return cands[hit].normalize(results[hit]!.data);
 }
 

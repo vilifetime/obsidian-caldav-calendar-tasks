@@ -557,7 +557,7 @@
   "net.putFailed507": "上传失败：HTTP 507（iCloud 存储空间不足）。请检查 iCloud 账户的剩余存储配额。",
   "net.attachNoHref": "附件上传失败：待办还没有服务端地址（href 缺失），请先保存一次再重试。",
   "net.attachUploadFailed": "附件上传到 iCloud 失败（HTTP {status}）。",
-  "net.attachConfirmFailed": "附件「{name}」上传后无法确认托管信息：服务端响应为空且回读资源也未找到新附件。请重试；若持续失败，请把 D:/Temp/caldav-debug.txt 里 icloud-add-attachment 片段反馈给开发者。",
+  "net.attachConfirmFailed": "附件「{name}」上传后无法确认托管信息：服务端响应为空且回读资源也未找到新附件。请重试。",
   "net.attachDownloadFailed": "附件下载失败（HTTP {status}）。",
   "net.deleteFailed": "删除失败: HTTP {status}",
   "net.serverChanged412": "服务端已变更（412 冲突）",

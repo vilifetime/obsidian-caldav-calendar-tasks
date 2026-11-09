@@ -209,34 +209,43 @@ export function newAccountId(): string {
  * load() 会先合并 DEFAULT_SETTINGS（自带 accounts: []），
  * 只看数组会让老数据被误判成「已是新结构」而跳过迁移。
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- migrates untyped legacy single-account settings */
-export function migrateToAccounts(s: any): void {
-  const hasOldKeys = "serverUrl" in s || "username" in s || "password" in s || "calendarPath" in s || "calendars" in s;
+export function migrateToAccounts(s: CalSettings): void {
+  // 老字段是平铺在 CalSettings 上的未类型化遗留数据；用 Record<string, unknown> 做必要的动态访问。
+  const m = s as unknown as Record<string, unknown>;
+  const hasOldKeys =
+    "serverUrl" in m || "username" in m || "password" in m || "calendarPath" in m || "calendars" in m;
   if (!hasOldKeys) return;
-  const hasOld = !!(s.serverUrl || s.username || s.password || (Array.isArray(s.calendars) && s.calendars.length));
-  if (!Array.isArray(s.accounts)) s.accounts = [];
+  const hasOld = !!(
+    m.serverUrl ||
+    m.username ||
+    m.password ||
+    (Array.isArray(m.calendars) && m.calendars.length)
+  );
+  // 保证 accounts 是数组（老数据可能缺）
+  if (!Array.isArray(m.accounts)) m.accounts = [];
+  const accounts: unknown[] = Array.isArray(m.accounts) ? m.accounts : [];
   // 只有 accounts 为空时才用平铺字段造第一个账户。两者**共存**时（云同步把旧副本与
   // 新数据混在一起的极端情况）平铺字段只是残留，绝不能拿它覆盖现有账户数组 ——
   // 那是一次性抹掉用户其余全部账户的静默数据丢失。
-  if (hasOld && !s.accounts.length) {
-    s.accounts = [
+  if (hasOld && accounts.length === 0) {
+    m.accounts = [
       {
         id: newAccountId(),
-        name: s.serverType === "icloud" ? "iCloud 账户" : "CalDAV 账户",
+        name: m.serverType === "icloud" ? "iCloud 账户" : "CalDAV 账户",
         enabled: true,
-        serverUrl: s.serverUrl || "",
-        username: s.username || "",
-        password: s.password || "",
-        calendarPath: s.calendarPath || "",
-        serverType: s.serverType || "caldav",
-        channel: s.channel || "auto",
-        conflict: s.conflict || "server",
-        pastDays: typeof s.pastDays === "number" ? s.pastDays : 90,
-        futureDays: typeof s.futureDays === "number" ? s.futureDays : 370,
+        serverUrl: (m.serverUrl as string) || "",
+        username: (m.username as string) || "",
+        password: (m.password as string) || "",
+        calendarPath: (m.calendarPath as string) || "",
+        serverType: (m.serverType as string) || "caldav",
+        channel: (m.channel as string) || "auto",
+        conflict: (m.conflict as string) || "server",
+        pastDays: typeof m.pastDays === "number" ? m.pastDays : 90,
+        futureDays: typeof m.futureDays === "number" ? m.futureDays : 370,
         // 附件/ICS 上限原来是全局值，本质是服务器特性 → 迁移时原值带给账户
-        attachSizeMaxMB: typeof s.attachSizeMaxMB === "number" ? s.attachSizeMaxMB : undefined,
-        icsSizeMaxMB: typeof s.icsSizeMaxMB === "number" ? s.icsSizeMaxMB : undefined,
-        calendars: Array.isArray(s.calendars) ? s.calendars : []
+        attachSizeMaxMB: typeof m.attachSizeMaxMB === "number" ? m.attachSizeMaxMB : undefined,
+        icsSizeMaxMB: typeof m.icsSizeMaxMB === "number" ? m.icsSizeMaxMB : undefined,
+        calendars: Array.isArray(m.calendars) ? (m.calendars as unknown[]) : []
       }
     ];
   }
@@ -255,11 +264,9 @@ export function migrateToAccounts(s: any): void {
     "attachSizeMaxMB",
     "icsSizeMaxMB"
   ]) {
-    delete s[k];
+    delete m[k];
   }
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 
 /** 所有启用账户 */
 export function enabledAccounts(s: CalSettings): CalAccount[] {

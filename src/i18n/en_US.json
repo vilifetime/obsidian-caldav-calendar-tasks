@@ -557,7 +557,7 @@
   "net.putFailed507": "Upload failed: HTTP 507 (iCloud storage quota exceeded). Check your iCloud account's remaining storage.",
   "net.attachNoHref": "Attachment upload failed: the to-do has no server URL (href) yet. Save once first, then retry.",
   "net.attachUploadFailed": "Uploading attachment to iCloud failed (HTTP {status}).",
-  "net.attachConfirmFailed": "Attachment \"{name}\" was uploaded but its managed info could not be confirmed: the server response was empty and re-reading the resource found no new attachment. Please retry; if it keeps failing, send the icloud-add-attachment section of D:/Temp/caldav-debug.txt to the developer.",
+  "net.attachConfirmFailed": "Attachment \"{name}\" was uploaded but its managed info could not be confirmed: the server response was empty and re-reading the resource found no new attachment. Please retry.",
   "net.attachDownloadFailed": "Attachment download failed (HTTP {status}).",
   "net.deleteFailed": "Delete failed: HTTP {status}",
   "net.serverChanged412": "The server copy has changed (412 Conflict)",
