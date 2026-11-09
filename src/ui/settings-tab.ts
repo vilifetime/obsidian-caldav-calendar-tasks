@@ -659,6 +659,9 @@ export class CalDavSettingTab extends PluginSettingTab {
     const store = this.plugin.store;
     const orphans = store.orphanItems();
     const bk = store.purgeBackup;
+    // 给本插件这一项加专属 class（替代 CSS 的 :has() 选择器，规避 lint 的
+    // 性能告警；只标记本行，不会波及其它插件的设置行）
+    setting.settingEl.addClass("caldav-purge-row");
 
     // 状态说明：当前有多少孤儿条目、上次清理是什么时候
     const status = setting.descEl.createEl("div", { cls: "caldav-purge-status" });

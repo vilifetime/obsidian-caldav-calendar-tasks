@@ -9,7 +9,8 @@
  *    [info | control]，这一行 control 里两个长按钮把 info 挤到只剩 ~70px，
  *    name 与 .caldav-purge-status 被逐词折断竖排，右侧留一整片空白。
  *    修法＝这一项改成上下两段：说明全宽、按钮组另起一行左对齐且可换行。
- *    用 :has(.caldav-purge-status) 精确命中，绝不能写裸 .setting-item 全局覆盖。
+ *    用 .caldav-purge-row 专属 class 精确命中（由 TS 在 renderPurgeRow 里给
+ *    setting.settingEl 加），绝不能写裸 .setting-item 全局覆盖，也不再用 :has()。
  *
  * ③ 「如果还造成窗口宽度不够 / 横向滚动条，就稍微扩展一点窗口宽度」是条件句。
  *    首轮 16 场景探针（默认字体）判为「无溢出、无需加宽」，但实机界面字体更宽，
@@ -70,7 +71,7 @@ check("判据自测：改回旧文案应判红（防假绿）", () => {
 });
 
 console.log("\n② 设置页 Local data 行：上下两段布局");
-const SEL_ROOT = ".setting-item:has(.caldav-purge-status)";
+const SEL_ROOT = ".setting-item.caldav-purge-row";
 check("命中项纵向排列且拉伸满宽", () => {
   const b = block(SEL_ROOT);
   decl(b, /^\s*flex-direction:\s*column\s*;/m, "缺 flex-direction:column（说明与按钮仍会挤在同一行）");
@@ -95,7 +96,8 @@ check("状态说明按词换行，不再被压成每词一行", () => {
   decl(b, /^\s*overflow-wrap:\s*break-word\s*;/m, "长 URL 需要 overflow-wrap:break-word");
 });
 check("精确命中：不得出现裸 .setting-item 全局覆盖", () => {
-  assert.ok(css.includes(":has(.caldav-purge-status)"), "缺 :has 精确选择器");
+  assert.ok(css.includes(".caldav-purge-row"), "缺 .caldav-purge-row 专属选择器（应由 TS 给 setting.settingEl 加）");
+  assert.ok(!css.includes(":has(.caldav-purge-status)"), "仍残留 :has(.caldav-purge-status)，应改用 .caldav-purge-row class");
   assert.ok(!/(^|\n)\.setting-item\s*\{/.test(css),
     "出现裸 .setting-item 规则，会影响其它插件的设置行");
 });

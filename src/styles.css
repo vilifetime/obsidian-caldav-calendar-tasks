@@ -4848,20 +4848,20 @@ body > .caldav-reminder-layer {
    .caldav-purge-status 被逐词折断竖排，右侧留下一整片空白，就是截图里难看
    的「细长文字柱」。
    正解是让说明占满一整行、按钮组另起一行左对齐且允许换行；不是缩短按钮
-   文案，也不是给按钮加省略号。用 :has(.caldav-purge-status) 精确命中本插件
-   这一项，避免影响其它插件的设置行（Obsidian 1.15 的 Chromium 支持 :has）。 */
-.setting-item:has(.caldav-purge-status) {
+   文案，也不是给按钮加省略号。改用 .caldav-purge-row 专属 class 精确命中本插件
+   这一项（TS 在 renderPurgeRow 里给 setting.settingEl 加），不依赖 :has()，避免影响其它插件。 */
+.setting-item.caldav-purge-row {
   flex-direction: column;
   align-items: stretch;
   gap: 0;
 }
-.setting-item:has(.caldav-purge-status) .setting-item-info {
+.setting-item.caldav-purge-row .setting-item-info {
   width: 100%;
   max-width: 100%;
   flex: 1 1 auto;
   min-width: 0;
 }
-.setting-item:has(.caldav-purge-status) .setting-item-control {
+.setting-item.caldav-purge-row .setting-item-control {
   width: 100%;
   max-width: 100%;
   flex: 0 0 auto;
@@ -4871,7 +4871,7 @@ body > .caldav-reminder-layer {
   margin-top: 10px;
 }
 /* 状态说明全宽后按正常词距换行，别再被压成每词一行 */
-.setting-item:has(.caldav-purge-status) .caldav-purge-status {
+.setting-item.caldav-purge-row .caldav-purge-status {
   overflow-wrap: break-word;
   white-space: normal;
 }
